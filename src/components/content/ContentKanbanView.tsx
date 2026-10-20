@@ -19,6 +19,7 @@ import { FormatBadge } from '../common/Badges.tsx';
 import { EditPostModal } from './EditPostModal.tsx';
 import { NewPostModal } from '../dashboard/NewPostModal.tsx';
 import { WorkflowSettingsModal } from './WorkflowSettingsModal.tsx';
+import { ContentThumbnail } from './ContentThumbnail.tsx';
 
 interface ContentKanbanViewProps {
   brand: Brand | null;
@@ -369,7 +370,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
                         }}
                         className={`bg-white border border-slate-200 hover:border-blue-300 rounded-xl p-3 shadow-2xs hover:shadow-xs transition-all ${
                           canEdit ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
-                        } group select-none space-y-2`}
+                        } group space-y-2`}
                       >
                         {/* Channels & Format */}
                         <div className="flex items-center justify-between gap-1">
@@ -385,6 +386,12 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
                           </div>
                           <FormatBadge format={post.format} />
                         </div>
+
+                        <ContentThumbnail
+                          mediaPath={post.media_urls?.[0]}
+                          alt={post.title}
+                          className="w-full aspect-video"
+                        />
 
                         {/* Title & Caption snippet */}
                         <div>

@@ -17,6 +17,7 @@ import { ContentCalendarView } from './components/content/ContentCalendarView.ts
 import { ContentKanbanView } from './components/content/ContentKanbanView.tsx';
 import { CrudTestPanel } from './components/content/CrudTestPanel.tsx';
 import { AnalyticsView } from './components/analytics/AnalyticsView.tsx';
+import { ContentPostAnalyticsView } from './components/analytics/ContentPostAnalyticsView.tsx';
 import { AiMetricsExtractorView } from './components/ai/AiMetricsExtractorView.tsx';
 import { AiStrategyAssistantView } from './components/ai/AiStrategyAssistantView.tsx';
 import { NewBrandModal } from './components/dashboard/NewBrandModal.tsx';
@@ -61,6 +62,7 @@ export default function App() {
   const [isNewPostOpen, setIsNewPostOpen] = useState(false);
   const [isBrandSettingsOpen, setIsBrandSettingsOpen] = useState(false);
   const [brandPosts, setBrandPosts] = useState<ContentPost[]>([]);
+  const [aiTargetPostId, setAiTargetPostId] = useState<string | null>(null);
 
   // State untuk prefill konten dari ide AI Strategy Assistant
   const [prefillPost, setPrefillPost] = useState<{
@@ -109,6 +111,12 @@ export default function App() {
       setCurrentTab('dashboard');
     }
   }, [currentTab, isSuperAdmin]);
+
+  useEffect(() => {
+    if (currentTab !== 'ai_extractor') {
+      setAiTargetPostId(null);
+    }
+  }, [currentTab]);
 
   useEffect(() => {
     if (inviteToken) {
@@ -275,12 +283,26 @@ export default function App() {
           />
         )}
 
+        {currentTab === 'content_posts' && (
+          <ContentPostAnalyticsView
+            brand={activeBrand}
+            posts={brandPosts}
+            canEdit={canEditContent}
+            onRefreshPosts={fetchBrandPosts}
+            onOpenAiExtractor={(postId) => {
+              setAiTargetPostId(postId);
+              setCurrentTab('ai_extractor');
+            }}
+          />
+        )}
+
         {currentTab === 'ai_extractor' && (
           canEditContent ? (
             <AiMetricsExtractorView
               brand={activeBrand}
               posts={brandPosts}
               aiCreditsRemaining={aiCreditsRemaining}
+              initialPostId={aiTargetPostId}
               onRefreshLicense={refreshLicense}
               onSavedMetrics={() => {
                 fetchBrandPosts();
@@ -352,7 +374,7 @@ export default function App() {
         )}
 
         {/* Placeholder untuk fase berikutnya */}
-        {!['dashboard', 'content_db', 'calendar', 'kanban', 'analytics', 'ai_extractor', 'ai_strategy', 'crud_test', 'team', 'activity_logs', 'license', 'admin'].includes(currentTab) && (
+        {!['dashboard', 'content_db', 'calendar', 'kanban', 'analytics', 'content_posts', 'ai_extractor', 'ai_strategy', 'crud_test', 'team', 'activity_logs', 'license', 'admin'].includes(currentTab) && (
           <NextPhasePlaceholder
             tabId={currentTab}
             onBackToDashboard={() => setCurrentTab('dashboard')}

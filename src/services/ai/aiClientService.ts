@@ -62,7 +62,7 @@ export interface StrategyResponse {
 
 export const aiClientService = {
   /**
-   * Ekstraksi metrik gambar insight melalui backend Express & Gemini 3.8 Flash
+   * Ekstraksi metrik gambar/video insight melalui backend Express & Gemini
    * Server memeriksa otorisasi brand, batasan file, dan memotong 1 kredit kuota
    */
   async extractMetricsFromImage(
@@ -91,7 +91,11 @@ export const aiClientService = {
     });
 
     if (!ok) {
-      throw new Error(result.error || result.message || `Gagal memproses gambar analitik dengan AI (HTTP ${status}).`);
+      const baseMessage = result.error || result.message || `Gagal memproses gambar analitik dengan AI (HTTP ${status}).`;
+      const detail = typeof result.details === 'string'
+        ? result.details.replace(/key=[^&\s]+/gi, 'key=***').slice(0, 400)
+        : '';
+      throw new Error(detail ? `${baseMessage} Detail: ${detail}` : baseMessage);
     }
 
     return {

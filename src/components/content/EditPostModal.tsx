@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, Copy, Loader2, Calendar, Video, AlertCircle } from 'lucide-react';
+import { X, Save, Trash2, Copy, Loader2, Calendar, Video, AlertCircle, FileText, ImagePlus, Link2 } from 'lucide-react';
 import { ContentPost, ContentFormat, ContentStatus, Brand, WorkflowStatusConfig } from '../../types/database.ts';
 import { contentService, UpdatePostInput } from '../../services/database/contentService.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
+import { mediaService } from '../../services/storage/mediaService.ts';
+import { ContentThumbnail } from './ContentThumbnail.tsx';
 
 interface EditPostModalProps {
   isOpen: boolean;
@@ -23,6 +25,11 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
 }) => {
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
+  const [brief, setBrief] = useState('');
+  const [postUrl, setPostUrl] = useState('');
+  const [postedAt, setPostedAt] = useState('');
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [hashtagsText, setHashtagsText] = useState('');
   const [pillar, setPillar] = useState('Edukatif');
   const [format, setFormat] = useState<ContentFormat>('carousel');
@@ -45,6 +52,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
 
       setTitle(post.title || '');
       setCaption(post.caption || '');
+      setBrief(post.brief || '');
+      setPostUrl(post.post_url || '');
+      setMediaUrls([...(post.media_urls || [])]);
       setHashtagsText((post.hashtags || []).join(' '));
       setPillar(post.pillar || 'Edukatif');
       setFormat(post.format || 'single_image');
@@ -77,6 +87,19 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         setProductionDate('');
       }
 
+      if (post.posted_at) {
+        try {
+          const d = new Date(post.posted_at);
+          const tzOffset = d.getTimezoneOffset() * 60000;
+          setPostedAt(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
+        } catch {
+          setPostedAt('');
+        }
+      } else {
+        setPostedAt('');
+      }
+
+      setUploadingMedia(false);
       setError(null);
     }
   }, [post]);
@@ -91,6 +114,29 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
     } else {
       setChannels([...channels, channel]);
     }
+  };
+
+  const handleMediaUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingMedia(true);
+    setError(null);
+
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files).slice(0, 5)) {
+        const path = await mediaService.uploadContentImage(file, post.brand_id);
+        uploaded.push(path);
+      }
+      setMediaUrls((prev) => [...prev, ...uploaded].slice(0, 5));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Gagal mengunggah gambar konten.');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const removeMedia = (path: string) => {
+    setMediaUrls((prev) => prev.filter((item) => item !== path));
   };
 
   const handleSave = async (e: React.FormEvent) => {
@@ -113,13 +159,21 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
       const updates: UpdatePostInput = {
         title: title.trim(),
         caption: caption.trim() || null,
+        brief: brief.trim() || null,
         hashtags,
         channels,
         format,
         pillar,
         status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+        ...(postedAt
+          ? { posted_at: new Date(postedAt).toISOString() }
+          : post.posted_at
+          ? { posted_at: post.posted_at }
+          : {}),
         production_date: productionDate ? new Date(productionDate).toISOString() : null,
+        post_url: postUrl.trim() || null,
+        media_urls: mediaUrls,
       };
 
       await contentService.updatePost(post.id, updates);
@@ -281,6 +335,90 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
           </div>
 
           <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Script / Brief Produksi</span>
+            </label>
+            <textarea
+              rows={4}
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              placeholder="Script, arahan visual, urutan shot, atau brief untuk tim produksi..."
+              className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <ImagePlus className="w-3.5 h-3.5 text-pink-600" />
+              <span>Gambar Konten</span>
+            </label>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3 space-y-3">
+              {mediaUrls.length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {mediaUrls.map((path, index) => (
+                    <div key={path} className="relative group">
+                      <ContentThumbnail
+                        mediaPath={path}
+                        alt={`Gambar konten ${index + 1}`}
+                        className="w-full aspect-square"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeMedia(path)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xs opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                        title="Hapus gambar"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer transition">
+                {uploadingMedia ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                ) : (
+                  <ImagePlus className="w-4 h-4 text-pink-600" />
+                )}
+                <span>{uploadingMedia ? 'Mengunggah gambar...' : 'Tambah Gambar (maks. 10 MB)'}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingMedia || mediaUrls.length >= 5}
+                  onChange={(e) => {
+                    handleMediaUpload(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                Maksimal 5 gambar per konten. Gambar disimpan di bucket <span className="font-mono">content-media</span>.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Link Postingan</span>
+            </label>
+            <input
+              type="text"
+              inputMode="url"
+              value={postUrl}
+              onChange={(e) => setPostUrl(e.target.value)}
+              placeholder="https://www.instagram.com/p/..."
+              className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Tombol lihat postingan muncul di halaman Konten Post saat status sudah tayang.
+            </p>
+          </div>
+
+          <div>
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Hashtags (Pisahkan dengan spasi atau koma)
             </label>
@@ -308,8 +446,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
             </select>
           </div>
 
-          {/* Tanggal Produksi & Tanggal Tayang */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+          {/* Tanggal Produksi, Jadwal Tayang & Tanggal Posting Aktual */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Video className="w-3.5 h-3.5 text-indigo-600" />
@@ -360,6 +498,32 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
                 )}
               </div>
               <span className="text-[10px] text-slate-400 mt-0.5 block">Jadwal publikasi postingan</span>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Tanggal Posting Aktual</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="datetime-local"
+                  value={postedAt}
+                  onChange={(e) => setPostedAt(e.target.value)}
+                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
+                />
+                {postedAt && (
+                  <button
+                    type="button"
+                    onClick={() => setPostedAt('')}
+                    className="absolute right-2.5 top-1.5 text-xs text-slate-400 hover:text-slate-600"
+                    title="Kosongkan Tanggal Posting"
+                  >
+                    Hapus
+                  </button>
+                )}
+              </div>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">Dipakai untuk filter histori Konten Post</span>
             </div>
           </div>
 

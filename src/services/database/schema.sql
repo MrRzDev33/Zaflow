@@ -75,13 +75,16 @@ CREATE TABLE IF NOT EXISTS public.content_posts (
     brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     caption TEXT,
+    brief TEXT, -- Script / brief produksi konten
     hashtags TEXT[] NOT NULL DEFAULT '{}',
     channels TEXT[] NOT NULL DEFAULT '{"instagram"}'::TEXT[], -- 'instagram', 'tiktok', 'reels', 'linkedin', 'facebook', 'youtube'
     format TEXT NOT NULL DEFAULT 'single_image' CHECK (format IN ('single_image', 'carousel', 'reel_short', 'video', 'story', 'text_thread')),
     pillar TEXT NOT NULL DEFAULT 'Edukatif', -- Kustom per brand
     status TEXT NOT NULL DEFAULT 'idea', -- Dinamis mengikuti status alur kerja kanban brand
     scheduled_at TIMESTAMPTZ,
+    posted_at TIMESTAMPTZ, -- Tanggal aktual konten diposting
     production_date TIMESTAMPTZ, -- Tanggal dan waktu produksi / shooting
+    post_url TEXT, -- URL postingan publik
     media_urls TEXT[] NOT NULL DEFAULT '{}',
     author_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -144,6 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_brand_members_brand ON public.brand_members(brand
 CREATE INDEX IF NOT EXISTS idx_content_posts_brand ON public.content_posts(brand_id);
 CREATE INDEX IF NOT EXISTS idx_content_posts_status ON public.content_posts(status);
 CREATE INDEX IF NOT EXISTS idx_content_posts_scheduled ON public.content_posts(scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_content_posts_brand_posted_at ON public.content_posts(brand_id, posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_content_posts_brand_scheduled_at ON public.content_posts(brand_id, scheduled_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_metrics_brand ON public.content_metrics(brand_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_brand ON public.activity_logs(brand_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_user ON public.ai_usage_logs(user_id, created_at DESC);

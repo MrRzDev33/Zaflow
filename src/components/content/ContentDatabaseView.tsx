@@ -17,14 +17,17 @@ import {
   CalendarDays,
   ChevronDown,
   ChevronRight,
+  ExternalLink,
+  Link2,
 } from 'lucide-react';
 import { Brand, ContentPost, WorkflowStatusConfig } from '../../types/database.ts';
-import { contentService } from '../../services/database/contentService.ts';
+import { contentService, isPublishedStatus } from '../../services/database/contentService.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
 import { ContentFilterBar, FilterState } from './ContentFilterBar.tsx';
 import { StatusBadge, FormatBadge } from '../common/Badges.tsx';
 import { EditPostModal } from './EditPostModal.tsx';
 import { WorkflowSettingsModal } from './WorkflowSettingsModal.tsx';
+import { ContentThumbnail } from './ContentThumbnail.tsx';
 
 interface ContentDatabaseViewProps {
   brand: Brand | null;
@@ -232,6 +235,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[11px] tracking-wider">
+              <th className="py-3 px-3">Gambar</th>
               <th className="py-3 px-4">Judul & Copywriting</th>
               <th className="py-3 px-3">Saluran</th>
               <th className="py-3 px-3">Format</th>
@@ -245,13 +249,40 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
           <tbody className="divide-y divide-slate-100">
             {items.map((post) => (
               <tr key={post.id} className="hover:bg-slate-50/60 transition-colors group">
-                <td className="py-3 px-4 max-w-xs sm:max-w-md">
-                  <p
+                <td className="py-3 px-3">
+                  <ContentThumbnail
+                    mediaPath={post.media_urls?.[0]}
+                    alt={post.title}
+                    className="w-12 h-12"
                     onClick={() => handleEditClick(post)}
-                    className="font-bold text-slate-900 group-hover:text-blue-600 cursor-pointer line-clamp-1 text-xs"
-                  >
-                    {post.title}
-                  </p>
+                  />
+                </td>
+                <td className="py-3 px-4 max-w-xs sm:max-w-md">
+                  <div className="flex items-center gap-1.5">
+                    <p
+                      onClick={() => handleEditClick(post)}
+                      className="font-bold text-slate-900 group-hover:text-blue-600 cursor-pointer line-clamp-1 text-xs"
+                    >
+                      {post.title}
+                    </p>
+                    {post.post_url && isPublishedStatus(post.status) && (
+                      <a
+                        href={post.post_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-blue-500 hover:text-blue-700 shrink-0"
+                        title="Buka link postingan"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                  {post.brief && (
+                    <p className="text-[10px] text-indigo-600 line-clamp-1 mt-0.5 font-medium">
+                      Brief: {post.brief}
+                    </p>
+                  )}
                   {post.caption && (
                     <p className="text-[11px] text-slate-500 line-clamp-1 mt-0.5 font-normal">
                       {post.caption}
@@ -326,6 +357,17 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
 
                 <td className="py-3 px-4 whitespace-nowrap text-right">
                   <div className="flex items-center justify-end gap-1">
+                    {post.post_url && isPublishedStatus(post.status) && (
+                      <a
+                        href={post.post_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg transition-colors"
+                        title="Lihat Postingan"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
                     {canEdit && (
                       <>
                         <button
@@ -386,13 +428,38 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
               <StatusBadge status={post.status} />
             </div>
 
+            <ContentThumbnail
+              mediaPath={post.media_urls?.[0]}
+              alt={post.title}
+              className="w-full aspect-video"
+              onClick={() => handleEditClick(post)}
+            />
+
             <div>
-              <h3
-                onClick={() => handleEditClick(post)}
-                className="font-bold text-slate-900 group-hover:text-blue-600 cursor-pointer text-sm line-clamp-2"
-              >
-                {post.title}
-              </h3>
+              <div className="flex items-start gap-1.5">
+                <h3
+                  onClick={() => handleEditClick(post)}
+                  className="font-bold text-slate-900 group-hover:text-blue-600 cursor-pointer text-sm line-clamp-2"
+                >
+                  {post.title}
+                </h3>
+                {post.post_url && isPublishedStatus(post.status) && (
+                  <a
+                    href={post.post_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-emerald-600 hover:text-emerald-700 shrink-0 mt-0.5"
+                    title="Lihat Postingan"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                )}
+              </div>
+              {post.brief && (
+                <p className="text-[11px] text-indigo-600 line-clamp-2 mt-1 font-medium">
+                  Brief: {post.brief}
+                </p>
+              )}
               {post.caption && (
                 <p className="text-xs text-slate-500 line-clamp-2 mt-1 font-normal">
                   {post.caption}
@@ -643,7 +710,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
                 {/* Header Seksi Bulan */}
                 <div
                   onClick={() => toggleMonthCollapse(group.key)}
-                  className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200 rounded-xl transition cursor-pointer select-none"
+                  className="flex items-center justify-between px-4 py-2.5 bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200 rounded-xl transition cursor-pointer"
                 >
                   <div className="flex items-center gap-2.5">
                     {isCollapsed ? (

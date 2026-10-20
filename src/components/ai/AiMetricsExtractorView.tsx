@@ -21,6 +21,7 @@ interface AiMetricsExtractorViewProps {
   brand: Brand | null;
   posts: ContentPost[];
   aiCreditsRemaining: number;
+  initialPostId?: string | null;
   onRefreshLicense: () => void;
   onSavedMetrics: () => void;
 }
@@ -29,6 +30,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
   brand,
   posts,
   aiCreditsRemaining,
+  initialPostId = null,
   onRefreshLicense,
   onSavedMetrics,
 }) => {
@@ -60,7 +62,9 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
       if (ext === 'jpg' || ext === 'jpeg') detectedType = 'image/jpeg';
       else if (ext === 'png') detectedType = 'image/png';
       else if (ext === 'webp') detectedType = 'image/webp';
-      else if (ext === 'mp4') detectedType = 'video/mp4';
+      else if (ext === 'gif') detectedType = 'image/gif';
+      else if (ext === 'avif') detectedType = 'image/avif';
+      else if (ext === 'mp4' || ext === 'm4v') detectedType = 'video/mp4';
       else if (ext === 'webm') detectedType = 'video/webm';
       else if (ext === 'mov') detectedType = 'video/quicktime';
     }
@@ -122,7 +126,9 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
         if (ext === 'jpg' || ext === 'jpeg') resolvedType = 'image/jpeg';
         else if (ext === 'png') resolvedType = 'image/png';
         else if (ext === 'webp') resolvedType = 'image/webp';
-        else if (ext === 'mp4') resolvedType = 'video/mp4';
+        else if (ext === 'gif') resolvedType = 'image/gif';
+        else if (ext === 'avif') resolvedType = 'image/avif';
+        else if (ext === 'mp4' || ext === 'm4v') resolvedType = 'video/mp4';
         else if (ext === 'webm') resolvedType = 'video/webm';
         else if (ext === 'mov') resolvedType = 'video/quicktime';
       }
@@ -142,15 +148,19 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
       setExtractedData(extracted);
       onRefreshLicense();
 
-      if (extracted.detected_title && posts.length > 0) {
+      // Jika halaman Konten Post mengirim post tertentu, prioritaskan post itu.
+      let resolvedPostId =
+        initialPostId && posts.some((p) => p.id === initialPostId) ? initialPostId : '';
+
+      if (!resolvedPostId && extracted.detected_title && posts.length > 0) {
         const query = extracted.detected_title.toLowerCase();
         const matched = posts.find((p) =>
           p.title.toLowerCase().includes(query) || query.includes(p.title.toLowerCase())
         );
-        if (matched) {
-          setMatchedPostId(matched.id);
-        }
+        if (matched) resolvedPostId = matched.id;
       }
+
+      if (resolvedPostId) setMatchedPostId(resolvedPostId);
     } catch (err: unknown) {
       onRefreshLicense();
       setError(err instanceof Error ? err.message : 'Gagal mengekstrak metrik dengan AI.');
@@ -178,7 +188,11 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
         shares: Number(extractedData.shares),
         saves: Number(extractedData.saves),
         clicks: Number(extractedData.clicks),
-        source: selectedFile?.type.startsWith('video/') ? 'ai_video' : 'ai_screenshot',
+        source:
+          selectedFile?.type.startsWith('video/') ||
+          /\.(mp4|webm|mov|m4v)$/i.test(selectedFile?.name || '')
+            ? 'ai_video'
+            : 'ai_screenshot',
         recorded_at: recordedDate ? new Date(recordedDate).toISOString() : new Date().toISOString(),
         watch_time: extractedData.watch_time || null,
         drop_off_rate: extractedData.drop_off_rate !== undefined ? Number(extractedData.drop_off_rate) : null,
@@ -360,7 +374,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                       Pilih screenshot atau video recording
                       <input
                         type="file"
-                        accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime"
+                        accept="image/jpeg,image/png,image/webp,image/gif,image/avif,video/mp4,video/webm,video/quicktime,video/x-m4v"
                         className="hidden"
                         onChange={(e) => {
                           if (e.target.files && e.target.files[0]) {

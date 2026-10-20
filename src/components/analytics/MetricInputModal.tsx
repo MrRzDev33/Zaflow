@@ -8,6 +8,7 @@ interface MetricInputModalProps {
   brandId: string;
   posts: ContentPost[];
   initialMetric?: ContentMetric | null;
+  initialPostId?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -17,6 +18,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
   brandId,
   posts,
   initialMetric,
+  initialPostId = null,
   onClose,
   onSaved,
 }) => {
@@ -81,7 +83,11 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
         }
       }
     } else {
-      setPostId(posts[0]?.id || '');
+      const preferredPostId =
+        initialPostId && posts.some((post) => post.id === initialPostId)
+          ? initialPostId
+          : posts[0]?.id || '';
+      setPostId(preferredPostId);
       setChannel('instagram');
       setImpressions(0);
       setReach(0);
@@ -102,7 +108,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
       setRecordedAt(new Date().toISOString().slice(0, 16));
     }
     setError(null);
-  }, [initialMetric, posts]);
+  }, [initialMetric, initialPostId, posts]);
 
   if (!isOpen) return null;
 

@@ -70,10 +70,22 @@ const supabaseAdmin = hasSupabaseAdmin
 
 const geminiApiKey = (process.env.GEMINI_API_KEY || '').trim();
 const hasGeminiKey = geminiApiKey.length > 0;
-const geminiModels = (process.env.GEMINI_MODELS || 'gemini-flash-latest,gemini-2.5-flash,gemini-2.0-flash')
+
+// Model lama seperti gemini-2.5-flash / gemini-2.0-flash sudah ditolak untuk
+// API key baru (404). Model modern diletakkan lebih dulu, lalu daftar dari env
+// tetap dipakai sebagai fallback agar deployment lama tidak langsung rusak.
+const modernGeminiModels = [
+  'gemini-3-flash-preview',
+  'gemini-3.5-flash-lite',
+  'gemini-flash-lite-latest',
+  'gemini-flash-latest',
+];
+const configuredGeminiModels = (process.env.GEMINI_MODELS || '')
   .split(',')
   .map((model) => model.trim())
   .filter(Boolean);
+const geminiModels = Array.from(new Set([...modernGeminiModels, ...configuredGeminiModels]));
+
 const requestedGeminiTimeout = Math.max(
   10_000,
   Number(process.env.GEMINI_TIMEOUT_MS) || (process.env.VERCEL ? 50_000 : 120_000)
@@ -83,6 +95,11 @@ const requestedGeminiTimeout = Math.max(
 const geminiTimeoutMs = process.env.VERCEL
   ? Math.min(requestedGeminiTimeout, 55_000)
   : requestedGeminiTimeout;
+// Batas total seluruh percobaan fallback. Satu model yang menggantung tidak
+// boleh menghabiskan seluruh durasi function sebelum model lain dicoba.
+const geminiTotalBudgetMs = process.env.VERCEL
+  ? Math.min(geminiTimeoutMs, 52_000)
+  : Math.min(geminiTimeoutMs, 180_000);
 
 let aiClient: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
@@ -632,6 +649,23 @@ async function refundQuota(
   }
 }
 
+function normalizeGeminiMimeType(value: string): string {
+  const mime = (value || '').split(';')[0].trim().toLowerCase();
+  if (!mime) return 'image/jpeg';
+
+  // Browser memakai beberapa alias MIME yang tidak selalu dikenali Gemini.
+  const aliases: Record<string, string> = {
+    'image/jpg': 'image/jpeg',
+    'image/pjpeg': 'image/jpeg',
+    'video/quicktime': 'video/mov',
+    'video/x-m4v': 'video/mp4',
+    'video/x-msvideo': 'video/avi',
+    'video/x-ms-wmv': 'video/wmv',
+  };
+
+  return aliases[mime] || mime;
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   let timer: NodeJS.Timeout | undefined;
   const timeout = new Promise<never>((_, reject) => {
@@ -649,19 +683,35 @@ async function runGeminiWithFallback(params: {
 }) {
   const client = getAiClient();
   let lastError: any = null;
+  const startedAt = Date.now();
 
   for (const model of geminiModels) {
+    const elapsed = Date.now() - startedAt;
+    const remaining = geminiTotalBudgetMs - elapsed;
+
+    if (remaining < 5_000) {
+      lastError = lastError || new Error('Batas waktu total permintaan Gemini habis.');
+      break;
+    }
+
+    // Beri ruang untuk fallback berikutnya, tetapi tetap izinkan video yang
+    // butuh waktu lebih lama. Maksimal 35 detik per model di Vercel.
+    const attemptTimeout = process.env.VERCEL
+      ? Math.min(35_000, Math.max(8_000, remaining - 3_000))
+      : Math.min(geminiTimeoutMs, remaining);
+
     try {
+      console.info(`[Gemini] Mencoba model ${model} (timeout ${attemptTimeout} ms)`);
       const response = await withTimeout(
         client.models.generateContent({
           model,
           contents: params.contents,
           config: params.config,
         }),
-        geminiTimeoutMs,
+        attemptTimeout,
         `Permintaan Gemini (${model})`
       );
-      return { response, modelUsed: model };
+      return { response, modelUsed: model, attempts: geminiModels.indexOf(model) + 1 };
     } catch (err: any) {
       console.warn(`[Gemini Fallback] Percobaan model ${model} gagal:`, err?.message || err);
       lastError = err;
@@ -1910,11 +1960,11 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   }
 
   let base64Data = targetImage;
-  let mimeType = 'image/jpeg';
+  let mimeType = normalizeGeminiMimeType(typeof req.body.mimeType === 'string' ? req.body.mimeType : 'image/jpeg');
   if (targetImage.startsWith('data:')) {
     const match = targetImage.match(/^data:([a-zA-Z0-9/+.-]+);base64,(.+)$/);
     if (match) {
-      mimeType = match[1].toLowerCase();
+      mimeType = normalizeGeminiMimeType(match[1]);
       base64Data = match[2];
     }
   }
@@ -2021,8 +2071,15 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
       },
     });
 
-    const responseText = response.text?.trim() || '{}';
+    const responseText = response.text?.trim() || '';
+    if (!responseText) {
+      throw new Error('Gemini tidak mengembalikan teks analisis. Coba gunakan file yang lebih kecil atau model lain.');
+    }
+
     const parsedMetrics = parseJsonSafely(responseText);
+    if (!parsedMetrics || typeof parsedMetrics !== 'object' || Array.isArray(parsedMetrics)) {
+      throw new Error('Respons Gemini bukan JSON metrik yang valid.');
+    }
 
     const tokensConsumed = Number((response as any)?.usageMetadata?.totalTokenCount) || 0;
     if (quotaRes.logId) {

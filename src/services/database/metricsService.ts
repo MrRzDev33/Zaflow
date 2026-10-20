@@ -47,6 +47,7 @@ export interface MetricsFilterOptions {
   endDate?: string;
   channel?: string;
   postId?: string;
+  postIds?: string[];
 }
 
 export interface MetricAggregation {
@@ -320,6 +321,9 @@ export const metricsService = {
     }
     if (filter?.postId) {
       query = query.eq('post_id', filter.postId);
+    }
+    if (filter?.postIds && filter.postIds.length > 0) {
+      query = query.in('post_id', filter.postIds);
     }
     if (filter?.startDate) {
       query = query.gte('recorded_at', filter.startDate);

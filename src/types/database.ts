@@ -85,7 +85,10 @@ export interface ContentPost {
   pillar: string;
   status: ContentStatus;
   scheduled_at?: string | null;
+  posted_at?: string | null;
   production_date?: string | null;
+  brief?: string | null;
+  post_url?: string | null;
   media_urls: string[];
   author_id?: string | null;
   created_at: string;

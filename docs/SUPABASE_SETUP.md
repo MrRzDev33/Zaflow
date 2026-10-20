@@ -20,10 +20,20 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 2 | `src/services/database/migrations/20261013_01_security_hardening_profiles_and_brands.sql` | Menutup eskalasi `super_admin`, memperketat RLS brand/anggota |
 | 3 | `src/services/database/migrations/20261013_02_create_brand_invitations_and_activity_logs.sql` | Undangan tim + log aktivitas |
 | 4 | `src/services/database/migrations/20261020_01_licensing_payments_limits_and_rpc.sql` | Lisensi, pembayaran, RPC kuota atomik, batas paket |
+| 5 | `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql` | Kolom `brief`, `post_url`, `posted_at`, index histori, dan policy Storage `content-media` |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi migrasi 1 → 2 → 3 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 5 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+
+### Bucket Storage `content-media`
+
+1. Buka **Storage** dan pastikan bucket `content-media` sudah dibuat.
+2. Bucket **boleh tetap privat**. Aplikasi membaca gambar lewat signed URL.
+3. Jalankan migrasi `20261020_02_...sql` untuk membuat policy baca/upload/update/delete berdasarkan brand.
+4. Path file selalu diawali UUID brand, misalnya `brand_uuid/1712345678-abcd1234-gambar.jpg`.
+
+Jika bucket belum ada, buat bucket **privat** bernama `content-media` dengan batas file minimal 10 MB sebelum menjalankan migrasi.
 
 ## 3. Verifikasi
 
@@ -55,6 +65,18 @@ WHERE tgname IN (
 SELECT tgname FROM pg_trigger
 WHERE tgrelid = 'auth.users'::regclass
   AND tgname = 'on_auth_user_created';
+
+-- Kolom brief, link posting, dan tanggal posting aktual
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'content_posts'
+  AND column_name IN ('brief', 'post_url', 'posted_at');
+
+-- Policy Storage untuk bucket content-media
+SELECT policyname FROM pg_policies
+WHERE schemaname = 'storage'
+  AND tablename = 'objects'
+  AND policyname LIKE 'content_media_%';
 ```
 
 ## 4. Auth Settings
@@ -120,6 +142,9 @@ WHERE u.email = 'email-admin@domain.com';
 | `Signature Midtrans tidak valid` | Server key berbeda (sandbox vs production) | Samakan `MIDTRANS_IS_PRODUCTION` dan server key |
 | Lisensi tidak muncul setelah login | User belum punya lisensi | Lisensi trial dibuat otomatis pada AI pertama; atau jalankan `SELECT public.ensure_user_license('<user-uuid>');` |
 | `new row violates check constraint brand_invitations_status_check` | Migrasi 4 belum dijalankan | Jalankan migrasi 4 (menambahkan status `expired`) |
+| Upload gambar gagal `new row violates row-level security policy` | Policy Storage `content-media` belum dibuat / path tidak diawali brand UUID | Jalankan migrasi `20261020_02_...sql`, lalu pastikan brand aktif dan bucket bernama `content-media` |
+| Gambar konten tampil kosong | Bucket privat tetapi policy SELECT belum ada, atau file lama bukan path Storage | Jalankan policy Storage, lalu unggah ulang gambar dari form konten |
+| `column content_posts.brief does not exist` | Migrasi `20261020_02_...sql` belum dijalankan | Jalankan migrasi tersebut di SQL Editor |
 | Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke backend; `/api/admin/overview` mengembalikan HTML | Lokal: jalankan `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ter-deploy dan redeploy setelah mengubah env. |
 | Panel admin: `Akses ditolak. Anda bukan platform administrator` | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |
 

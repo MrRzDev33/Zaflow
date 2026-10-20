@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { X, PlusCircle, Loader2, Calendar, Video } from 'lucide-react';
+import { X, PlusCircle, Loader2, Calendar, Video, ImagePlus, Link2, Trash2, FileText } from 'lucide-react';
 import { CreatePostInput } from '../../services/database/contentService.ts';
 import { ContentFormat, ContentStatus, Brand, WorkflowStatusConfig } from '../../types/database.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
+import { mediaService } from '../../services/storage/mediaService.ts';
+import { ContentThumbnail } from '../content/ContentThumbnail.tsx';
 
 interface NewPostModalProps {
   isOpen: boolean;
@@ -27,6 +29,10 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
 }) => {
   const [title, setTitle] = useState(initialTitle);
   const [caption, setCaption] = useState(initialCaption);
+  const [brief, setBrief] = useState('');
+  const [postUrl, setPostUrl] = useState('');
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [pillar, setPillar] = useState(initialPillar);
   const [format, setFormat] = useState<ContentFormat>(initialFormat);
   const [status, setStatus] = useState<ContentStatus>('draft');
@@ -50,6 +56,10 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
       setPillar(initialPillar || (loadedPillars[0] || 'Edukatif'));
       setFormat(initialFormat);
       setCaption(initialCaption);
+      setBrief('');
+      setPostUrl('');
+      setMediaUrls([]);
+      setUploadingMedia(false);
       setStatus(loadedStatuses[0]?.id || 'idea');
       setScheduledAt('');
       setProductionDate('');
@@ -69,6 +79,29 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
     }
   };
 
+  const handleMediaUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setUploadingMedia(true);
+    setError(null);
+
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files).slice(0, 5)) {
+        const path = await mediaService.uploadContentImage(file, brandId);
+        uploaded.push(path);
+      }
+      setMediaUrls((prev) => [...prev, ...uploaded].slice(0, 5));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Gagal mengunggah gambar konten.');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const removeMedia = (path: string) => {
+    setMediaUrls((prev) => prev.filter((item) => item !== path));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
@@ -81,12 +114,15 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
         brand_id: brandId,
         title: title.trim(),
         caption: caption.trim() || undefined,
+        brief: brief.trim() || undefined,
         pillar: pillar || availablePillars[0] || 'Edukatif',
         format,
         status,
         channels,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         production_date: productionDate ? new Date(productionDate).toISOString() : null,
+        post_url: postUrl.trim() || undefined,
+        media_urls: mediaUrls,
       });
       onClose();
     } catch (err: unknown) {
@@ -98,8 +134,8 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl max-w-lg w-full shadow-xl border border-slate-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl max-w-lg w-full shadow-xl border border-slate-200 overflow-hidden max-h-[92vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
               <PlusCircle className="w-5 h-5" />
@@ -117,7 +153,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
               {error}
@@ -211,6 +247,90 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
               placeholder="Tuliskan draf teks postingan atau instruksi untuk tim desainer..."
               className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
             />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Script / Brief Produksi</span>
+            </label>
+            <textarea
+              rows={3}
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              placeholder="Tuliskan script, arahan visual, urutan shot, atau brief untuk tim produksi..."
+              className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <ImagePlus className="w-3.5 h-3.5 text-pink-600" />
+              <span>Gambar Konten</span>
+            </label>
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-3 space-y-3">
+              {mediaUrls.length > 0 && (
+                <div className="grid grid-cols-4 gap-2">
+                  {mediaUrls.map((path, index) => (
+                    <div key={path} className="relative group">
+                      <ContentThumbnail
+                        mediaPath={path}
+                        alt={`Gambar konten ${index + 1}`}
+                        className="w-full aspect-square"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => removeMedia(path)}
+                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-600 text-white flex items-center justify-center shadow-xs opacity-0 group-hover:opacity-100 transition cursor-pointer"
+                        title="Hapus gambar"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <label className="flex items-center justify-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 cursor-pointer transition">
+                {uploadingMedia ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                ) : (
+                  <ImagePlus className="w-4 h-4 text-pink-600" />
+                )}
+                <span>{uploadingMedia ? 'Mengunggah gambar...' : 'Pilih Gambar (maks. 10 MB)'}</span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                  multiple
+                  className="hidden"
+                  disabled={uploadingMedia || mediaUrls.length >= 5}
+                  onChange={(e) => {
+                    handleMediaUpload(e.target.files);
+                    e.target.value = '';
+                  }}
+                />
+              </label>
+              <p className="text-[10px] text-slate-400 leading-relaxed">
+                Gambar disimpan di bucket Supabase Storage <span className="font-mono">content-media</span>. Maksimal 5 gambar per konten.
+              </p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
+              <Link2 className="w-3.5 h-3.5 text-blue-600" />
+              <span>Link Postingan</span>
+            </label>
+            <input
+              type="text"
+              inputMode="url"
+              value={postUrl}
+              onChange={(e) => setPostUrl(e.target.value)}
+              placeholder="https://www.instagram.com/p/..."
+              className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+            />
+            <p className="text-[10px] text-slate-400 mt-1">
+              Opsional. Link akan ditampilkan sebagai tombol jika status konten sudah tayang.
+            </p>
           </div>
 
           <div>

@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Kanban,
   BarChart3,
+  FileImage,
   ScanEye,
   BrainCircuit,
   Users,
@@ -57,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       title: 'Analitik & Strategi',
       items: [
         { id: 'analytics', label: 'Analitik & Laporan', icon: BarChart3 },
+        { id: 'content_posts', label: 'Konten Post', icon: FileImage },
         { id: 'ai_extractor', label: 'Metrics Extractor', icon: ScanEye },
         { id: 'ai_strategy', label: 'Strategy Assistant', icon: BrainCircuit },
       ],

@@ -13,6 +13,7 @@ import { Brand, ContentPost } from '../../types/database.ts';
 import { contentService } from '../../services/database/contentService.ts';
 import { EditPostModal } from './EditPostModal.tsx';
 import { NewPostModal } from '../dashboard/NewPostModal.tsx';
+import { ContentThumbnail } from './ContentThumbnail.tsx';
 
 interface ContentCalendarViewProps {
   brand: Brand | null;
@@ -536,14 +537,21 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
                     }}
                     className="p-3 bg-slate-50 hover:bg-blue-50/50 border border-slate-200 rounded-xl cursor-pointer transition flex items-center justify-between gap-3"
                   >
-                    <div>
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">
-                          {post.channels[0] || 'Umum'}
-                        </span>
-                        <span className="text-xs font-bold text-slate-800">{post.title}</span>
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ContentThumbnail
+                        mediaPath={post.media_urls?.[0]}
+                        alt={post.title}
+                        className="w-12 h-12"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                            {post.channels[0] || 'Umum'}
+                          </span>
+                          <span className="text-xs font-bold text-slate-800 truncate">{post.title}</span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 truncate max-w-xs">{post.caption || 'Tanpa kepsyen'}</p>
                       </div>
-                      <p className="text-[11px] text-slate-500 truncate max-w-xs">{post.caption || 'Tanpa kepsyen'}</p>
                     </div>
                     <span className="text-xs font-semibold text-blue-600 shrink-0">Edit →</span>
                   </div>

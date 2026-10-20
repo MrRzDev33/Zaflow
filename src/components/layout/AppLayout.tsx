@@ -42,7 +42,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   return (
-    <div className="min-h-screen h-screen w-full flex bg-gradient-to-br from-[#D9E4F9] via-[#E8ECF9] to-[#DEE6F8] relative overflow-hidden select-none">
+    <div className="min-h-screen h-screen w-full flex bg-gradient-to-br from-[#D9E4F9] via-[#E8ECF9] to-[#DEE6F8] relative overflow-hidden">
       {/* Soft Ambient Color Spheres in Background (Astra Mesh) */}
       <div className="fixed -top-32 -left-20 w-[600px] h-[600px] bg-gradient-to-br from-[#93C5FD]/40 to-[#818CF8]/30 rounded-full blur-[120px] pointer-events-none -z-0" />
       <div className="fixed top-1/3 -right-28 w-[550px] h-[550px] bg-gradient-to-br from-[#C4B5FD]/35 to-[#F472B6]/25 rounded-full blur-[130px] pointer-events-none -z-0" />

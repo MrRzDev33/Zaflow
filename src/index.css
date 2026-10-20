@@ -30,6 +30,24 @@
   code, kbd, samp, pre {
     font-family: var(--font-mono);
   }
+
+  /* Teks workspace dapat diseleksi dan disalin. Kontrol UI tetap tidak ikut terseleksi. */
+  body {
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  button,
+  [role="button"],
+  .select-none {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  ::selection {
+    background: rgba(147, 197, 253, 0.55);
+    color: #0f172a;
+  }
 }
 
 /* Astra Glassmorphic Card Materials */
