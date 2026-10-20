@@ -3,6 +3,7 @@ import { Key, Zap, ShieldCheck, CreditCard, CheckCircle, AlertCircle, RefreshCw,
 import { licenseService } from '../../services/license/licenseService.ts';
 import { LicenseQuotaInfo } from '../../types/license.ts';
 import { supabase, isConfigured } from '../../config/supabase.ts';
+import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { PURCHASABLE_PLANS, formatIDR, Plan } from '../../config/plans.ts';
 
 interface LicenseQuotaViewProps {
@@ -101,7 +102,11 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Harap masuk terlebih dahulu.');
 
-      const res = await fetch('/api/payments/midtrans/create', {
+      const json = await apiFetchJson<{
+        sandbox?: boolean;
+        message?: string;
+        redirectUrl?: string;
+      }>('/api/payments/midtrans/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -109,8 +114,6 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
         },
         body: JSON.stringify({ planId: plan.id }),
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Gagal membuat transaksi pembayaran.');
 
       if (json.sandbox) {
         setSuccessMsg(json.message || `Mode sandbox: lisensi ${plan.name} diaktifkan.`);
@@ -124,8 +127,8 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
       }
 
       window.location.assign(json.redirectUrl);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal melakukan pembayaran.');
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err, 'Gagal melakukan pembayaran.'));
     } finally {
       setProcessingPlan(null);
     }

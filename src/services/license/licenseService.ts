@@ -1,4 +1,5 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
+import { apiFetchJson } from '../http/apiClient.ts';
 import { LicenseQuotaInfo } from '../../types/license.ts';
 import { License } from '../../types/database.ts';
 import { TRIAL_PLAN } from '../../config/plans.ts';
@@ -77,7 +78,7 @@ export const licenseService = {
       throw new Error('Sesi tidak ditemukan. Harap masuk terlebih dahulu.');
     }
 
-    const response = await fetch('/api/license/activate', {
+    return apiFetchJson<{ success: boolean; message: string }>('/api/license/activate', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -85,12 +86,5 @@ export const licenseService = {
       },
       body: JSON.stringify({ licenseKey }),
     });
-
-    const result = await response.json();
-    if (!response.ok) {
-      throw new Error(result.message || 'Gagal mengaktifkan lisensi.');
-    }
-
-    return result;
   },
 };

@@ -8,13 +8,14 @@ import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
 import { getPlan, TRIAL_PLAN } from './src/config/plans.ts';
 
-// .env.local menang atas .env, lalu .env menjadi fallback.
-// dotenv tidak menimpa variabel yang sudah ada.
-dotenv.config({ path: '.env.local' });
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// .env.local menang atas .env, lalu .env menjadi fallback.
+// Path dihitung dari lokasi server.ts agar tetap benar meski dijalankan dari folder lain.
+dotenv.config({ path: path.resolve(__dirname, '.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config();
 
 const app = express();
 const port = Number(process.env.PORT) || 3000;
@@ -87,6 +88,16 @@ const midtransBaseUrl = midtransIsProduction
 const hasMidtrans = midtransServerKey.length > 0;
 const appUrl = (process.env.APP_URL || `http://localhost:${port}`).replace(/\/+$/, '');
 const allowSandboxCheckout = String(process.env.ALLOW_SANDBOX_CHECKOUT || 'false').toLowerCase() === 'true';
+
+if (!hasSupabaseAdmin) {
+  console.warn(
+    '[ZaFlow] SUPABASE_SERVICE_ROLE_KEY / VITE_SUPABASE_URL belum diisi. ' +
+    'Isi file .env.local di root proyek (sejajar package.json), lalu restart server.'
+  );
+}
+if (!hasMidtrans) {
+  console.warn('[ZaFlow] MIDTRANS_SERVER_KEY belum diisi. Checkout Midtrans tidak akan tersedia.');
+}
 
 type MidtransNotification = {
   order_id?: string;

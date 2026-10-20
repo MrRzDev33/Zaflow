@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { supabase, isConfigured } from '../../config/supabase.ts';
 import { useAppBranding } from '../../hooks/useAppBranding.ts';
+import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 
 interface AdminPanelViewProps {
@@ -60,16 +61,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('Harap masuk terlebih dahulu.');
 
-      const res = await fetch('/api/admin/overview', {
+      const json = await apiFetchJson('/api/admin/overview', {
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || 'Akses ditolak. Anda bukan platform admin.');
       setStats(json);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Gagal memuat panel admin.');
+    } catch (err: unknown) {
+      setErrorMsg(getApiErrorMessage(err, 'Gagal memuat panel admin.'));
     } finally {
       setLoading(false);
     }

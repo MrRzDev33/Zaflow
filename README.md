@@ -27,7 +27,13 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
    npm install
    ```
 
-2. Salin `.env.example` menjadi `.env.local`, lalu isi:
+2. Buat/isi `.env.local` di **root proyek** (sejajar `package.json`). Jika belum ada, salin dari `.env.example`:
+
+   ```bash
+   copy .env.example .env.local
+   ```
+
+   Lalu isi:
 
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
    - `GEMINI_API_KEY`
@@ -41,6 +47,8 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
    ```
 
 4. Buka `http://localhost:3000`.
+
+> **Penting:** frontend dan backend harus berjalan bersama. `npm run dev` dan `npm start` menjalankan `server.ts` (Express + Vite). Jangan memakai `npm run preview`, Live Server, atau hosting statis saja, karena endpoint `/api/*` tidak akan tersedia dan panel admin akan gagal memuat data.
 
 ## Penyiapan Supabase (WAJIB, BERURUTAN)
 
@@ -64,6 +72,10 @@ WHERE proname IN ('consume_ai_credit', 'refund_ai_credit', 'activate_license_fro
 ```
 
 ## Penyiapan Midtrans
+
+Panduan lengkap (membuat akun, mengambil key, menyusun URL webhook, sandbox, produksi, troubleshooting): **`docs/MIDTRANS_SETUP.md`**.
+
+Ringkasan:
 
 1. Login ke Dashboard Midtrans (mulai dari sandbox), lalu salin **Server Key** ke `MIDTRANS_SERVER_KEY`.
 2. Set `MIDTRANS_IS_PRODUCTION=false` untuk sandbox, `true` untuk production.
@@ -90,12 +102,22 @@ Alur pembayaran: klien memilih paket â†’ `POST /api/payments/midtrans/create` â†
 
 ## Deployment
 
-Contoh Vercel:
+ZaFlow membutuhkan **Node.js runtime** karena frontend dan backend (`server.ts`) berjalan bersama.
 
-- Build command: `npm run build`
-- Output directory: `dist`
-- Environment: semua variabel pada `.env.example`
-- Pastikan `NODE_ENV=production`, `APP_URL` domain publik, dan notification URL Midtrans sudah diatur.
+Opsi yang didukung:
+
+- **VPS / Render / Railway / Fly.io / Coolify:** jalankan `npm install && npm run build`, lalu `NODE_ENV=production npm start`.
+- **Platform statis saja (Vercel static, Netlify static, GitHub Pages): tidak didukung** untuk fitur `/api/*` (admin, AI, pembayaran, undangan). Halaman akan tampil, tetapi request API mengembalikan HTML 404 dan UI menampilkan error JSON.
+
+Checklist production:
+
+- `NODE_ENV=production`
+- `APP_URL` domain publik (HTTPS)
+- Semua environment pada `.env.example` diisi
+- Payment Notification URL Midtrans diarahkan ke `https://domain-anda.com/api/webhook/midtrans`
+- Server tidak di-sleep saat webhook datang
+
+Jika memakai Vercel, deploy sebagai **Node service** atau tambahkan serverless function yang meneruskan seluruh `/api/*` ke Express. Konfigurasi statis `outputDirectory: dist` saja tidak cukup.
 
 ## Keamanan
 
@@ -108,3 +130,4 @@ Contoh Vercel:
 
 - `docs/architecture.md`
 - `docs/SUPABASE_SETUP.md`
+- `docs/MIDTRANS_SETUP.md`

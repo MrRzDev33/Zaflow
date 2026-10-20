@@ -1,4 +1,5 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
+import { apiFetchJson } from '../http/apiClient.ts';
 import { BrandMember } from '../../types/database.ts';
 
 export interface BrandInvitation {
@@ -280,7 +281,7 @@ export const teamService = {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Harap masuk terlebih dahulu.');
 
-    const res = await fetch(`/api/team/members/${userId}`, {
+    return apiFetchJson<{ success: boolean }>(`/api/team/members/${userId}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -288,25 +289,17 @@ export const teamService = {
       },
       body: JSON.stringify({ brand_id: brandId, role: newRole }),
     });
-
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Gagal mengubah role anggota.');
-    return json;
   },
 
   async removeMember(brandId: string, userId: string): Promise<{ success: boolean }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) throw new Error('Harap masuk terlebih dahulu.');
 
-    const res = await fetch(`/api/team/members/${userId}?brand_id=${brandId}`, {
+    return apiFetchJson<{ success: boolean }>(`/api/team/members/${userId}?brand_id=${brandId}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
     });
-
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || 'Gagal menghapus anggota.');
-    return json;
   },
 };

@@ -41,10 +41,10 @@ export const ConfigNotice: React.FC = () => {
             </div>
             <div>
               <p className="font-semibold text-sm sm:text-base text-amber-950">
-                Supabase Belum Dikonfigurasi (Vercel / Local)
+                Supabase Belum Dikonfigurasi
               </p>
               <p className="text-xs sm:text-sm text-amber-800 mt-0.5">
-                Kunci <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">VITE_SUPABASE_URL</code> dan <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">VITE_SUPABASE_ANON_KEY</code> belum terdeteksi. Anda dapat memasukkannya langsung melalui tombol di samping.
+                Isi <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">VITE_SUPABASE_URL</code> dan <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">VITE_SUPABASE_ANON_KEY</code> di <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">.env.local</code> (root proyek), lalu restart <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">npm run dev</code>. Untuk server, isi juga <code className="bg-amber-100 px-1 py-0.5 rounded font-mono text-xs">SUPABASE_SERVICE_ROLE_KEY</code> di file yang sama.
               </p>
             </div>
           </div>
@@ -70,7 +70,7 @@ export const ConfigNotice: React.FC = () => {
 
         {showSqlGuide && (
           <div className="mt-3 pt-3 border-t border-amber-200/70 text-xs sm:text-sm text-amber-900 space-y-2">
-            <p className="font-medium">Cara Menyiapkan Database di Vercel / Supabase:</p>
+            <p className="font-medium">Cara Menyiapkan Database:</p>
             <ol className="list-decimal pl-5 space-y-1.5 text-xs text-amber-800">
               <li>
                 Buka <strong>Supabase Dashboard</strong> &rarr; Proyek Anda &rarr; <strong>Project Settings</strong> &rarr; <strong>API</strong>.
@@ -134,7 +134,7 @@ export const ConfigNotice: React.FC = () => {
               </div>
 
               <div className="p-3 bg-blue-50 rounded-xl text-[11px] text-blue-800 leading-relaxed">
-                Kredensial ini akan disimpan secara lokal di browser Anda (<code className="font-mono">localStorage</code>) sehingga aplikasi langsung terhubung ke Supabase tanpa perlu mengatur environment variables di Vercel.
+                Kredensial ini hanya disimpan di browser (<code className="font-mono">localStorage</code>) dan hanya menghubungkan <strong>frontend</strong> ke Supabase. Backend tetap memerlukan <code className="font-mono">SUPABASE_SERVICE_ROLE_KEY</code> di <code className="font-mono">.env.local</code> agar fitur admin, AI, pembayaran, dan undangan berfungsi.
               </div>
 
               <div className="flex justify-end gap-3 pt-2">

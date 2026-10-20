@@ -96,6 +96,17 @@ SELECT public.bootstrap_super_admin('email-admin@domain.com');
 
 Fungsi `bootstrap_super_admin` dibuat oleh migrasi `20261013_01`.
 
+Verifikasi:
+
+```sql
+SELECT u.email, p.system_role
+FROM auth.users u
+JOIN public.profiles p ON p.id = u.id
+WHERE u.email = 'email-admin@domain.com';
+```
+
+`system_role` harus bernilai `super_admin`. Jika profil belum ada (akun dibuat sebelum trigger terpasang), jalankan `ensure_user_license`/buat ulang profil lewat trigger, atau hubungi dukungan database. Menu **Platform Admin** hanya muncul jika profil memuat `system_role = 'super_admin'`.
+
 ## 7. Troubleshooting
 
 | Gejala | Penyebab umum | Solusi |
@@ -109,6 +120,8 @@ Fungsi `bootstrap_super_admin` dibuat oleh migrasi `20261013_01`.
 | `Signature Midtrans tidak valid` | Server key berbeda (sandbox vs production) | Samakan `MIDTRANS_IS_PRODUCTION` dan server key |
 | Lisensi tidak muncul setelah login | User belum punya lisensi | Lisensi trial dibuat otomatis pada AI pertama; atau jalankan `SELECT public.ensure_user_license('<user-uuid>');` |
 | `new row violates check constraint brand_invitations_status_check` | Migrasi 4 belum dijalankan | Jalankan migrasi 4 (menambahkan status `expired`) |
+| Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke `server.ts`; `/api/admin/overview` mengembalikan HTML | Jalankan `npm run dev` atau `npm start`. Jangan pakai `npm run preview`/hosting statis. |
+| Panel admin: `Akses ditolak. Anda bukan platform administrator` | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |
 
 ## 8. Catatan Keamanan
 

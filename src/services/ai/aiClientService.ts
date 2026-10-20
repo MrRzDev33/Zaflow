@@ -1,14 +1,5 @@
 import { supabase } from '../../config/supabase.ts';
-
-async function readJsonSafe(response: Response): Promise<any> {
-  const text = await response.text();
-  if (!text) return {};
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { error: text.slice(0, 500) };
-  }
-}
+import { apiRequest } from '../http/apiClient.ts';
 
 export interface ExtractedMetricsData {
   channel: string;
@@ -85,7 +76,7 @@ export const aiClientService = {
       throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
     }
 
-    const response = await fetch('/api/ai/metrics-extractor', {
+    const { ok, status, data: result } = await apiRequest<any>('/api/ai/metrics-extractor', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -99,9 +90,8 @@ export const aiClientService = {
       }),
     });
 
-    const result = await readJsonSafe(response);
-    if (!response.ok) {
-      throw new Error(result.error || result.message || `Gagal memproses gambar analitik dengan AI (HTTP ${response.status}).`);
+    if (!ok) {
+      throw new Error(result.error || result.message || `Gagal memproses gambar analitik dengan AI (HTTP ${status}).`);
     }
 
     return {
@@ -126,7 +116,7 @@ export const aiClientService = {
       throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
     }
 
-    const response = await fetch('/api/ai/strategy-assistant', {
+    const { ok, status, data: result } = await apiRequest<any>('/api/ai/strategy-assistant', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -139,9 +129,8 @@ export const aiClientService = {
       }),
     });
 
-    const result = await readJsonSafe(response);
-    if (!response.ok) {
-      throw new Error(result.error || result.message || `Gagal menghasilkan rekomendasi strategi AI (HTTP ${response.status}).`);
+    if (!ok) {
+      throw new Error(result.error || result.message || `Gagal menghasilkan rekomendasi strategi AI (HTTP ${status}).`);
     }
 
     return result as StrategyResponse;
@@ -156,16 +145,21 @@ export const aiClientService = {
       return { remaining: 0, total: 0, used: 0, hasLicense: false };
     }
 
-    const response = await fetch('/api/ai/quota', {
-      headers: {
-        Authorization: `Bearer ${session.access_token}`,
-      },
-    });
+    try {
+      const { ok, data } = await apiRequest('/api/ai/quota', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
 
-    if (!response.ok) {
+      if (!ok) {
+        return { remaining: 0, total: 0, used: 0, hasLicense: false };
+      }
+
+      return data;
+    } catch {
+      // Backend tidak aktif atau respons tidak valid: jangan hentikan UI.
       return { remaining: 0, total: 0, used: 0, hasLicense: false };
     }
-
-    return response.json();
   },
 };
