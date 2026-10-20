@@ -23,7 +23,7 @@ Panduan ini mencakup pembuatan akun, pengambilan **Server Key** dan **Client Key
 
 Di Dashboard Midtrans:
 
-1. Buka **Settings → Access Keys**.
+1. Buka **Settings â†’ Access Keys**.
 2. Salin dua nilai berikut:
 
 | Nama di dashboard | Variabel di ZaFlow | Dipakai untuk | Boleh masuk browser? |
@@ -55,6 +55,24 @@ Setelah mengubah `.env.local`, **restart** `npm run dev` / `npm start`.
 
 > Jangan pernah menambahkan prefix `VITE_` pada `MIDTRANS_SERVER_KEY`. Semua variabel `VITE_*` akan dikirim ke browser.
 
+### Cek cepat environment
+
+- Server key **sandbox** selalu berprefix `SB-Mid-server-`.
+- Server key **production** selalu berprefix `Mid-server-`.
+- Client key mengikuti environment yang sama: `SB-Mid-client-` atau `Mid-client-`.
+
+`GET /api/health` menampilkan:
+
+```json
+{
+  "midtransMode": "production",
+  "midtransKeyMode": "sandbox",
+  "midtransKeyModeMismatch": true
+}
+```
+
+Jika `midtransKeyModeMismatch` bernilai `true`, key dan `MIDTRANS_IS_PRODUCTION` tidak cocok. ZaFlow akan menolak checkout dengan pesan yang jelas sebelum menghubungi Midtrans. Untuk Vercel, perbaiki **Environment Variables**, lalu **Redeploy**.
+
 ---
 
 ## 3. Susun URL Webhook
@@ -82,7 +100,7 @@ Syarat:
 
 Daftarkan di:
 
-**Dashboard Midtrans → Settings → Configuration → Payment Notification URL**
+**Dashboard Midtrans â†’ Settings â†’ Configuration â†’ Payment Notification URL**
 
 Tempel URL di atas, lalu simpan.
 
@@ -190,7 +208,7 @@ Yang diharapkan:
 
 Gunakan **Simulator** di dashboard Sandbox:
 
-1. Buka **Settings → Simulation** (atau menu Simulator).
+1. Buka **Settings â†’ Simulation** (atau menu Simulator).
 2. Pilih endpoint notification.
 3. Isi `order_id` yang sudah ada di tabel `transactions`.
 4. Kirim notifikasi `settlement`.
@@ -235,6 +253,7 @@ Dengan konfigurasi ini, checkout paket langsung mengaktifkan lisensi (tanpa pemb
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `Midtrans belum dikonfigurasi di server` (HTTP 503) | `MIDTRANS_SERVER_KEY` kosong | Isi `.env.local`, restart server |
+| `Access denied due to unauthorized transaction, please check client or server key` | Server key tidak cocok dengan environment (sandbox key dipakai di API production, atau sebaliknya), key salah/terpotong, atau akun production belum aktif | Sandbox: `MIDTRANS_IS_PRODUCTION=false` + key `SB-Mid-server-...`. Production: `true` + key `Mid-server-...`. Cek `midtransKeyModeMismatch` di `/api/health`, lalu redeploy |
 | `Signature Midtrans tidak valid` (HTTP 401) | Server key salah, atau sandbox vs production tercampur | Samakan key dengan `MIDTRANS_IS_PRODUCTION` |
 | Pembayaran sukses, lisensi tidak aktif | Webhook tidak terdaftar / URL salah / server tidak publik | Cek Payment Notification URL dan log server |
 | `Midtrans tidak mengembalikan halaman pembayaran` | Respons Snap tidak berisi `redirect_url` | Cek Server Key dan koneksi keluar server |

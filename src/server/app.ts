@@ -102,15 +102,41 @@ function getAiClient(): GoogleGenAI {
   return aiClient;
 }
 
+function normalizeSecret(value: string | undefined): string {
+  return String(value || '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/\s+/g, '');
+}
+
+function detectMidtransKeyMode(key: string): 'sandbox' | 'production' | 'unknown' {
+  if (!key) return 'unknown';
+  if (key.startsWith('SB-Mid-')) return 'sandbox';
+  if (key.startsWith('Mid-')) return 'production';
+  return 'unknown';
+}
+
 // Konfigurasi Midtrans.
-const midtransServerKey = (process.env.MIDTRANS_SERVER_KEY || '').trim();
-const midtransIsProduction = String(process.env.MIDTRANS_IS_PRODUCTION || 'false').toLowerCase() === 'true';
+const midtransServerKey = normalizeSecret(process.env.MIDTRANS_SERVER_KEY);
+const midtransClientKey = normalizeSecret(process.env.MIDTRANS_CLIENT_KEY);
+const midtransIsProduction = String(process.env.MIDTRANS_IS_PRODUCTION || 'false').trim().toLowerCase() === 'true';
 const midtransBaseUrl = midtransIsProduction
   ? 'https://api.midtrans.com'
   : 'https://api.sandbox.midtrans.com';
 const hasMidtrans = midtransServerKey.length > 0;
+const midtransServerKeyMode = detectMidtransKeyMode(midtransServerKey);
+const midtransClientKeyMode = detectMidtransKeyMode(midtransClientKey);
+const midtransKeyModeMismatch =
+  hasMidtrans &&
+  midtransServerKeyMode !== 'unknown' &&
+  ((midtransIsProduction && midtransServerKeyMode === 'sandbox') ||
+    (!midtransIsProduction && midtransServerKeyMode === 'production'));
+const midtransClientKeyModeMismatch =
+  midtransClientKey.length > 0 &&
+  midtransClientKeyMode !== 'unknown' &&
+  midtransClientKeyMode !== midtransServerKeyMode;
 const appUrl = (process.env.APP_URL || `http://localhost:${port}`).replace(/\/+$/, '');
-const allowSandboxCheckout = String(process.env.ALLOW_SANDBOX_CHECKOUT || 'false').toLowerCase() === 'true';
+const allowSandboxCheckout = String(process.env.ALLOW_SANDBOX_CHECKOUT || 'false').trim().toLowerCase() === 'true';
 
 if (!hasSupabaseAdmin) {
   console.warn(
@@ -120,6 +146,20 @@ if (!hasSupabaseAdmin) {
 }
 if (!hasMidtrans) {
   console.warn('[ZaFlow] MIDTRANS_SERVER_KEY belum diisi. Checkout Midtrans tidak akan tersedia.');
+} else if (midtransKeyModeMismatch) {
+  console.warn(
+    `[ZaFlow] Konfigurasi Midtrans tidak cocok: MIDTRANS_IS_PRODUCTION=${midtransIsProduction} ` +
+    `tetapi MIDTRANS_SERVER_KEY terdeteksi ${midtransServerKeyMode}. ` +
+    (midtransIsProduction
+      ? 'Gunakan Server Key Production (prefix Mid-server-) atau set MIDTRANS_IS_PRODUCTION=false untuk sandbox.'
+      : 'Gunakan Server Key Sandbox (prefix SB-Mid-server-) atau set MIDTRANS_IS_PRODUCTION=true untuk production.')
+  );
+}
+if (midtransClientKeyModeMismatch) {
+  console.warn(
+    `[ZaFlow] MIDTRANS_CLIENT_KEY terdeteksi ${midtransClientKeyMode}, ` +
+    `berbeda dengan MIDTRANS_SERVER_KEY (${midtransServerKeyMode}). Gunakan key dari environment Midtrans yang sama.`
+  );
 }
 
 type MidtransNotification = {
@@ -200,6 +240,15 @@ async function createMidtransSnapTransaction(params: {
 }): Promise<{ token: string; redirect_url: string }> {
   if (!hasMidtrans) {
     throw new Error('MIDTRANS_SERVER_KEY belum dikonfigurasi di server.');
+  }
+  if (midtransKeyModeMismatch) {
+    throw new Error(
+      `Konfigurasi Midtrans tidak cocok: MIDTRANS_IS_PRODUCTION=${midtransIsProduction}, ` +
+      `tetapi server key terdeteksi ${midtransServerKeyMode}. ` +
+      (midtransIsProduction
+        ? 'Gunakan Server Key Production (prefix Mid-server-) atau ubah MIDTRANS_IS_PRODUCTION menjadi false untuk sandbox.'
+        : 'Gunakan Server Key Sandbox (prefix SB-Mid-server-) atau ubah MIDTRANS_IS_PRODUCTION menjadi true untuk production.')
+    );
   }
 
   const response = await fetch(`${midtransBaseUrl}/snap/v1/transactions`, {
@@ -955,6 +1004,8 @@ app.get('/api/health', (_req: Request, res: Response) => {
     geminiConfigured: hasGeminiKey,
     midtransConfigured: hasMidtrans,
     midtransMode: midtransIsProduction ? 'production' : 'sandbox',
+    midtransKeyMode: midtransServerKeyMode,
+    midtransKeyModeMismatch,
     sandboxCheckoutEnabled: allowSandboxCheckout && !midtransIsProduction,
   });
 });
