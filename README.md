@@ -107,7 +107,7 @@ Alur pembayaran: klien memilih paket → `POST /api/payments/midtrans/create` �
 Repositori ini sudah menyertakan:
 
 - `api/[...path].ts` — Vercel Function yang menjalankan seluruh API Express (`/api/*`).
-- `vercel.json` — konfigurasi build Vite + durasi fungsi.
+- `vercel.json` — konfigurasi build Vite, rewrite `/api/:path*` → `/api/[...path]`, dan durasi fungsi.
 - `scripts/dev-server.ts` — server lokal (Express + Vite middleware).
 
 Langkah deploy:

@@ -8,8 +8,16 @@ Panduan ini membuat frontend Vite **dan** backend Express berjalan di satu domai
 Browser
   ├── /                 → dist/index.html (static Vite)
   ├── /assets/*         → dist/assets/*   (static Vercel)
-  └── /api/*            → api/[...path].ts (Vercel Function → Express)
+  └── /api/*            → rewrite → api/[...path].ts (Vercel Function → Express)
 ```
+
+> Vercel Function biasa **tidak** memperlakukan `[...path].ts` sebagai catch-all multi-segmen. Tanpa rewrite, hanya `/api/health` (satu segmen) yang cocok; `/api/admin/overview` akan 404. Karena itu `vercel.json` memuat:
+>
+> ```json
+> { "source": "/api/:path*", "destination": "/api/[...path]" }
+> ```
+>
+> Rewrite mempertahankan `req.url` asli, sehingga Express tetap melihat `/api/admin/overview`.
 
 File penting:
 
@@ -180,6 +188,8 @@ Untuk AI berdurasi lebih lama, gunakan Vercel Pro lalu naikkan `maxDuration` di 
 |---|---|---|
 | Panel admin: `Unexpected token "<"` | `/api/*` mengembalikan HTML | Pastikan `api/[...path].ts` ada dan ter-deploy |
 | `/api/health` 404 | Function API tidak terdeteksi | Cek build log; pastikan folder `api/` ikut ter-commit |
+| `/api/health` OK, tetapi `/api/admin/overview` 404 | Catch-all `[...path].ts` tidak otomatis multi-segmen di Vercel | Pastikan `vercel.json` berisi rewrite `/api/:path*` → `/api/[...path]`, lalu redeploy |
+| Semua `/api/*` 404 | `vercel.json` tidak terbaca / folder `api` tidak ter-deploy | Cek **Functions** tab dan build log |
 | `supabaseConfigured: false` | Env salah nama / belum redeploy | Isi `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, redeploy tanpa cache |
 | `MIDTRANS belum dikonfigurasi` | Server key kosong | Isi `MIDTRANS_SERVER_KEY`, redeploy |
 | `Signature Midtrans tidak valid` | Sandbox vs production tercampur | Samakan key dengan `MIDTRANS_IS_PRODUCTION` |
