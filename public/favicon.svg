@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <defs>
+    <linearGradient id="zf-flow-1" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+    <linearGradient id="zf-accent-1" x1="14" y1="12" x2="50" y2="52" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="50%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <linearGradient id="zf-ribbon" x1="16" y1="20" x2="48" y2="44" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60A5FA"/>
+      <stop offset="100%" stop-color="#3B82F6"/>
+    </linearGradient>
+    <filter id="zf-shadow" x="0" y="2" width="64" height="62" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#0F172A" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- Container Base: Deep Slate Architectural Rounded Tile -->
+  <rect width="64" height="64" rx="14" fill="url(#zf-flow-1)"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="13.5" stroke="#334155" stroke-opacity="0.8"/>
+
+  <!-- Inner Ambient Glow Ring -->
+  <rect x="2" y="2" width="60" height="60" rx="12" stroke="#475569" stroke-opacity="0.2" fill="none"/>
+
+  <!-- Authentic Flaticon/Modern Vector Flow Mark (Stylized Geometric Z-Flow Prism) -->
+  <g filter="url(#zf-shadow)">
+    <!-- Top Horizontal Dynamic Beam -->
+    <path d="M16 18C16 16.8954 16.8954 16 18 16H46C47.1046 16 48 16.8954 48 18V22C48 23.1046 47.1046 24 46 24H27.5L46.85 41.42C47.58 42.08 48 43.01 48 44V46C48 47.1046 47.1046 48 46 48H18C16.8954 48 16 47.1046 16 46V42C16 40.8954 16.8954 40 18 40H36.5L17.15 22.58C16.42 21.92 16 20.99 16 20V18Z" fill="url(#zf-accent-1)"/>
+    
+    <!-- Dynamic Diagonal Facet Layer (Prism Depth) -->
+    <path d="M26 24L48 43.8V42L28.2 24H26Z" fill="#93C5FD" fill-opacity="0.4"/>
+    
+    <!-- Kinetic Flow Center Segment -->
+    <path d="M22 28L42 46H46L26 28H22Z" fill="url(#zf-ribbon)" fill-opacity="0.9"/>
+
+    <!-- Precision Anchor Nodes -->
+    <circle cx="19" cy="20" r="2" fill="#FFFFFF"/>
+    <circle cx="45" cy="44" r="2" fill="#FFFFFF"/>
+  </g>
+</svg>

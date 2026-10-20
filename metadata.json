@@ -1,0 +1,6 @@
+{
+  "name": "ZaFlow - Platform Perencanaan Konten & Analitik AI",
+  "description": "SaaS Social Media Marketing untuk tim dan agensi Indonesia: multi-brand workspace, content planning, kalender, analitik, dan asisten AI strategi.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
