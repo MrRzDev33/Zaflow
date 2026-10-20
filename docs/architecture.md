@@ -1,4 +1,4 @@
-# NaraSosial - Arsitektur Sistem, Keamanan & Skema Database
+﻿# NaraSosial - Arsitektur Sistem, Keamanan & Skema Database
 
 Dokumen ini merangkum fondasi teknis platform SaaS Social Media Marketing **ZaFlow** untuk pasar Indonesia (lisensi sekali bayar dengan kuota AI terukur).
 
@@ -11,11 +11,17 @@ Aplikasi memisahkan layer secara tegas antara Presentation (Frontend React), Dat
 ```text
 /
 ├── .env.example                     # Definisi resmi seluruh env variables
+├── api/
+│   └── [...path].ts                 # Vercel Function: meneruskan /api/* ke Express
 ├── index.html                       # Entry point SPA + metadata SEO
-├── server.ts                        # Backend proxy Express + verifikasi kuota + integrasi Gemini AI
+├── vercel.json                      # Konfigurasi build & function Vercel
+├── scripts/
+│   └── dev-server.ts                # Launcher lokal: Express + Vite middleware
 ├── docs/
 │   └── architecture.md              # Dokumentasi arsitektur, RLS, analisis risiko
 ├── src/
+│   ├── server/
+│   │   └── app.ts                   # Seluruh route backend (AI, admin, lisensi, Midtrans, tim)
 │   ├── config/
 │   │   ├── env.ts                   # Validasi konfigurasi runtime & fallback terarah
 │   │   └── supabase.ts              # Inisialisasi Supabase Client (Browser safe)
@@ -112,13 +118,13 @@ Harga dan kuota tidak pernah diambil dari request body browser. Server selalu me
 |---|---|---|
 | `VITE_SUPABASE_URL` | Frontend & Backend | URL endpoint project Supabase (diambil dari Dashboard Supabase -> Project Settings -> API). |
 | `VITE_SUPABASE_ANON_KEY` | Frontend & Backend | Public Anon Key untuk inisialisasi client Supabase di browser dengan penjagaan RLS. |
-| `SUPABASE_SERVICE_ROLE_KEY` | Backend Only (`server.ts`) | Kunci admin Supabase untuk validasi kuota AI & administrasi lisensi. **Jangan diekspos ke frontend**. |
-| `GEMINI_API_KEY` | Backend Only (`server.ts`) | API key Google Gemini untuk OCR metrics insight & AI strategy generation. |
-| `GEMINI_MODELS` | Backend Only (`server.ts`) | Daftar model Gemini dipisah koma, dicoba berurutan. |
-| `MIDTRANS_SERVER_KEY` | Backend Only (`server.ts`) | Server Key Midtrans untuk membuat transaksi Snap dan memverifikasi signature webhook. |
-| `MIDTRANS_IS_PRODUCTION` | Backend Only (`server.ts`) | `false` untuk sandbox, `true` untuk production. |
-| `ALLOW_SANDBOX_CHECKOUT` | Backend Only (`server.ts`) | **Hanya development.** Jika `true`, pembelian mengaktifkan lisensi tanpa Midtrans. |
-| `PAYMENT_WEBHOOK_SECRET` | Backend Only (`server.ts`) | Opsional, untuk webhook provider generik (`/api/webhook/payment`). |
+| `SUPABASE_SERVICE_ROLE_KEY` | Backend Only (`src/server/app.ts`) | Kunci admin Supabase untuk validasi kuota AI & administrasi lisensi. **Jangan diekspos ke frontend**. |
+| `GEMINI_API_KEY` | Backend Only (`src/server/app.ts`) | API key Google Gemini untuk OCR metrics insight & AI strategy generation. |
+| `GEMINI_MODELS` | Backend Only (`src/server/app.ts`) | Daftar model Gemini dipisah koma, dicoba berurutan. |
+| `MIDTRANS_SERVER_KEY` | Backend Only (`src/server/app.ts`) | Server Key Midtrans untuk membuat transaksi Snap dan memverifikasi signature webhook. |
+| `MIDTRANS_IS_PRODUCTION` | Backend Only (`src/server/app.ts`) | `false` untuk sandbox, `true` untuk production. |
+| `ALLOW_SANDBOX_CHECKOUT` | Backend Only (`src/server/app.ts`) | **Hanya development.** Jika `true`, pembelian mengaktifkan lisensi tanpa Midtrans. |
+| `PAYMENT_WEBHOOK_SECRET` | Backend Only (`src/server/app.ts`) | Opsional, untuk webhook provider generik (`/api/webhook/payment`). |
 | `APP_URL` | Backend / Env | URL publik aplikasi untuk callback Midtrans (misal `http://localhost:3000` atau domain produksi). |
 
 ---

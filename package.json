@@ -7,10 +7,10 @@
     "node": ">=20"
   },
   "scripts": {
-    "dev": "tsx server.ts",
+    "dev": "tsx scripts/dev-server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "tsx server.ts",
+    "start": "tsx scripts/dev-server.ts",
     "clean": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});fs.rmSync('server.js',{force:true});\"",
     "lint": "tsc --noEmit",
     "typecheck": "tsc --noEmit"

@@ -73,10 +73,10 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
       return;
     }
 
-    // Batas dibuat di bawah limit body server (12 MB) setelah base64 membengkak ~33%.
-    const maxSize = isVideo ? 7 * 1024 * 1024 : 5 * 1024 * 1024;
+    // Batas 3 MB agar base64 (~4 MB) tetap di bawah limit body 4.5 MB Vercel Functions.
+    const maxSize = 3 * 1024 * 1024;
     if (file.size > maxSize) {
-      setError(`Ukuran file ${(file.size / (1024 * 1024)).toFixed(1)} MB melebihi batas maksimal.`);
+      setError(`Ukuran file ${(file.size / (1024 * 1024)).toFixed(1)} MB melebihi batas maksimal 3 MB.`);
       return;
     }
 
@@ -371,7 +371,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                     </label>
                     <span className="text-xs text-slate-500"> atau seret ke sini</span>
                     <p className="text-[11px] text-slate-400 mt-1">
-                      Mendukung Gambar (JPG, PNG, WEBP &lt;5MB) & Video Recording (MP4, WEBM, MOV &lt;7MB)
+                      Mendukung Gambar (JPG, PNG, WEBP &lt;3MB) & Video Recording (MP4, WEBM, MOV &lt;3MB)
                     </p>
                   </div>
                 </div>

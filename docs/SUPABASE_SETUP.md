@@ -120,7 +120,7 @@ WHERE u.email = 'email-admin@domain.com';
 | `Signature Midtrans tidak valid` | Server key berbeda (sandbox vs production) | Samakan `MIDTRANS_IS_PRODUCTION` dan server key |
 | Lisensi tidak muncul setelah login | User belum punya lisensi | Lisensi trial dibuat otomatis pada AI pertama; atau jalankan `SELECT public.ensure_user_license('<user-uuid>');` |
 | `new row violates check constraint brand_invitations_status_check` | Migrasi 4 belum dijalankan | Jalankan migrasi 4 (menambahkan status `expired`) |
-| Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke `server.ts`; `/api/admin/overview` mengembalikan HTML | Jalankan `npm run dev` atau `npm start`. Jangan pakai `npm run preview`/hosting statis. |
+| Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke backend; `/api/admin/overview` mengembalikan HTML | Lokal: jalankan `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ter-deploy dan redeploy setelah mengubah env. |
 | Panel admin: `Akses ditolak. Anda bukan platform administrator` | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |
 
 ## 8. Catatan Keamanan

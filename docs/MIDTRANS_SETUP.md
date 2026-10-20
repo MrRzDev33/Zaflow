@@ -242,7 +242,7 @@ Dengan konfigurasi ini, checkout paket langsung mengaktifkan lisensi (tanpa pemb
 | `amount mismatch` / nominal ditolak | Harga di database lama berbeda dari katalog | Pastikan `src/config/plans.ts` sama dengan data transaksi |
 | Webhook masuk tetapi 404 | Path salah | Gunakan tepat `/api/webhook/midtrans` |
 | Webhook tidak pernah masuk saat lokal | Midtrans tidak bisa menghubungi `localhost` | Gunakan ngrok/cloudflared |
-| Halaman admin menampilkan error `Unexpected token "<"` | Frontend tidak terhubung ke backend `server.ts` | Jalankan `npm run dev`/`npm start`, bukan hosting statis |
+| Halaman admin menampilkan error `Unexpected token "<"` | Frontend tidak terhubung ke backend Express | Lokal: `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ada dan redeploy. Lihat `docs/VERCEL_DEPLOYMENT.md` |
 
 ---
 

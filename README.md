@@ -48,7 +48,7 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 
 4. Buka `http://localhost:3000`.
 
-> **Penting:** frontend dan backend harus berjalan bersama. `npm run dev` dan `npm start` menjalankan `server.ts` (Express + Vite). Jangan memakai `npm run preview`, Live Server, atau hosting statis saja, karena endpoint `/api/*` tidak akan tersedia dan panel admin akan gagal memuat data.
+> **Penting:** frontend dan backend harus berjalan bersama. `npm run dev` dan `npm start` menjalankan `scripts/dev-server.ts` (Express + Vite, kode API di `src/server/app.ts`). Jangan memakai `npm run preview`, Live Server, atau hosting statis tanpa konfigurasi API, karena endpoint `/api/*` tidak akan tersedia dan panel admin akan gagal memuat data.
 
 ## Penyiapan Supabase (WAJIB, BERURUTAN)
 
@@ -102,22 +102,54 @@ Alur pembayaran: klien memilih paket → `POST /api/payments/midtrans/create` �
 
 ## Deployment
 
-ZaFlow membutuhkan **Node.js runtime** karena frontend dan backend (`server.ts`) berjalan bersama.
+### Vercel (didukung)
 
-Opsi yang didukung:
+Repositori ini sudah menyertakan:
 
-- **VPS / Render / Railway / Fly.io / Coolify:** jalankan `npm install && npm run build`, lalu `NODE_ENV=production npm start`.
-- **Platform statis saja (Vercel static, Netlify static, GitHub Pages): tidak didukung** untuk fitur `/api/*` (admin, AI, pembayaran, undangan). Halaman akan tampil, tetapi request API mengembalikan HTML 404 dan UI menampilkan error JSON.
+- `api/[...path].ts` — Vercel Function yang menjalankan seluruh API Express (`/api/*`).
+- `vercel.json` — konfigurasi build Vite + durasi fungsi.
+- `scripts/dev-server.ts` — server lokal (Express + Vite middleware).
 
-Checklist production:
+Langkah deploy:
 
-- `NODE_ENV=production`
-- `APP_URL` domain publik (HTTPS)
-- Semua environment pada `.env.example` diisi
-- Payment Notification URL Midtrans diarahkan ke `https://domain-anda.com/api/webhook/midtrans`
-- Server tidak di-sleep saat webhook datang
+1. Push ke GitHub, lalu import repo di Vercel.
+2. Framework preset: **Vite**. Build command: `npm run build`. Output directory: `dist`.
+3. Isi **Environment Variables** di Vercel (Production dan Preview):
+   - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+   - `GEMINI_API_KEY`, `GEMINI_MODELS`, `GEMINI_TIMEOUT_MS`
+   - `MIDTRANS_SERVER_KEY`, `MIDTRANS_CLIENT_KEY`, `MIDTRANS_IS_PRODUCTION`
+   - `APP_URL` = `https://domain-anda.com`
+   - `ALLOW_SANDBOX_CHECKOUT=false`
+   - `NODE_ENV=production`
+4. **Redeploy** setelah menambah/mengubah environment variable.
+5. Daftarkan webhook Midtrans ke `https://domain-anda.com/api/webhook/midtrans`.
+6. Verifikasi:
 
-Jika memakai Vercel, deploy sebagai **Node service** atau tambahkan serverless function yang meneruskan seluruh `/api/*` ke Express. Konfigurasi statis `outputDirectory: dist` saja tidak cukup.
+   ```text
+   https://domain-anda.com/api/health
+   ```
+
+   Harus mengembalikan JSON dengan `"status":"ok"` dan `"supabaseConfigured":true`.
+
+Catatan Vercel:
+
+- Request body Vercel Functions dibatasi **4.5 MB**. Karena itu upload AI dibatasi 3 MB (base64 ~4 MB).
+- Durasi fungsi di `vercel.json` diset 60 detik. `GEMINI_TIMEOUT_MS` otomatis dibatasi 55 detik di Vercel agar tidak kena 504.
+- Rate limiter bersifat per-instance di serverless. Untuk perlindungan global, gunakan Vercel WAF/Upstash Redis.
+- Jangan mengandalkan `express.static()` di Vercel; aset frontend disajikan oleh Vercel dari folder `dist`.
+
+Panduan rinci: `docs/VERCEL_DEPLOYMENT.md`.
+
+### VPS / Render / Railway / Fly.io
+
+```bash
+npm install
+npm run build
+NODE_ENV=production npm start
+```
+
+Pastikan server tidak di-sleep saat webhook Midtrans datang.
 
 ## Keamanan
 
@@ -131,3 +163,4 @@ Jika memakai Vercel, deploy sebagai **Node service** atau tambahkan serverless f
 - `docs/architecture.md`
 - `docs/SUPABASE_SETUP.md`
 - `docs/MIDTRANS_SETUP.md`
+- `docs/VERCEL_DEPLOYMENT.md`

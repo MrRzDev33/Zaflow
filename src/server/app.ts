@@ -3,18 +3,18 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
-import { createServer as createViteServer } from 'vite';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { getPlan, TRIAL_PLAN } from './src/config/plans.ts';
+import { getPlan, TRIAL_PLAN } from '../config/plans.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // .env.local menang atas .env, lalu .env menjadi fallback.
-// Path dihitung dari lokasi server.ts agar tetap benar meski dijalankan dari folder lain.
-dotenv.config({ path: path.resolve(__dirname, '.env.local') });
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+// Path dihitung dari lokasi app.ts (src/server) menuju root proyek.
+// Di Vercel, variabel environment sudah disuntikkan oleh platform.
+dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
 const app = express();
@@ -22,9 +22,24 @@ const port = Number(process.env.PORT) || 3000;
 
 app.set('trust proxy', 1);
 
+// Vercel dapat menyediakan req.body yang sudah diparse. Tandai agar
+// express.json() tidak mencoba membaca stream yang sudah habis.
+app.use((req, _res, next) => {
+  if (
+    req.body !== undefined &&
+    req.body !== null &&
+    typeof req.body === 'object' &&
+    !Buffer.isBuffer(req.body)
+  ) {
+    (req as any)._body = true;
+  }
+  next();
+});
+
 // Simpan raw body untuk verifikasi webhook generik, tanpa mengganggu parser JSON.
+// 4.5mb disesuaikan dengan batas request body Vercel Functions.
 app.use(express.json({
-  limit: '12mb',
+  limit: '4.5mb',
   verify: (req, _res, buf) => {
     (req as any).rawBody = buf;
   },
@@ -59,7 +74,15 @@ const geminiModels = (process.env.GEMINI_MODELS || 'gemini-flash-latest,gemini-2
   .split(',')
   .map((model) => model.trim())
   .filter(Boolean);
-const geminiTimeoutMs = Math.max(10_000, Number(process.env.GEMINI_TIMEOUT_MS) || 120_000);
+const requestedGeminiTimeout = Math.max(
+  10_000,
+  Number(process.env.GEMINI_TIMEOUT_MS) || (process.env.VERCEL ? 50_000 : 120_000)
+);
+// Vercel Functions dibatasi maxDuration 60 detik (lihat vercel.json).
+// Cap 55 detik agar Gemini tidak melewati batas function.
+const geminiTimeoutMs = process.env.VERCEL
+  ? Math.min(requestedGeminiTimeout, 55_000)
+  : requestedGeminiTimeout;
 
 let aiClient: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
@@ -1851,8 +1874,10 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   }
 
   const estimatedBytes = Buffer.byteLength(base64Data, 'base64');
-  if (estimatedBytes > 10 * 1024 * 1024) {
-    res.status(413).json({ error: 'Ukuran file terlalu besar. Maksimal 10 MB setelah dikompres.' });
+  if (estimatedBytes > 3 * 1024 * 1024) {
+    res.status(413).json({
+      error: 'Ukuran file terlalu besar. Maksimal 3 MB (agar base64 tetap di bawah batas 4.5 MB Vercel Functions).',
+    });
     return;
   }
 
@@ -2185,7 +2210,7 @@ app.use('/api', (_req: Request, res: Response) => {
 app.use((err: any, _req: Request, res: Response, _next: () => void) => {
   if (err?.type === 'entity.too.large') {
     res.status(413).json({
-      error: 'Payload terlalu besar. Maksimal 12 MB. Kompres gambar/video sebelum mengunggah.',
+      error: 'Payload terlalu besar. Maksimal 4.5 MB (batas Vercel Functions). Kompres gambar/video sebelum mengunggah.',
     });
     return;
   }
@@ -2197,29 +2222,7 @@ app.use((err: any, _req: Request, res: Response, _next: () => void) => {
   res.status(500).json({ error: 'Kesalahan internal server.' });
 });
 
-async function startServer() {
-  const isProduction = process.env.NODE_ENV === 'production';
+// Diekspor untuk Vercel Function (api/[...path].ts) dan launcher lokal.
+export default app;
+export { app };
 
-  if (!isProduction) {
-    const vite = await createViteServer({
-      server: { middlewareMode: true, port },
-      appType: 'spa',
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.resolve(__dirname, 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (_req, res) => {
-      res.sendFile(path.resolve(distPath, 'index.html'));
-    });
-  }
-
-  app.listen(port, () => {
-    console.log(`[ZaFlow Backend] Server aktif di port ${port}`);
-  });
-}
-
-startServer().catch((err) => {
-  console.error('Gagal menjalankan server:', err);
-  process.exit(1);
-});
