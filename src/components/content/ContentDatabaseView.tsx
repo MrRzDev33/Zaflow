@@ -9,7 +9,7 @@ import {
   Calendar,
   AlertCircle,
   Loader2,
-  Database,
+  Library,
   CheckCircle2,
   Clock,
   Video,
@@ -96,7 +96,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
       const data = await contentService.getPosts(brand.id, filters);
       setPosts(data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal memuat database konten.');
+      setError(err instanceof Error ? err.message : 'Gagal memuat koleksi konten.');
     } finally {
       setLoading(false);
     }
@@ -534,7 +534,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
   if (!brand) {
     return (
       <div className="bg-white border border-slate-200 rounded-xl p-8 text-center max-w-md mx-auto">
-        <Database className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+        <Library className="w-8 h-8 text-slate-400 mx-auto mb-2" />
         <p className="text-sm font-semibold text-slate-800">Pilih atau buat brand terlebih dahulu</p>
       </div>
     );
@@ -546,7 +546,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-extrabold text-slate-900">Perencanaan & Database Konten</h1>
+            <h1 className="text-xl font-extrabold text-slate-900">Perencanaan & Koleksi Konten</h1>
             <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60">
               {posts.length} Konten
             </span>
@@ -667,16 +667,16 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
       {loading ? (
         <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center">
           <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
-          <p className="text-xs text-slate-500">Memuat data konten dari Supabase...</p>
+          <p className="text-xs text-slate-500">Memuat data konten...</p>
         </div>
       ) : posts.length === 0 ? (
         <div className="bg-white border border-slate-200/80 rounded-xl p-12 text-center">
-          <Database className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <Library className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <h2 className="text-sm font-bold text-slate-800">Tidak Ada Konten Ditemukan</h2>
           <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
             {filters.search || filters.channel !== 'all' || filters.pillar !== 'all' || filters.status !== 'all'
               ? 'Tidak ada konten yang sesuai dengan filter yang Anda tentukan. Coba ubah atau reset kata kunci pencarian.'
-              : 'Belum ada konten di database brand ini. Buat konten pertama Anda sekarang.'}
+              : 'Belum ada konten di brand ini. Buat konten pertama Anda sekarang.'}
           </p>
           <div className="mt-4 flex items-center justify-center gap-2">
             {filters.search || filters.channel !== 'all' || filters.pillar !== 'all' || filters.status !== 'all' ? (
@@ -695,7 +695,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
                 <span>Buat Konten Pertama</span>
               </button>
             ) : (
-              <p className="text-xs text-slate-400">Hubungi owner/admin untuk menambahkan konten.</p>
+              <p className="text-xs text-slate-400">Hubungi pemilik/admin untuk menambahkan konten.</p>
             )}
           </div>
         </div>

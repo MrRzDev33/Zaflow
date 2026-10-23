@@ -40,31 +40,12 @@ function looksLikeHtml(contentType: string, body: string): boolean {
 }
 
 function buildInvalidJsonMessage(
-  url: string,
-  status: number,
-  contentType: string,
-  body: string
+  _url: string,
+  _status: number,
+  _contentType: string,
+  _body: string
 ): string {
-  if (looksLikeHtml(contentType, body)) {
-    if (status === 404) {
-      return (
-        `Endpoint ${url} tidak ditemukan (HTTP 404) dan server mengembalikan halaman HTML. ` +
-        'Backend API belum aktif. Jalankan aplikasi dengan "npm run dev" atau "npm start" ' +
-        '(yang menjalankan server.ts), bukan "npm run preview", Live Server, atau hosting statis.'
-      );
-    }
-    return (
-      `Respons dari ${url} berupa halaman HTML, bukan JSON (HTTP ${status}). ` +
-      'Pastikan server.ts (Express BFF) berjalan di domain yang sama dengan frontend. ' +
-      'Hosting statis saja tidak cukup karena endpoint /api/* tidak akan tersedia.'
-    );
-  }
-
-  const preview = body.replace(/\s+/g, ' ').trim().slice(0, 160);
-  return (
-    `Respons dari ${url} bukan JSON yang valid (HTTP ${status}).` +
-    (preview ? ` Cuplikan respons: "${preview}"` : '')
-  );
+  return 'Layanan sedang sibuk. Silakan coba beberapa saat lagi.';
 }
 
 async function parseBody(response: Response, url: string): Promise<any> {
@@ -98,8 +79,7 @@ export async function apiRequest<T = any>(
     response = await fetch(url, init);
   } catch {
     throw new ApiError(
-      `Tidak dapat terhubung ke server API (${url}). ` +
-      'Pastikan backend ZaFlow sedang berjalan dan koneksi internet stabil.',
+      'Layanan belum dapat dihubungi. Periksa koneksi internet Anda, lalu coba lagi.',
       0,
       'NETWORK'
     );
@@ -124,7 +104,7 @@ export async function apiFetchJson<T = any>(
     const message =
       payload?.error ||
       payload?.message ||
-      `Permintaan ke ${url} gagal (HTTP ${status}).`;
+      'Permintaan belum dapat diproses. Silakan coba lagi.';
 
     throw new ApiError(message, status, 'HTTP');
   }

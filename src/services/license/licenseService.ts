@@ -2,75 +2,57 @@ import { supabase, isConfigured } from '../../config/supabase.ts';
 import { apiFetchJson } from '../http/apiClient.ts';
 import { LicenseQuotaInfo } from '../../types/license.ts';
 import { License } from '../../types/database.ts';
-import { TRIAL_PLAN } from '../../config/plans.ts';
+import { accessService } from '../access/accessService.ts';
 
-const trialInfo = (): LicenseQuotaInfo => ({
+const emptyInfo = (): LicenseQuotaInfo => ({
   hasActiveLicense: false,
   license: null,
-  aiCreditsTotal: TRIAL_PLAN.aiQuota,
+  aiCreditsTotal: 0,
   aiCreditsUsed: 0,
-  aiCreditsRemaining: TRIAL_PLAN.aiQuota,
+  aiCreditsRemaining: 0,
   percentageUsed: 0,
-  maxBrands: TRIAL_PLAN.maxBrands,
+  maxBrands: 1,
   currentBrandCount: 0,
 });
 
 export const licenseService = {
   /**
-   * Mengambil informasi lisensi dan sisa kuota AI pengguna
+   * Mengambil informasi lisensi dan sisa kuota AI pengguna.
+   * Sumber utama adalah status akses agar anggota tim juga membaca paket
+   * pemilik workspace.
    */
   async getLicenseInfo(): Promise<LicenseQuotaInfo> {
-    if (!isConfigured) {
-      return trialInfo();
-    }
+    if (!isConfigured) return emptyInfo();
 
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    if (!user) return emptyInfo();
+
+    try {
+      const access = await accessService.getStatus();
+      const license = access.license as License | null;
+      if (!license) return emptyInfo();
+
+      const total = Number(license.ai_quota_total) || 0;
+      const used = Number(license.ai_quota_used) || 0;
+      const remaining = Math.max(0, total - used);
+
       return {
-        hasActiveLicense: false,
-        license: null,
-        aiCreditsTotal: 0,
-        aiCreditsUsed: 0,
-        aiCreditsRemaining: 0,
-        percentageUsed: 0,
-        maxBrands: 0,
+        hasActiveLicense: access.hasAccess,
+        license,
+        aiCreditsTotal: total,
+        aiCreditsUsed: used,
+        aiCreditsRemaining: remaining,
+        percentageUsed: total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0,
+        maxBrands: Number(license.max_brands) || 1,
         currentBrandCount: 0,
       };
+    } catch {
+      return emptyInfo();
     }
-
-    const { data, error } = await supabase
-      .from('licenses')
-      .select('*')
-      .eq('owner_user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle();
-
-    if (error || !data) {
-      // Lisensi trial dibuat otomatis oleh trigger/RPC saat AI pertama kali dipakai.
-      // UI menampilkan kuota trial tanpa mengklaim lisensi berbayar.
-      return trialInfo();
-    }
-
-    const license = data as License;
-    const remaining = Math.max(0, license.ai_quota_total - license.ai_quota_used);
-    const percentage = license.ai_quota_total > 0
-      ? Math.min(100, Math.round((license.ai_quota_used / license.ai_quota_total) * 100))
-      : 0;
-
-    return {
-      hasActiveLicense: true,
-      license,
-      aiCreditsTotal: license.ai_quota_total,
-      aiCreditsUsed: license.ai_quota_used,
-      aiCreditsRemaining: remaining,
-      percentageUsed: percentage,
-      maxBrands: license.max_brands,
-      currentBrandCount: 0,
-    };
   },
 
   /**
-   * Mengaktifkan lisensi sekali bayar melalui endpoint backend server
+   * Menukarkan kode aktivasi.
    */
   async activateLicense(licenseKey: string): Promise<{ success: boolean; message: string }> {
     const { data: { session } } = await supabase.auth.getSession();
@@ -78,13 +60,13 @@ export const licenseService = {
       throw new Error('Sesi tidak ditemukan. Harap masuk terlebih dahulu.');
     }
 
-    return apiFetchJson<{ success: boolean; message: string }>('/api/license/activate', {
+    return apiFetchJson<{ success: boolean; message: string }>('/api/activation/redeem', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ licenseKey }),
+      body: JSON.stringify({ code: licenseKey }),
     });
   },
 };

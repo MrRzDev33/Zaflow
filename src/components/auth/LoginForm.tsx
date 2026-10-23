@@ -46,7 +46,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onSucc
       if (err instanceof Error) {
         if (err.message.toLowerCase().includes('invalid login credentials')) {
           setErrorMessage(
-            'Email atau kata sandi tidak cocok. Jika Anda baru pertama kali menghubungkan database Supabase di Vercel/Local, silakan klik tab "Daftar Baru" untuk membuat akun pertama Anda.'
+            'Email atau kata sandi tidak cocok. Jika belum memiliki akun, silakan pilih tab "Daftar Baru".'
           );
         } else {
           setErrorMessage(err.message);

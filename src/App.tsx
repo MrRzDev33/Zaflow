@@ -8,6 +8,8 @@ import { Loader2, Sparkles, BarChart3, ScanEye, BrainCircuit, Users, History, Ke
 import { useAuth } from './hooks/useAuth.ts';
 import { useBrands } from './hooks/useBrands.ts';
 import { useLicense } from './hooks/useLicense.ts';
+import { useAccess } from './hooks/useAccess.ts';
+import { SubscriptionGate } from './components/access/SubscriptionGate.tsx';
 import { AuthPage } from './components/auth/AuthPage.tsx';
 import { ResetPasswordForm } from './components/auth/ResetPasswordForm.tsx';
 import { AppLayout } from './components/layout/AppLayout.tsx';
@@ -15,7 +17,6 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview.tsx'
 import { ContentDatabaseView } from './components/content/ContentDatabaseView.tsx';
 import { ContentCalendarView } from './components/content/ContentCalendarView.tsx';
 import { ContentKanbanView } from './components/content/ContentKanbanView.tsx';
-import { CrudTestPanel } from './components/content/CrudTestPanel.tsx';
 import { AnalyticsView } from './components/analytics/AnalyticsView.tsx';
 import { ContentPostAnalyticsView } from './components/analytics/ContentPostAnalyticsView.tsx';
 import { AiMetricsExtractorView } from './components/ai/AiMetricsExtractorView.tsx';
@@ -57,6 +58,13 @@ export default function App() {
     refreshLicense,
   } = useLicense(user?.id);
 
+  const {
+    status: accessStatus,
+    loading: accessLoading,
+    error: accessError,
+    refresh: refreshAccess,
+  } = useAccess(user?.id);
+
   const [currentTab, setCurrentTab] = useState<string>('dashboard');
   const [isNewBrandOpen, setIsNewBrandOpen] = useState(false);
   const [isNewPostOpen, setIsNewPostOpen] = useState(false);
@@ -89,6 +97,9 @@ export default function App() {
     email_masked?: string;
     is_expired?: boolean;
   } | null>(null);
+  const [invitePreviewStatus, setInvitePreviewStatus] = useState<'idle' | 'loading' | 'ready' | 'missing'>(
+    () => (inviteToken ? 'loading' : 'idle')
+  );
   const [acceptingInvite, setAcceptingInvite] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -119,12 +130,67 @@ export default function App() {
   }, [currentTab]);
 
   useEffect(() => {
-    if (inviteToken) {
-      teamService.getInvitationPreview(inviteToken).then((info) => {
-        if (info) setInvitePreview(info);
-      }).catch(() => {});
+    if (!inviteToken) {
+      setInvitePreview(null);
+      setInvitePreviewStatus('idle');
+      return;
     }
+
+    let active = true;
+    setInvitePreviewStatus('loading');
+    teamService.getInvitationPreview(inviteToken)
+      .then((info) => {
+        if (!active) return;
+        if (info) {
+          setInvitePreview(info);
+          setInvitePreviewStatus('ready');
+        } else {
+          setInvitePreview(null);
+          setInvitePreviewStatus('missing');
+        }
+      })
+      .catch(() => {
+        if (!active) return;
+        setInvitePreview(null);
+        setInvitePreviewStatus('missing');
+      });
+
+    return () => {
+      active = false;
+    };
   }, [inviteToken]);
+
+  // Setelah kembali dari halaman pembayaran, segarkan akses, kuota, dan brand.
+  // Ini juga berlaku untuk perpanjangan ketika pengguna sudah memiliki akses.
+  useEffect(() => {
+    if (!user?.id) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') !== 'finish') return;
+
+    let cancelled = false;
+    const refreshAll = async () => {
+      if (cancelled) return;
+      await Promise.allSettled([refreshAccess(), refreshLicense(), refreshBrands()]);
+    };
+
+    const first = window.setTimeout(refreshAll, 2500);
+    const second = window.setTimeout(async () => {
+      await refreshAll();
+      if (cancelled) return;
+      params.delete('payment');
+      params.delete('order_id');
+      params.delete('status_code');
+      params.delete('transaction_status');
+      const query = params.toString();
+      window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(first);
+      window.clearTimeout(second);
+    };
+  }, [user?.id, refreshAccess, refreshLicense, refreshBrands]);
 
   const handleAcceptInvite = async () => {
     if (!inviteToken) return;
@@ -134,6 +200,8 @@ export default function App() {
       setInviteFeedback({ success: true, message: res.message });
       localStorage.removeItem('zaflow_pending_invite_token');
       await refreshBrands();
+      await refreshAccess();
+      await refreshLicense();
       if (res.brand_id) {
         setActiveBrandId(res.brand_id);
       }
@@ -199,6 +267,137 @@ export default function App() {
     return <AuthPage />;
   }
 
+  // Pemeriksaan akses dilakukan setelah login, sebelum workspace ditampilkan.
+  // Undangan hanya membuka layar penerimaan, bukan Workspace penuh.
+  if (accessLoading || (inviteToken && invitePreviewStatus === 'loading')) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="flex items-center gap-3 text-slate-800">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <span className="font-semibold text-sm">
+            {inviteToken && invitePreviewStatus === 'loading' ? 'Memeriksa undangan...' : 'Menyiapkan akun Anda...'}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!accessStatus) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white border border-slate-200 rounded-3xl p-8 text-center shadow-sm space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center mx-auto">
+            <ShieldAlert className="w-6 h-6" />
+          </div>
+          <h1 className="text-base font-bold text-slate-900">Akun belum dapat dimuat</h1>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            {accessError || 'Status akun belum dapat dimuat. Silakan coba lagi.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => refreshAccess()}
+            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
+          >
+            <Loader2 className="w-4 h-4" />
+            Coba Lagi
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const hasValidInvite = Boolean(
+    inviteToken
+    && invitePreview
+    && !invitePreview.is_expired
+    && accessStatus?.accountStatus === 'active'
+  );
+  const inviteRoleLabel = invitePreview?.role === 'admin'
+    ? 'Admin'
+    : invitePreview?.role === 'editor'
+      ? 'Editor'
+      : invitePreview?.role === 'viewer'
+        ? 'Anggota'
+        : null;
+
+  if (accessStatus && !accessStatus.hasAccess) {
+    if (hasValidInvite) {
+      return (
+        <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eff6ff,transparent_38%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] flex items-center justify-center p-4">
+          <div className="w-full max-w-md rounded-3xl border border-black/[0.06] bg-white p-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.10)] sm:p-8">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100 text-blue-600">
+              <Users className="h-7 w-7" />
+            </div>
+            <h1 className="mt-4 text-lg font-bold text-slate-900">Undangan Bergabung ke Tim</h1>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">
+              Anda diundang untuk bergabung ke workspace
+              {invitePreview?.brand_name ? <> <strong className="text-slate-700">{invitePreview.brand_name}</strong></> : ' ini'}
+              {inviteRoleLabel ? ` sebagai ${inviteRoleLabel}` : ''}.
+            </p>
+            {invitePreview?.email_masked && (
+              <p className="mt-1 text-[11px] text-slate-400">Undangan untuk {invitePreview.email_masked}</p>
+            )}
+
+            {inviteFeedback && (
+              <div
+                className={`mt-4 rounded-xl border p-3 text-xs font-medium ${
+                  inviteFeedback.success
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                    : 'border-red-200 bg-red-50 text-red-800'
+                }`}
+              >
+                {inviteFeedback.message}
+              </div>
+            )}
+
+            {!inviteFeedback?.success && (
+              <div className="mt-6 flex flex-col justify-center gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleDismissInvite}
+                  className="rounded-xl bg-slate-100 px-4 py-2.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-200"
+                >
+                  Abaikan
+                </button>
+                <button
+                  type="button"
+                  onClick={handleAcceptInvite}
+                  disabled={acceptingInvite}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {acceptingInvite && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                  Terima Undangan
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={signOut}
+              className="mt-5 text-[11px] font-semibold text-slate-400 hover:text-slate-600"
+            >
+              Keluar dari akun
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <SubscriptionGate
+        status={accessStatus}
+        onRefresh={async () => {
+          const next = await refreshAccess();
+          if (next?.hasAccess) {
+            await Promise.allSettled([refreshLicense(), refreshBrands()]);
+          }
+          return next;
+        }}
+        onSignOut={signOut}
+      />
+    );
+  }
+
   const handleCreatePost = async (input: CreatePostInput) => {
     await contentService.createPost(input);
     fetchBrandPosts();
@@ -236,6 +435,10 @@ export default function App() {
           setIsNewPostOpen(true);
         }}
         onSignOut={signOut}
+        customerService={accessStatus ? {
+          whatsappUrl: accessStatus.customerService.whatsappUrl,
+          label: accessStatus.customerService.label,
+        } : null}
       >
         {currentTab === 'dashboard' && (
           <DashboardOverview
@@ -312,7 +515,7 @@ export default function App() {
           ) : (
             <RestrictedNotice
               title="Akses Metrics Extractor dibatasi"
-              message="Role Viewer hanya dapat melihat data. Minta owner/admin menaikkan akses Anda menjadi Editor untuk memakai fitur AI."
+              message="Akun Anda hanya dapat melihat data. Minta pemilik atau admin menaikkan akses menjadi Editor untuk memakai fitur AI."
             />
           )
         )}
@@ -329,20 +532,9 @@ export default function App() {
           ) : (
             <RestrictedNotice
               title="Akses Strategy Assistant dibatasi"
-              message="Role Viewer hanya dapat melihat data. Minta owner/admin menaikkan akses Anda menjadi Editor untuk memakai fitur AI."
+              message="Akun Anda hanya dapat melihat data. Minta pemilik atau admin menaikkan akses menjadi Editor untuk memakai fitur AI."
             />
           )
-        )}
-
-        {currentTab === 'crud_test' && (
-          <CrudTestPanel
-            currentBrand={activeBrand}
-            onRefreshNeeded={() => {
-              fetchBrandPosts();
-              refreshBrands();
-              refreshLicense();
-            }}
-          />
         )}
 
         {currentTab === 'team' && (
@@ -374,7 +566,7 @@ export default function App() {
         )}
 
         {/* Placeholder untuk fase berikutnya */}
-        {!['dashboard', 'content_db', 'calendar', 'kanban', 'analytics', 'content_posts', 'ai_extractor', 'ai_strategy', 'crud_test', 'team', 'activity_logs', 'license', 'admin'].includes(currentTab) && (
+        {!['dashboard', 'content_db', 'calendar', 'kanban', 'analytics', 'content_posts', 'ai_extractor', 'ai_strategy', 'team', 'activity_logs', 'license', 'admin'].includes(currentTab) && (
           <NextPhasePlaceholder
             tabId={currentTab}
             onBackToDashboard={() => setCurrentTab('dashboard')}
@@ -423,7 +615,7 @@ export default function App() {
       )}
 
       {/* Modal Penerimaan Undangan Bergabung */}
-      {inviteToken && (
+      {inviteToken && invitePreview && !invitePreview.is_expired && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-center space-y-4">
             <div className="w-12 h-12 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto">
@@ -508,9 +700,9 @@ const placeholderConfigs: Record<string, PlaceholderInfo> = {
     icon: History,
   },
   license: {
-    title: 'Lisensi & Kuota AI',
+    title: 'Paket & Kuota AI',
     phase: 'Fase 5',
-    desc: 'Manajemen lisensi sekali bayar (Lifetime Access), pemantauan saldo kredit AI, dan aktivasi paket agensi.',
+    desc: 'Kelola paket bulanan, masa aktif, kode aktivasi, dan saldo kredit AI Anda.',
     icon: Key,
   },
 };

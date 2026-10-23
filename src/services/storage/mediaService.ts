@@ -1,8 +1,12 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
+import {
+  CONTENT_IMAGE_MAX_BYTES,
+  compressContentImage,
+  type ImageCompressionResult,
+} from './imageCompression.ts';
 
 export const CONTENT_MEDIA_BUCKET = 'content-media';
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24; // 24 jam
 const signedUrlCache = new Map<string, { url: string; expiresAt: number }>();
 
@@ -33,48 +37,65 @@ function fileExtension(file: File): string {
 }
 
 function assertImageFile(file: File): void {
-  const looksLikeImage = /\.(jpe?g|png|webp|gif|avif)$/i.test(file.name || '');
+  const looksLikeImage = /\.(jpe?g|png|webp|gif|avif|svg)$/i.test(file.name || '');
   if (!file.type.startsWith('image/') && !looksLikeImage) {
     throw new Error('Hanya file gambar yang dapat diunggah ke media konten.');
   }
-  if (file.size > MAX_IMAGE_BYTES) {
-    throw new Error('Ukuran gambar maksimal 10 MB.');
-  }
+}
+
+export interface UploadedContentImage {
+  path: string;
+  originalBytes: number;
+  uploadedBytes: number;
+  wasCompressed: boolean;
 }
 
 export const mediaService = {
   /**
-   * Upload gambar ke bucket Supabase Storage `content-media`.
-   * Path selalu diawali brandId agar policy Storage dapat memvalidasi akses brand.
-   * Nilai yang dikembalikan adalah path storage (bukan URL sementara).
+   * Upload gambar ke media konten. Gambar dikompresi terlebih dahulu agar
+   * ukuran akhir maksimal 1 MB dan sisi terpanjang maksimal 1920 px.
+   * Path selalu diawali brandId.
    */
-  async uploadContentImage(file: File, brandId: string): Promise<string> {
-    if (!isConfigured) throw new Error('Supabase belum terkonfigurasi.');
+  async uploadContentImageDetailed(file: File, brandId: string): Promise<UploadedContentImage> {
+    if (!isConfigured) throw new Error('Layanan media belum siap.');
     if (!brandId) throw new Error('Brand tidak ditemukan.');
 
     assertImageFile(file);
 
-    const extension = fileExtension(file);
-    const fileName = sanitizeFileName(file.name);
+    const compressed: ImageCompressionResult = await compressContentImage(file);
+    if (compressed.file.size > CONTENT_IMAGE_MAX_BYTES) {
+      throw new Error('Ukuran gambar maksimal 1 MB.');
+    }
+
+    const extension = fileExtension(compressed.file);
+    const fileName = sanitizeFileName(compressed.file.name);
     const uniqueName = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${fileName.replace(/\.[^.]+$/, '')}.${extension}`;
     const objectPath = `${brandId}/${uniqueName}`;
 
     const { error } = await supabase.storage
       .from(CONTENT_MEDIA_BUCKET)
-      .upload(objectPath, file, {
+      .upload(objectPath, compressed.file, {
         cacheControl: '3600',
         upsert: false,
-        contentType: file.type || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
+        contentType: compressed.file.type || `image/${extension === 'jpg' ? 'jpeg' : extension}`,
       });
 
     if (error) {
       console.error('Gagal mengunggah gambar konten:', error);
-      throw new Error(
-        `Gagal mengunggah gambar ke Supabase Storage: ${error.message}. Pastikan bucket "${CONTENT_MEDIA_BUCKET}" dan policy Storage sudah dibuat.`
-      );
+      throw new Error('Gambar belum dapat diunggah. Silakan coba lagi.');
     }
 
-    return objectPath;
+    return {
+      path: objectPath,
+      originalBytes: compressed.originalBytes,
+      uploadedBytes: compressed.uploadedBytes,
+      wasCompressed: compressed.wasCompressed,
+    };
+  },
+
+  async uploadContentImage(file: File, brandId: string): Promise<string> {
+    const result = await this.uploadContentImageDetailed(file, brandId);
+    return result.path;
   },
 
   /**

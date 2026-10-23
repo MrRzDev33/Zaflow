@@ -162,7 +162,6 @@ export const teamService = {
     brand_id?: string;
     brand_name?: string;
     role?: string;
-    email?: string;
     email_masked?: string;
     status?: string;
     is_expired?: boolean;
@@ -187,12 +186,16 @@ export const teamService = {
 
       if (error || !data) return null;
       const isExpired = new Date(data.expires_at) < new Date();
+      const rawEmail = String(data.email || '');
+      const maskedEmail = rawEmail.replace(/^(.)(.*)(@.*)$/, (_: string, first: string, middle: string, rest: string) => {
+        return first + '*'.repeat(Math.max(1, Math.min(middle.length, 5))) + rest;
+      });
       return {
         id: data.id,
         brand_id: data.brand_id,
         brand_name: (data.brands as any)?.name || 'Brand',
         role: data.role,
-        email: data.email,
+        email_masked: maskedEmail,
         status: isExpired && data.status === 'pending' ? 'expired' : data.status,
         is_expired: isExpired,
       };
@@ -250,6 +253,11 @@ export const teamService = {
       throw new Error('Masa berlaku undangan ini telah kedaluwarsa.');
     }
 
+    const sessionEmail = String(session.user.email || '').trim().toLowerCase();
+    if (invite.email && sessionEmail && String(invite.email).trim().toLowerCase() !== sessionEmail) {
+      throw new Error('Undangan ini ditujukan untuk alamat email lain.');
+    }
+
     // Insert ke brand_members
     const { error: memberErr } = await supabase
       .from('brand_members')
@@ -270,9 +278,10 @@ export const teamService = {
       .eq('id', invite.id);
 
     const brandName = (invite.brands as any)?.name || 'Brand';
+    const roleLabel = invite.role === 'admin' ? 'Admin' : invite.role === 'editor' ? 'Editor' : 'Anggota';
     return {
       success: true,
-      message: `Selamat! Anda berhasil bergabung ke dalam tim '${brandName}' sebagai ${invite.role}.`,
+      message: `Selamat! Anda berhasil bergabung ke dalam tim '${brandName}' sebagai ${roleLabel}.`,
       brand_id: invite.brand_id,
     };
   },

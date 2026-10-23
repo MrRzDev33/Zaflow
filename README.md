@@ -8,9 +8,10 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Database konten, kalender, dan kanban workflow.
 - Ekstraksi metrik dari screenshot/video dengan AI dan laporan analitik.
 - AI Strategy Assistant berbasis data historis brand.
-- Lisensi sekali bayar dengan kuota kredit AI dan batas brand/anggota.
-- Pembayaran Midtrans (Snap) dengan webhook yang terverifikasi.
-- Log aktivitas tim dan panel platform admin (super admin).
+- Langganan bulanan dengan kuota kredit AI, batas brand/anggota, promo berjangka, dan trial 3 hari.
+- Pembayaran Midtrans (Snap) dengan webhook terverifikasi, harga promo hanya untuk pembelian baru, serta kode aktivasi sekali pakai.
+- Log aktivitas tim dan panel admin lengkap (akun, langganan, kode aktivasi, transaksi, audit, harga, dan customer service WhatsApp).
+- Kompresi gambar otomatis di browser dengan batas unggah 1 MB.
 
 ## Prasyarat
 
@@ -58,8 +59,10 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 2. `src/services/database/migrations/20261013_01_security_hardening_profiles_and_brands.sql`
 3. `src/services/database/migrations/20261013_02_create_brand_invitations_and_activity_logs.sql`
 4. `src/services/database/migrations/20261020_01_licensing_payments_limits_and_rpc.sql`
+5. `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql`
+6. `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql`
 
-> Jangan berhenti di langkah 1. Migrasi 01 dan 20 memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, dan menegakkan batas paket.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, kode aktivasi, audit admin, dan batas bucket 1 MB.
 
 Setelah migrasi, cek cepat:
 
@@ -68,7 +71,16 @@ SELECT indexname FROM pg_indexes
 WHERE tablename = 'licenses' AND indexname = 'uq_licenses_one_active_per_owner';
 
 SELECT proname FROM pg_proc
-WHERE proname IN ('consume_ai_credit', 'refund_ai_credit', 'activate_license_from_payment');
+WHERE proname IN (
+  'consume_ai_credit',
+  'refund_ai_credit',
+  'activate_subscription_from_payment',
+  'get_active_license',
+  'start_trial',
+  'redeem_activation_code'
+);
+
+SELECT id, file_size_limit FROM storage.buckets WHERE id = 'content-media';
 ```
 
 ## Penyiapan Midtrans
@@ -88,7 +100,19 @@ Ringkasan:
 4. Isi `APP_URL` dengan domain publik aplikasi agar pengguna kembali ke halaman yang benar setelah membayar.
 5. Untuk pengujian lokal, daftarkan URL publik (mis. via tunnel) sebagai notification URL, atau aktifkan `ALLOW_SANDBOX_CHECKOUT=true` **hanya untuk development**.
 
-Alur pembayaran: klien memilih paket → `POST /api/payments/midtrans/create` → server membuat transaksi Snap → pengguna diarahkan ke halaman Midtrans → notifikasi masuk ke `/api/webhook/midtrans` → lisensi diaktifkan secara idempoten.
+Alur pembayaran: pengguna masuk → status akses diperiksa → klien memilih paket → `POST /api/payments/midtrans/create` → server menghitung harga normal/promo dan membuat transaksi Snap → pengguna diarahkan ke halaman Midtrans → notifikasi masuk ke `/api/webhook/midtrans` → langganan bulanan diaktifkan secara idempoten. Perpanjangan selalu memakai harga normal, dan masa aktif baru ditambahkan setelah periode berjalan.
+
+## Langganan, Trial, dan Panel Admin
+
+- Paket bulanan: Starter Rp 29.000, Pro Rp 59.000, Ultra Rp 119.000.
+- Promo awal: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000; hanya untuk pembelian baru dan berakhir sesuai tanggal yang diatur admin.
+- Trial 3 hari (20 kredit AI, 1 brand, 1 anggota) hanya dimulai setelah pengguna memilihnya, sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar.
+- Masa tenggang 3 hari hanya untuk perpanjangan paket berbayar. Anggota tim mengikuti paket dan kuota pemilik workspace.
+- Panel Admin: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harga & Promo, Customer Service, Transaksi, Audit Log, dan Pengaturan Aplikasi.
+- Penghapusan akun lunak selama 7 hari, lalu dibersihkan permanen otomatis saat panel admin dibuka atau lewat tombol pembersihan.
+- Customer service hanya WhatsApp. Tombol muncul di halaman paket, menu bantuan, dan footer selama kontak diaktifkan admin.
+
+Panduan SQL dan operasional lengkap ada di **`docs/SUPABASE_SETUP.md`**.
 
 ## Skrip
 

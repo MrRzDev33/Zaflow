@@ -57,10 +57,10 @@ interface RoleBadgeProps {
 
 export const RoleBadge: React.FC<RoleBadgeProps> = ({ role, className = '' }) => {
   const configs: Record<BrandMemberRole, { label: string; text: string; dot: string }> = {
-    owner: { label: 'Owner', text: 'text-slate-900 font-semibold', dot: 'bg-slate-900' },
+    owner: { label: 'Pemilik', text: 'text-slate-900 font-semibold', dot: 'bg-slate-900' },
     admin: { label: 'Admin', text: 'text-[#007AFF] font-medium', dot: 'bg-[#007AFF]' },
     editor: { label: 'Editor', text: 'text-[#34C759] font-medium', dot: 'bg-[#34C759]' },
-    viewer: { label: 'Viewer', text: 'text-slate-500 font-medium', dot: 'bg-[#8E8E93]' },
+    viewer: { label: 'Anggota', text: 'text-slate-500 font-medium', dot: 'bg-[#8E8E93]' },
   };
 
   const current = configs[role] || configs.viewer;

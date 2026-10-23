@@ -148,8 +148,8 @@ Daftarkan URL tersebut sebagai Payment Notification URL di dashboard Sandbox. Se
    - memverifikasi `signature_key` dengan SHA-512,
    - mencocokkan `order_id` dan nominal,
    - memperbarui status transaksi,
-   - memanggil RPC `activate_license_from_payment` secara idempoten.
-7. Lisensi dan kredit AI langsung aktif.
+   - memanggil RPC `activate_subscription_from_payment` secara idempoten.
+7. Langganan bulanan dan kredit AI langsung aktif. Perpanjangan memakai harga normal dan menambah masa aktif dari akhir periode berjalan; promo hanya untuk pembelian paket baru.
 
 Endpoint pendukung:
 

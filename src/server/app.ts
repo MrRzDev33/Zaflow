@@ -5,7 +5,16 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenAI } from '@google/genai';
-import { getPlan, TRIAL_PLAN } from '../config/plans.ts';
+import {
+  DEFAULT_PRICING_SETTINGS,
+  GRACE_PERIOD_DAYS,
+  PURCHASABLE_PLANS,
+  TRIAL_DAYS,
+  TRIAL_PLAN,
+  getPlan,
+  resolvePlanPrice,
+  type PricingSettings,
+} from '../config/plans.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -104,7 +113,7 @@ const geminiTotalBudgetMs = process.env.VERCEL
 let aiClient: GoogleGenAI | null = null;
 function getAiClient(): GoogleGenAI {
   if (!hasGeminiKey) {
-    throw new Error('GEMINI_API_KEY belum dikonfigurasi di server.');
+    throw new Error('Layanan AI belum tersedia.');
   }
   if (!aiClient) {
     aiClient = new GoogleGenAI({
@@ -247,6 +256,374 @@ function generateLicenseKey(planId: string): string {
   return `ZF-${planId.toUpperCase()}-${segment()}-${segment()}-${segment()}`;
 }
 
+function generateActivationCode(planId: string): string {
+  const segment = () => crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `ZF-${planId.toUpperCase()}-${segment()}-${segment()}`;
+}
+
+interface AppSettingsRow {
+  key: string;
+  value: any;
+  updated_at?: string | null;
+}
+
+async function readAppSetting<T>(key: string, fallback: T): Promise<T> {
+  if (!supabaseAdmin) return fallback;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('app_settings')
+      .select('value')
+      .eq('key', key)
+      .maybeSingle();
+    if (error || !data?.value) return fallback;
+    return data.value as T;
+  } catch {
+    return fallback;
+  }
+}
+
+async function writeAppSetting(key: string, value: unknown, updatedBy?: string | null): Promise<void> {
+  if (!supabaseAdmin) throw new Error('Layanan pengaturan belum siap.');
+  const { error } = await supabaseAdmin
+    .from('app_settings')
+    .upsert(
+      {
+        key,
+        value,
+        updated_by: updatedBy || null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'key' }
+    );
+  if (error) throw error;
+}
+
+async function getPricingSettings(): Promise<PricingSettings> {
+  const stored = await readAppSetting<any>('pricing', DEFAULT_PRICING_SETTINGS);
+  if (!stored || typeof stored !== 'object' || !stored.plans) return DEFAULT_PRICING_SETTINGS;
+  return {
+    currency: 'IDR',
+    plans: {
+      starter: { ...DEFAULT_PRICING_SETTINGS.plans.starter, ...(stored.plans.starter || {}) },
+      pro: { ...DEFAULT_PRICING_SETTINGS.plans.pro, ...(stored.plans.pro || {}) },
+      ultra: { ...DEFAULT_PRICING_SETTINGS.plans.ultra, ...(stored.plans.ultra || {}) },
+    },
+  };
+}
+
+export interface CustomerServiceSettings {
+  whatsapp: string;
+  label: string;
+  message: string;
+  active: boolean;
+}
+
+const DEFAULT_CUSTOMER_SERVICE: CustomerServiceSettings = {
+  whatsapp: '',
+  label: 'Bantuan ZaFlow',
+  message: 'Halo, saya ingin bertanya tentang ZaFlow.',
+  active: false,
+};
+
+async function getCustomerServiceSettings(): Promise<CustomerServiceSettings> {
+  const stored = await readAppSetting<any>('customer_service', DEFAULT_CUSTOMER_SERVICE);
+  return {
+    whatsapp: String(stored?.whatsapp || ''),
+    label: String(stored?.label || DEFAULT_CUSTOMER_SERVICE.label),
+    message: String(stored?.message || DEFAULT_CUSTOMER_SERVICE.message),
+    active: Boolean(stored?.active),
+  };
+}
+
+function normalizeWhatsAppNumber(value: string): string {
+  const digits = String(value || '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  if (digits.startsWith('0')) return `62${digits.slice(1)}`;
+  if (digits.startsWith('62')) return digits;
+  if (digits.startsWith('8')) return `62${digits}`;
+  return digits;
+}
+
+function buildWhatsAppUrl(settings: CustomerServiceSettings): string | null {
+  const number = normalizeWhatsAppNumber(settings.whatsapp);
+  if (!settings.active || !number) return null;
+  const text = encodeURIComponent(settings.message || DEFAULT_CUSTOMER_SERVICE.message);
+  return `https://wa.me/${number}?text=${text}`;
+}
+
+interface NormalizedLicense {
+  id: string;
+  license_key: string;
+  plan_id: string;
+  plan_name: string;
+  max_brands: number;
+  max_team_members: number;
+  ai_quota_total: number;
+  ai_quota_used: number;
+  ai_quota_remaining: number;
+  status: string;
+  billing_cycle: string;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  is_legacy_lifetime: boolean;
+  days_remaining: number | null;
+  grace_ends_at: string | null;
+  is_expired: boolean;
+}
+
+function normalizeLicense(license: any): NormalizedLicense | null {
+  if (!license) return null;
+  const now = Date.now();
+  const periodEnd = license.current_period_end ? new Date(license.current_period_end).getTime() : null;
+  const isLegacy = Boolean(license.is_legacy_lifetime);
+  const isTrial = license.plan_id === 'trial' || license.status === 'trialing';
+  const graceMs = isTrial ? 0 : GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+  const hasEnded = !isLegacy && periodEnd !== null && periodEnd < now;
+  const graceEnds = hasEnded && graceMs > 0 ? periodEnd + graceMs : null;
+  const isExpired = hasEnded && (now > periodEnd + graceMs);
+  const daysRemaining = periodEnd === null
+    ? null
+    : Math.max(0, Math.ceil((periodEnd - now) / (24 * 60 * 60 * 1000)));
+
+  return {
+    id: license.id,
+    license_key: license.license_key,
+    plan_id: license.plan_id || 'trial',
+    plan_name: license.plan_name || 'Trial',
+    max_brands: Number(license.max_brands) || 1,
+    max_team_members: Number(license.max_team_members) || 1,
+    ai_quota_total: Number(license.ai_quota_total) || 0,
+    ai_quota_used: Number(license.ai_quota_used) || 0,
+    ai_quota_remaining: Math.max(0, (Number(license.ai_quota_total) || 0) - (Number(license.ai_quota_used) || 0)),
+    status: license.status,
+    billing_cycle: license.billing_cycle || (license.plan_id === 'trial' ? 'trial' : 'monthly'),
+    current_period_start: license.current_period_start || null,
+    current_period_end: license.current_period_end || null,
+    is_legacy_lifetime: isLegacy,
+    days_remaining: isLegacy ? null : daysRemaining,
+    grace_ends_at: graceEnds ? new Date(graceEnds).toISOString() : null,
+    is_expired: isExpired,
+  };
+}
+
+async function getProfileRow(userId: string): Promise<any | null> {
+  if (!supabaseAdmin) return null;
+  const { data } = await supabaseAdmin
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .maybeSingle();
+  return data || null;
+}
+
+async function isPlatformOwner(userId: string): Promise<boolean> {
+  const profile = await getProfileRow(userId);
+  return profile?.system_role === 'super_admin';
+}
+
+async function requirePlatformOwner(req: Request, res: Response): Promise<any | null> {
+  const user = (req as any).user;
+  if (!user) {
+    res.status(401).json({ error: 'Sesi tidak ditemukan. Silakan masuk kembali.' });
+    return null;
+  }
+  if (!(await isPlatformOwner(user.id))) {
+    res.status(403).json({ error: 'Anda tidak memiliki akses ke halaman ini.' });
+    return null;
+  }
+  return user;
+}
+
+async function writeAdminAudit(params: {
+  adminId: string;
+  action: string;
+  targetType: string;
+  targetId?: string | null;
+  details?: Record<string, unknown>;
+}): Promise<void> {
+  if (!supabaseAdmin) return;
+  try {
+    await supabaseAdmin.from('admin_audit_logs').insert({
+      admin_id: params.adminId,
+      action: params.action,
+      target_type: params.targetType,
+      target_id: params.targetId || null,
+      details: params.details || {},
+    });
+  } catch (error) {
+    console.warn('Gagal menulis audit admin:', error);
+  }
+}
+
+async function getAuthEmailMap(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  if (!supabaseAdmin) return map;
+  try {
+    let page = 1;
+    while (page <= 10) {
+      const { data, error } = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 1000 });
+      if (error || !data?.users?.length) break;
+      for (const user of data.users) {
+        if (user.id) map.set(user.id, user.email || '');
+      }
+      if (data.users.length < 1000) break;
+      page += 1;
+    }
+  } catch {
+    // Abaikan; email hanya pelengkap tampilan admin.
+  }
+  return map;
+}
+
+async function hasPriorPaidAccess(userId: string): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  const { data: licenses } = await supabaseAdmin
+    .from('licenses')
+    .select('id, plan_id')
+    .eq('owner_user_id', userId)
+    .limit(30);
+  if ((licenses || []).some((license: any) => license.plan_id !== 'trial')) return true;
+
+  const { data: paidTx } = await supabaseAdmin
+    .from('transactions')
+    .select('id')
+    .eq('user_id', userId)
+    .in('status', ['success', 'settlement'])
+    .limit(1)
+    .maybeSingle();
+  return Boolean(paidTx?.id);
+}
+
+async function getBrandOwnerId(brandId: string): Promise<string | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data } = await supabaseAdmin
+      .from('brands')
+      .select('created_by')
+      .eq('id', brandId)
+      .maybeSingle();
+    if (data?.created_by) return data.created_by;
+
+    const { data: ownerMember } = await supabaseAdmin
+      .from('brand_members')
+      .select('user_id')
+      .eq('brand_id', brandId)
+      .eq('role', 'owner')
+      .limit(1)
+      .maybeSingle();
+    return ownerMember?.user_id || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getWorkspaceAccessOwner(userId: string): Promise<{ ownerId: string; brandId: string } | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data: memberships } = await supabaseAdmin
+      .from('brand_members')
+      .select('brand_id, role')
+      .eq('user_id', userId)
+      .neq('role', 'owner');
+    if (!memberships?.length) return null;
+
+    const brandIds = memberships.map((row: any) => row.brand_id).filter(Boolean);
+    if (!brandIds.length) return null;
+
+    const { data: brands } = await supabaseAdmin
+      .from('brands')
+      .select('id, created_by')
+      .in('id', brandIds);
+    if (!brands?.length) return null;
+
+    for (const brand of brands) {
+      if (!brand.created_by || brand.created_by === userId) continue;
+      const ownerProfile = await getProfileRow(brand.created_by);
+      if (ownerProfile?.status && ownerProfile.status !== 'active') continue;
+      const license = await getActiveLicenseRow(brand.created_by);
+      if (license) return { ownerId: brand.created_by, brandId: brand.id };
+    }
+  } catch {
+    // Abaikan; gate akan menampilkan pilihan paket.
+  }
+  return null;
+}
+
+async function getActiveLicenseRow(userId: string): Promise<any | null> {
+  if (!supabaseAdmin) return null;
+  try {
+    const { data, error } = await supabaseAdmin.rpc('get_active_license', { p_user_id: userId });
+    if (!error) {
+      if (!data) return null;
+      return Array.isArray(data) ? (data[0] || null) : data;
+    }
+    if (!isMissingRpcError(error)) return null;
+  } catch {
+    // Fallback ke query langsung untuk database lama.
+  }
+
+  const { data: rows } = await supabaseAdmin
+    .from('licenses')
+    .select('*')
+    .eq('owner_user_id', userId)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('created_at', { ascending: false })
+    .limit(5);
+
+  const now = Date.now();
+  const graceMs = GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
+  return (rows || []).find((license: any) => {
+    if (license.is_legacy_lifetime) return true;
+    // Skema lama belum memiliki perioda langganan; perlakukan sebagai akses lama.
+    if (!('current_period_end' in license)) return true;
+    if (!license.current_period_end) return false;
+    const end = new Date(license.current_period_end).getTime();
+    if (!Number.isFinite(end)) return false;
+    const hasGrace = license.status === 'active' || license.status === 'past_due';
+    return end > now - (hasGrace ? graceMs : 0);
+  }) || null;
+}
+
+function buildPlanPayload(
+  pricing: PricingSettings,
+  options: { isRenewal: boolean }
+) {
+  return PURCHASABLE_PLANS.map((plan) => {
+    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing, {
+      isRenewal: options.isRenewal,
+    });
+    return {
+      id: plan.id,
+      name: plan.name,
+      tagline: plan.tagline,
+      highlights: plan.highlights,
+      aiQuota: plan.aiQuota,
+      maxBrands: plan.maxBrands,
+      maxTeamMembers: plan.maxTeamMembers,
+      normalPrice: resolved.normalPrice,
+      promoPrice: resolved.promoPrice,
+      effectivePrice: resolved.effectivePrice,
+      isPromo: resolved.isPromo,
+      promoLabel: resolved.promoLabel,
+      promoEndsAt: resolved.promoEndsAt,
+      isRenewal: options.isRenewal,
+    };
+  });
+}
+
+function friendlyLicenseError(message: string): string {
+  const text = String(message || '').toLowerCase();
+  if (text.includes('trial sudah')) return 'Trial sudah pernah digunakan oleh akun ini.';
+  if (text.includes('belum pernah berlangganan')) return 'Trial hanya untuk akun yang belum pernah berlangganan.';
+  if (text.includes('sudah memiliki akses')) return 'Akun ini sudah memiliki akses aktif.';
+  if (text.includes('kode aktivasi tidak ditemukan')) return 'Kode aktivasi tidak ditemukan.';
+  if (text.includes('kode aktivasi sudah')) return 'Kode aktivasi sudah tidak dapat digunakan.';
+  if (text.includes('ditujukan untuk akun lain')) return 'Kode aktivasi ini ditujukan untuk akun lain.';
+  if (text.includes('masa aktif')) return 'Masa aktif akun telah berakhir. Silakan perpanjang paket.';
+  if (text.includes('profil')) return 'Akun belum siap. Silakan masuk kembali.';
+  return 'Permintaan belum dapat diproses. Silakan coba lagi.';
+}
+
 async function createMidtransSnapTransaction(params: {
   orderId: string;
   amount: number;
@@ -328,7 +705,7 @@ async function authenticateUser(req: Request, res: Response, next: () => void) {
   const token = authHeader.split(' ')[1];
 
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Layanan autentikasi database tidak tersedia atau belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan akun belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -417,13 +794,16 @@ async function checkAndDeductQuota(
       remaining: 0,
       total: 0,
       used: 0,
-      error: 'Layanan database lisensi belum dikonfigurasi di server.',
+      error: 'Layanan paket belum siap. Silakan coba lagi.',
     };
   }
 
+  // Anggota tim memakai kuota pemilik workspace, bukan kuota pribadi.
+  const quotaOwnerId = (brandId ? await getBrandOwnerId(brandId) : null) || userId;
+
   // Jalur utama: RPC atomik dari migrasi 20261020_01.
   const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('consume_ai_credit', {
-    p_user_id: userId,
+    p_user_id: quotaOwnerId,
     p_brand_id: brandId,
     p_action_type: actionType,
     p_summary: summary.slice(0, 300),
@@ -457,46 +837,7 @@ async function checkAndDeductQuota(
 
   // Fallback untuk database yang belum menjalankan migrasi.
   console.warn('[Quota] RPC consume_ai_credit belum tersedia; memakai fallback non-RPC.');
-  const { data: license } = await supabaseAdmin
-    .from('licenses')
-    .select('*')
-    .eq('owner_user_id', userId)
-    .eq('status', 'active')
-    .maybeSingle();
-
-  let targetLicense = license;
-
-  if (!targetLicense) {
-    const trialKey = `TRIAL-${userId.slice(0, 8).toUpperCase()}-${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
-    const { data: createdLic } = await supabaseAdmin
-      .from('licenses')
-      .insert({
-        license_key: trialKey,
-        plan_id: TRIAL_PLAN.id,
-        plan_name: TRIAL_PLAN.name,
-        max_brands: TRIAL_PLAN.maxBrands,
-        max_team_members: TRIAL_PLAN.maxTeamMembers,
-        ai_quota_total: TRIAL_PLAN.aiQuota,
-        ai_quota_used: 0,
-        status: 'active',
-        owner_user_id: userId,
-        activated_at: new Date().toISOString(),
-      })
-      .select()
-      .maybeSingle();
-
-    if (createdLic) {
-      targetLicense = createdLic;
-    } else {
-      const { data: retryLicense } = await supabaseAdmin
-        .from('licenses')
-        .select('*')
-        .eq('owner_user_id', userId)
-        .eq('status', 'active')
-        .maybeSingle();
-      targetLicense = retryLicense;
-    }
-  }
+  const targetLicense = await getActiveLicenseRow(quotaOwnerId);
 
   if (!targetLicense) {
     return {
@@ -504,7 +845,7 @@ async function checkAndDeductQuota(
       remaining: 0,
       total: 0,
       used: 0,
-      error: 'Lisensi akun tidak ditemukan. Silakan hubungi admin.',
+      error: 'Workspace ini belum memiliki paket aktif. Silakan hubungi pemilik workspace.',
     };
   }
 
@@ -527,7 +868,7 @@ async function checkAndDeductQuota(
       updated_at: new Date().toISOString(),
     })
     .eq('id', targetLicense.id)
-    .eq('status', 'active')
+    .in('status', ['active', 'trialing', 'past_due'])
     .lt('ai_quota_used', targetLicense.ai_quota_total)
     .select()
     .maybeSingle();
@@ -575,7 +916,7 @@ async function checkAndDeductQuota(
       // Kembalikan kuota jika log gagal dibuat.
       await supabaseAdmin
         .from('licenses')
-        .update({ ai_quota_used: Math.max(0, updatedLicense.ai_quota_used), updated_at: new Date().toISOString() })
+        .update({ ai_quota_used: Math.max(0, targetLicense.ai_quota_used), updated_at: new Date().toISOString() })
         .eq('id', updatedLicense.id);
       return {
         allowed: false,
@@ -788,11 +1129,177 @@ function paymentRateLimiter(req: Request, res: Response, next: () => void) {
 // API ROUTES
 // -------------------------------------------------------------
 
+app.get('/api/access/status', authenticateUser, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Layanan akun belum siap. Silakan coba lagi.' });
+    return;
+  }
+
+  try {
+    const [profile, pricing, customerService] = await Promise.all([
+      getProfileRow(user.id),
+      getPricingSettings(),
+      getCustomerServiceSettings(),
+    ]);
+
+    const isSuperAdmin = profile?.system_role === 'super_admin';
+    const accountStatus = profile?.status || 'active';
+    const ownLicense = await getActiveLicenseRow(user.id);
+    const workspaceOwner = ownLicense ? null : await getWorkspaceAccessOwner(user.id);
+    const workspaceLicense = workspaceOwner ? await getActiveLicenseRow(workspaceOwner.ownerId) : null;
+    const license = ownLicense || workspaceLicense;
+    const normalized = normalizeLicense(license);
+
+    let hasAccess = Boolean(normalized && !normalized.is_expired);
+    let accessReason = 'none';
+
+    if (accountStatus !== 'active') {
+      hasAccess = false;
+      accessReason = accountStatus === 'pending_deletion' ? 'pending_deletion' : 'suspended';
+    } else if (isSuperAdmin) {
+      hasAccess = true;
+      accessReason = 'owner';
+    } else if (ownLicense && normalized && !normalized.is_expired) {
+      hasAccess = true;
+      accessReason = normalized.status === 'trialing' ? 'trial' : 'subscription';
+    } else if (workspaceOwner && workspaceLicense && normalized && !normalized.is_expired) {
+      hasAccess = true;
+      accessReason = 'workspace';
+    }
+
+    const priorPaid = await hasPriorPaidAccess(user.id);
+    const trialUsed = Boolean(profile?.trial_used_at);
+    let trialReason = 'available';
+    if (isSuperAdmin) trialReason = 'admin';
+    else if (accountStatus !== 'active') trialReason = 'account';
+    else if (trialUsed) trialReason = 'used';
+    else if (priorPaid) trialReason = 'paid';
+    else if (workspaceOwner) trialReason = 'workspace';
+    else if (ownLicense) trialReason = 'active';
+
+    const canStartTrial = trialReason === 'available';
+    const plans = buildPlanPayload(pricing, { isRenewal: priorPaid });
+
+    res.json({
+      hasAccess,
+      reason: accessReason,
+      accountStatus,
+      isSuperAdmin,
+      license: normalized,
+      trial: {
+        available: canStartTrial,
+        reason: trialReason,
+        days: TRIAL_DAYS,
+        credits: TRIAL_PLAN.aiQuota,
+        maxBrands: TRIAL_PLAN.maxBrands,
+        maxTeamMembers: TRIAL_PLAN.maxTeamMembers,
+      },
+      plans,
+      customerService: {
+        ...customerService,
+        whatsappUrl: buildWhatsAppUrl(customerService),
+      },
+      workspace: workspaceOwner
+        ? { ownerId: workspaceOwner.ownerId, brandId: workspaceOwner.brandId }
+        : null,
+      isRenewal: priorPaid,
+      gracePeriodDays: GRACE_PERIOD_DAYS,
+    });
+  } catch (error) {
+    console.error('Gagal memuat status akses:', error);
+    res.status(500).json({ error: 'Status akun belum dapat dimuat. Silakan coba lagi.' });
+  }
+});
+
+app.post('/api/trial/start', authenticateUser, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Layanan akun belum siap. Silakan coba lagi.' });
+    return;
+  }
+
+  try {
+    const workspaceOwner = await getWorkspaceAccessOwner(user.id);
+    if (workspaceOwner) {
+      res.status(400).json({ error: 'Akun Anda sudah terhubung ke workspace yang aktif.' });
+      return;
+    }
+    if (await hasPriorPaidAccess(user.id)) {
+      res.status(400).json({ error: 'Trial hanya untuk akun yang belum pernah berlangganan.' });
+      return;
+    }
+
+    const { data, error } = await supabaseAdmin.rpc('start_trial', { p_user_id: user.id });
+    if (error) {
+      res.status(400).json({ error: friendlyLicenseError(error.message) });
+      return;
+    }
+    const license = Array.isArray(data) ? data[0] : data;
+    res.json({
+      success: true,
+      message: 'Trial 3 hari berhasil dimulai.',
+      license: normalizeLicense(license),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: friendlyLicenseError(error?.message) });
+  }
+});
+
+app.post('/api/activation/redeem', authenticateUser, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  const { code } = req.body || {};
+  if (!code || typeof code !== 'string') {
+    res.status(400).json({ error: 'Masukkan kode aktivasi terlebih dahulu.' });
+    return;
+  }
+  if (!supabaseAdmin) {
+    res.status(503).json({ error: 'Layanan akun belum siap. Silakan coba lagi.' });
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseAdmin.rpc('redeem_activation_code', {
+      p_user_id: user.id,
+      p_user_email: user.email || '',
+      p_code: code.trim(),
+    });
+    if (error) {
+      res.status(400).json({ error: friendlyLicenseError(error.message) });
+      return;
+    }
+    const license = Array.isArray(data) ? data[0] : data;
+    res.json({
+      success: true,
+      message: 'Kode aktivasi berhasil digunakan.',
+      license: normalizeLicense(license),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: friendlyLicenseError(error?.message) });
+  }
+});
+
+app.get('/api/billing/plans', authenticateUser, async (req: Request, res: Response) => {
+  const user = (req as any).user;
+  try {
+    const [pricing, priorPaid] = await Promise.all([
+      getPricingSettings(),
+      hasPriorPaidAccess(user.id),
+    ]);
+    res.json({
+      plans: buildPlanPayload(pricing, { isRenewal: priorPaid }),
+      isRenewal: priorPaid,
+    });
+  } catch {
+    res.status(500).json({ error: 'Daftar paket belum dapat dimuat.' });
+  }
+});
+
 // Webhook generik (opsional, untuk provider selain Midtrans).
 app.post('/api/webhook/payment', async (req: Request, res: Response) => {
   const webhookSecret = (process.env.PAYMENT_WEBHOOK_SECRET || '').trim();
   if (!webhookSecret) {
-    res.status(503).json({ success: false, error: 'Payment webhook secret belum dikonfigurasi di server.' });
+    res.status(503).json({ success: false, error: 'Layanan pembayaran belum siap.' });
     return;
   }
 
@@ -828,7 +1335,7 @@ app.post('/api/webhook/payment', async (req: Request, res: Response) => {
   }
 
   if (!supabaseAdmin) {
-    res.status(503).json({ success: false, error: 'Database belum dikonfigurasi.' });
+    res.status(503).json({ success: false, error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -903,11 +1410,11 @@ app.post('/api/webhook/payment', async (req: Request, res: Response) => {
 // URL ini didaftarkan di Dashboard Midtrans > Settings > Notification URL.
 app.post('/api/webhook/midtrans', async (req: Request, res: Response) => {
   if (!hasMidtrans) {
-    res.status(503).json({ success: false, error: 'MIDTRANS_SERVER_KEY belum dikonfigurasi.' });
+    res.status(503).json({ success: false, error: 'Layanan pembayaran belum siap.' });
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ success: false, error: 'Database belum dikonfigurasi.' });
+    res.status(503).json({ success: false, error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -927,7 +1434,7 @@ app.post('/api/webhook/midtrans', async (req: Request, res: Response) => {
   try {
     const { data: tx, error: txError } = await supabaseAdmin
       .from('transactions')
-      .select('id, user_id, status, amount, license_key, plan_id')
+      .select('id, user_id, status, amount, license_key, plan_id, is_renewal, billing_cycle')
       .eq('transaction_id', orderId)
       .maybeSingle();
 
@@ -946,12 +1453,14 @@ app.post('/api/webhook/midtrans', async (req: Request, res: Response) => {
     const mappedStatus = mapMidtransStatus(transactionStatus, payload.fraud_status);
     const isSuccess = mappedStatus === 'success';
 
-    if (tx.status === 'success' && isSuccess) {
+    // Jangan pernah menurunkan transaksi yang sudah final karena notifikasi
+    // yang datang tidak berurutan.
+    if (tx.status === 'success' || tx.status === 'settlement') {
       res.json({ success: true, message: 'Notifikasi sudah diproses sebelumnya.' });
       return;
     }
 
-    if (isSuccess && tx.status !== 'success') {
+    if (isSuccess) {
       const plan = getPlan(tx.plan_id);
       if (!plan) {
         res.status(500).json({ success: false, error: 'Paket pada transaksi tidak dikenal.' });
@@ -963,62 +1472,34 @@ app.post('/api/webhook/midtrans', async (req: Request, res: Response) => {
       }
 
       const licenseKey = tx.license_key || generateLicenseKey(plan.id);
-      const { error: activationError } = await supabaseAdmin.rpc('activate_license_from_payment', {
-        p_user_id: tx.user_id,
-        p_license_key: licenseKey,
-        p_plan_id: plan.id,
-        p_plan_name: plan.name,
-        p_max_brands: plan.maxBrands,
-        p_max_team_members: plan.maxTeamMembers,
-        p_ai_quota: plan.aiQuota,
-      });
+      const { data: activatedLicense, error: activationError } = await supabaseAdmin.rpc(
+        'activate_subscription_from_payment',
+        {
+          p_user_id: tx.user_id,
+          p_license_key: licenseKey,
+          p_plan_id: plan.id,
+          p_plan_name: plan.name,
+          p_max_brands: plan.maxBrands,
+          p_max_team_members: plan.maxTeamMembers,
+          p_ai_quota: plan.aiQuota,
+          p_period_days: 30,
+        }
+      );
 
       if (activationError) {
-        // Fallback database lama: aktifkan lisensi yang sudah ada atau buat baru.
-        const { data: existingLicense } = await supabaseAdmin
-          .from('licenses')
-          .select('id, license_key')
-          .eq('owner_user_id', tx.user_id)
-          .eq('status', 'active')
-          .maybeSingle();
-
-        if (existingLicense) {
-          const { error } = await supabaseAdmin
-            .from('licenses')
-            .update({
-              plan_id: plan.id,
-              plan_name: plan.name,
-              max_brands: plan.maxBrands,
-              max_team_members: plan.maxTeamMembers,
-              ai_quota_total: plan.aiQuota,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingLicense.id);
-          if (error) throw error;
-        } else {
-          const { error } = await supabaseAdmin.from('licenses').insert({
-            license_key: licenseKey,
-            plan_id: plan.id,
-            plan_name: plan.name,
-            max_brands: plan.maxBrands,
-            max_team_members: plan.maxTeamMembers,
-            ai_quota_total: plan.aiQuota,
-            ai_quota_used: 0,
-            status: 'active',
-            owner_user_id: tx.user_id,
-            activated_at: new Date().toISOString(),
-          });
-          if (error) throw error;
-        }
+        throw activationError;
       }
 
+      const activated = Array.isArray(activatedLicense) ? activatedLicense[0] : activatedLicense;
       const { error: updateError } = await supabaseAdmin
         .from('transactions')
         .update({
           status: 'success',
-          license_key: licenseKey,
+          license_key: activated?.license_key || licenseKey,
           paid_at: new Date().toISOString(),
           payment_provider: 'midtrans',
+          period_start: activated?.current_period_start || new Date().toISOString(),
+          period_end: activated?.current_period_end || null,
           raw_payload: payload,
           updated_at: new Date().toISOString(),
         })
@@ -1072,7 +1553,7 @@ app.post('/api/license/activate', authenticateUser, async (req: Request, res: Re
   if (!supabaseAdmin) {
     res.status(503).json({
       success: false,
-      message: 'SUPABASE_SERVICE_ROLE_KEY belum dikonfigurasi di server.',
+      message: 'Layanan akun belum siap.',
     });
     return;
   }
@@ -1085,7 +1566,7 @@ app.post('/api/license/activate', authenticateUser, async (req: Request, res: Re
       .single();
 
     if (findError || !license) {
-      res.status(404).json({ success: false, message: 'Kunci lisensi tidak ditemukan di database.' });
+      res.status(404).json({ success: false, message: 'Kunci lisensi tidak ditemukan.' });
       return;
     }
 
@@ -1145,7 +1626,7 @@ app.post('/api/license/activate', authenticateUser, async (req: Request, res: Re
       license: updatedLicense,
     });
   } catch (err: unknown) {
-    res.status(500).json({ success: false, message: 'Kesalahan internal server saat aktivasi lisensi.' });
+    res.status(500).json({ success: false, message: 'Aktivasi belum dapat diproses. Silakan coba lagi.' });
   }
 });
 
@@ -1158,7 +1639,7 @@ app.post('/api/team/invite', authenticateUser, async (req: Request, res: Respons
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1233,9 +1714,9 @@ app.post('/api/team/invite', authenticateUser, async (req: Request, res: Respons
   await supabaseAdmin.from('activity_logs').insert({
     brand_id,
     user_id: user.id,
-    action: 'invited_member',
+    action: 'Mengundang Anggota',
     entity_type: 'brand_invitation',
-    details: { email: normalizedEmail, role: requestedRole },
+    details: { role: requestedRole },
   });
 
   const inviteUrl = `${appUrl}/?invite_token=${token}`;
@@ -1259,7 +1740,7 @@ app.get('/api/team/invitations', authenticateUser, async (req: Request, res: Res
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1298,7 +1779,7 @@ app.get('/api/team/invitations/preview', async (req: Request, res: Response) => 
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1325,7 +1806,6 @@ app.get('/api/team/invitations/preview', async (req: Request, res: Response) => 
     brand_id: invite.brand_id,
     brand_name: (invite.brands as any)?.name || 'Brand',
     role: invite.role,
-    email: invite.email,
     email_masked: maskedEmail,
     status: isExpired && invite.status === 'pending' ? 'expired' : invite.status,
     is_expired: isExpired,
@@ -1342,7 +1822,7 @@ app.post('/api/team/invitations/accept', authenticateUser, async (req: Request, 
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1359,7 +1839,15 @@ app.post('/api/team/invitations/accept', authenticateUser, async (req: Request, 
   }
 
   if (invite.status !== 'pending') {
-    res.status(400).json({ error: `Undangan ini sudah berstatus '${invite.status}'.` });
+    const statusLabel: Record<string, string> = {
+      accepted: 'sudah diterima',
+      cancelled: 'sudah dibatalkan',
+      rejected: 'sudah ditolak',
+      expired: 'sudah kedaluwarsa',
+    };
+    res.status(400).json({
+      error: `Undangan ini ${statusLabel[invite.status] || 'sudah tidak berlaku'}.`,
+    });
     return;
   }
 
@@ -1372,13 +1860,33 @@ app.post('/api/team/invitations/accept', authenticateUser, async (req: Request, 
 
   // 3. Undangan hanya boleh diterima oleh pemilik email yang diundang.
   if (!user.email || String(user.email).trim().toLowerCase() !== String(invite.email).trim().toLowerCase()) {
+    const email = String(invite.email || '');
+    const maskedEmail = email.replace(/^(.)(.*)(@.*)$/, (_: string, first: string, middle: string, rest: string) => {
+      return first + '*'.repeat(Math.max(1, Math.min(middle.length, 5))) + rest;
+    });
     res.status(403).json({
-      error: `Undangan ini ditujukan untuk ${invite.email}. Masuk dengan akun email tersebut untuk menerima undangan.`,
+      error: `Undangan ini ditujukan untuk ${maskedEmail}. Masuk dengan akun email tersebut untuk menerima undangan.`,
     });
     return;
   }
 
-  // 4. Masukkan ke tabel brand_members
+  // 4. Pastikan workspace pemilik masih aktif sebelum anggota bergabung.
+  const ownerId = await getBrandOwnerId(invite.brand_id);
+  if (!ownerId) {
+    res.status(403).json({ error: 'Workspace ini sudah tidak tersedia.' });
+    return;
+  }
+  const ownerProfile = await getProfileRow(ownerId);
+  if (!ownerProfile || (ownerProfile.status && ownerProfile.status !== 'active')) {
+    res.status(403).json({ error: 'Workspace pemilik sedang tidak aktif.' });
+    return;
+  }
+  if (!(await getActiveLicenseRow(ownerId))) {
+    res.status(403).json({ error: 'Paket pemilik workspace belum aktif.' });
+    return;
+  }
+
+  // 5. Masukkan ke tabel brand_members
   const { error: memberErr } = await supabaseAdmin
     .from('brand_members')
     .upsert({
@@ -1413,15 +1921,17 @@ app.post('/api/team/invitations/accept', authenticateUser, async (req: Request, 
   await supabaseAdmin.from('activity_logs').insert({
     brand_id: invite.brand_id,
     user_id: user.id,
-    action: 'joined_team',
+    action: 'Bergabung ke Tim',
     entity_type: 'brand_member',
-    details: { role: invite.role, email: invite.email },
+    details: { role: invite.role },
   });
 
   const brandName = (invite.brands as any)?.name || 'Brand';
   res.json({
     success: true,
-    message: `Selamat! Anda berhasil bergabung ke dalam tim '${brandName}' sebagai ${invite.role}.`,
+    message: `Selamat! Anda berhasil bergabung ke dalam tim '${brandName}' sebagai ${
+      invite.role === 'admin' ? 'Admin' : invite.role === 'editor' ? 'Editor' : 'Anggota'
+    }.`,
     brand_id: invite.brand_id,
   });
 });
@@ -1437,7 +1947,7 @@ app.delete('/api/team/invitations/:id', authenticateUser, async (req: Request, r
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1489,7 +1999,7 @@ app.patch('/api/team/members/:userId', authenticateUser, async (req: Request, re
   }
 
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1570,13 +2080,14 @@ app.patch('/api/team/members/:userId', authenticateUser, async (req: Request, re
   await supabaseAdmin.from('activity_logs').insert({
     brand_id,
     user_id: user.id,
-    action: 'updated_member_role',
+    action: 'Mengubah Peran Anggota',
     entity_type: 'brand_member',
     entity_id: targetUserId,
     details: { previous_role: targetMember.role, new_role: role },
   });
 
-  res.json({ success: true, message: `Role anggota berhasil diperbarui menjadi ${role}.` });
+  const roleLabel = role === 'admin' ? 'Admin' : role === 'editor' ? 'Editor' : role === 'owner' ? 'Pemilik' : 'Anggota';
+  res.json({ success: true, message: `Peran anggota berhasil diperbarui menjadi ${roleLabel}.` });
 });
 
 app.delete('/api/team/members/:userId', authenticateUser, async (req: Request, res: Response) => {
@@ -1590,7 +2101,7 @@ app.delete('/api/team/members/:userId', authenticateUser, async (req: Request, r
   }
 
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1656,7 +2167,7 @@ app.delete('/api/team/members/:userId', authenticateUser, async (req: Request, r
   await supabaseAdmin.from('activity_logs').insert({
     brand_id,
     user_id: user.id,
-    action: isSelf ? 'left_brand' : 'removed_member',
+    action: isSelf ? 'Keluar dari Brand' : 'Mengeluarkan Anggota',
     entity_type: 'brand_member',
     entity_id: targetUserId,
     details: { removed_role: targetMember.role },
@@ -1673,110 +2184,156 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
   const { planId } = req.body || {};
   const plan = getPlan(planId);
 
-  if (!plan || !plan.purchasable) {
+  if (!plan || !plan.purchasable || plan.id === 'trial') {
     res.status(400).json({ error: 'Paket tidak valid atau tidak dapat dibeli.' });
     return;
   }
 
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
-    return;
-  }
-
-  const orderId = generateOrderId();
-  const licenseKey = generateLicenseKey(plan.id);
-  const userName =
-    user.user_metadata?.full_name ||
-    user.user_metadata?.name ||
-    (user.email ? String(user.email).split('@')[0] : 'ZaFlow User');
-
-  const { error: txInsertError } = await supabaseAdmin.from('transactions').insert({
-    transaction_id: orderId,
-    user_id: user.id,
-    license_key: licenseKey,
-    status: 'pending',
-    amount: plan.price,
-    plan_id: plan.id,
-    payment_provider: 'midtrans',
-    raw_payload: {
-      plan_id: plan.id,
-      plan_name: plan.name,
-      sandbox_checkout: false,
-    },
-  });
-
-  if (txInsertError) {
-    console.error('Gagal membuat transaksi:', txInsertError);
-    res.status(500).json({
-      error: 'Gagal membuat transaksi. Pastikan migrasi database terbaru sudah dijalankan.',
-    });
-    return;
-  }
-
-  // Mode sandbox lokal: hanya aktif jika ALLOW_SANDBOX_CHECKOUT=true dan
-  // Midtrans tidak dalam mode production.
-  if (!hasMidtrans) {
-    if (!allowSandboxCheckout || midtransIsProduction) {
-      await supabaseAdmin
-        .from('transactions')
-        .update({ status: 'failed', updated_at: new Date().toISOString() })
-        .eq('transaction_id', orderId);
-      res.status(503).json({
-        error: 'Pembayaran Midtrans belum dikonfigurasi. Hubungi admin atau aktifkan MIDTRANS_SERVER_KEY.',
-      });
-      return;
-    }
-
-    const { data: activatedLicense, error: activationError } = await supabaseAdmin.rpc(
-      'activate_license_from_payment',
-      {
-        p_user_id: user.id,
-        p_license_key: licenseKey,
-        p_plan_id: plan.id,
-        p_plan_name: plan.name,
-        p_max_brands: plan.maxBrands,
-        p_max_team_members: plan.maxTeamMembers,
-        p_ai_quota: plan.aiQuota,
-      }
-    );
-
-    if (activationError) {
-      await supabaseAdmin
-        .from('transactions')
-        .update({ status: 'failed', updated_at: new Date().toISOString() })
-        .eq('transaction_id', orderId);
-      res.status(503).json({
-        error: 'Migrasi RPC aktivasi lisensi belum tersedia. Jalankan migrasi 20261020_01 terlebih dahulu.',
-      });
-      return;
-    }
-
-    await supabaseAdmin
-      .from('transactions')
-      .update({
-        status: 'success',
-        paid_at: new Date().toISOString(),
-        raw_payload: { sandbox_checkout: true, plan_id: plan.id, plan_name: plan.name },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('transaction_id', orderId);
-
-    res.json({
-      success: true,
-      sandbox: true,
-      orderId,
-      licenseKey,
-      plan,
-      license: Array.isArray(activatedLicense) ? activatedLicense[0] : activatedLicense,
-      message: `Mode sandbox: lisensi ${plan.name} diaktifkan tanpa pembayaran.`,
-    });
+    res.status(503).json({ error: 'Layanan pembayaran belum siap. Silakan coba lagi.' });
     return;
   }
 
   try {
+    const profile = await getProfileRow(user.id);
+    if (!profile) {
+      res.status(403).json({ error: 'Akun belum siap. Silakan masuk kembali.' });
+      return;
+    }
+    if (profile.status && profile.status !== 'active') {
+      res.status(403).json({ error: 'Akun ini sedang tidak aktif. Hubungi customer service untuk bantuan.' });
+      return;
+    }
+
+    const activeLicense = await getActiveLicenseRow(user.id);
+    if (activeLicense?.is_legacy_lifetime) {
+      res.status(409).json({ error: 'Akun ini sudah memiliki akses seumur hidup.' });
+      return;
+    }
+
+    const [pricing, priorPaid] = await Promise.all([
+      getPricingSettings(),
+      hasPriorPaidAccess(user.id),
+    ]);
+    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing, {
+      isRenewal: priorPaid,
+    });
+    const amount = resolved.effectivePrice;
+
+    const orderId = generateOrderId();
+    const licenseKey = generateLicenseKey(plan.id);
+    const userName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      (user.email ? String(user.email).split('@')[0] : 'ZaFlow User');
+
+    const { error: txInsertError } = await supabaseAdmin.from('transactions').insert({
+      transaction_id: orderId,
+      user_id: user.id,
+      license_key: licenseKey,
+      status: 'pending',
+      amount,
+      plan_id: plan.id,
+      payment_provider: 'midtrans',
+      billing_cycle: 'monthly',
+      is_renewal: priorPaid,
+      raw_payload: {
+        plan_id: plan.id,
+        plan_name: plan.name,
+        normal_price: resolved.normalPrice,
+        promo_price: resolved.promoPrice,
+        effective_price: resolved.effectivePrice,
+        is_promo: resolved.isPromo,
+        is_renewal: priorPaid,
+        sandbox_checkout: false,
+      },
+    });
+
+    if (txInsertError) {
+      console.error('Gagal membuat transaksi:', txInsertError);
+      res.status(500).json({ error: 'Transaksi belum dapat dibuat. Silakan coba lagi.' });
+      return;
+    }
+
+    // Mode sandbox lokal: aktif hanya jika ALLOW_SANDBOX_CHECKOUT=true dan
+    // penyedia pembayaran belum disetel ke production.
+    if (!hasMidtrans) {
+      if (!allowSandboxCheckout || midtransIsProduction) {
+        await supabaseAdmin
+          .from('transactions')
+          .update({ status: 'failed', updated_at: new Date().toISOString() })
+          .eq('transaction_id', orderId);
+        res.status(503).json({
+          error: 'Pembayaran belum tersedia. Silakan hubungi customer service.',
+        });
+        return;
+      }
+
+      const { data: activatedLicense, error: activationError } = await supabaseAdmin.rpc(
+        'activate_subscription_from_payment',
+        {
+          p_user_id: user.id,
+          p_license_key: licenseKey,
+          p_plan_id: plan.id,
+          p_plan_name: plan.name,
+          p_max_brands: plan.maxBrands,
+          p_max_team_members: plan.maxTeamMembers,
+          p_ai_quota: plan.aiQuota,
+          p_period_days: 30,
+        }
+      );
+
+      if (activationError) {
+        await supabaseAdmin
+          .from('transactions')
+          .update({ status: 'failed', updated_at: new Date().toISOString() })
+          .eq('transaction_id', orderId);
+        res.status(503).json({ error: 'Aktivasi langganan belum dapat diproses. Silakan coba lagi.' });
+        return;
+      }
+
+      const activated = Array.isArray(activatedLicense) ? activatedLicense[0] : activatedLicense;
+      await supabaseAdmin
+        .from('transactions')
+        .update({
+          status: 'success',
+          paid_at: new Date().toISOString(),
+          period_start: activated?.current_period_start || new Date().toISOString(),
+          period_end: activated?.current_period_end || null,
+          raw_payload: {
+            sandbox_checkout: true,
+            plan_id: plan.id,
+            plan_name: plan.name,
+            normal_price: resolved.normalPrice,
+            effective_price: amount,
+            is_promo: resolved.isPromo,
+            is_renewal: priorPaid,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq('transaction_id', orderId);
+
+      res.json({
+        success: true,
+        sandbox: true,
+        orderId,
+        licenseKey,
+        plan: {
+          ...plan,
+          normalPrice: resolved.normalPrice,
+          promoPrice: resolved.promoPrice,
+          effectivePrice: amount,
+          isPromo: resolved.isPromo,
+        },
+        license: normalizeLicense(activated),
+        message: `Pembayaran uji berhasil. Paket ${plan.name} aktif.`,
+      });
+      return;
+    }
+
     const snap = await createMidtransSnapTransaction({
       orderId,
-      amount: plan.price,
+      amount,
       planName: plan.name,
       planId: plan.id,
       userEmail: user.email,
@@ -1791,6 +2348,10 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
         raw_payload: {
           plan_id: plan.id,
           plan_name: plan.name,
+          normal_price: resolved.normalPrice,
+          effective_price: amount,
+          is_promo: resolved.isPromo,
+          is_renewal: priorPaid,
           snap_token: snap.token,
           redirect_url: snap.redirect_url,
         },
@@ -1801,23 +2362,19 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
     res.json({
       success: true,
       orderId,
-      plan,
+      plan: {
+        ...plan,
+        normalPrice: resolved.normalPrice,
+        promoPrice: resolved.promoPrice,
+        effectivePrice: amount,
+        isPromo: resolved.isPromo,
+      },
       token: snap.token,
       redirectUrl: snap.redirect_url,
     });
   } catch (err: unknown) {
-    console.error('Gagal membuat transaksi Midtrans:', err);
-    const message = err instanceof Error ? err.message : 'Gagal membuat transaksi Midtrans.';
-    await supabaseAdmin
-      .from('transactions')
-      .update({
-        status: 'failed',
-        raw_payload: { plan_id: plan.id, error: message },
-        updated_at: new Date().toISOString(),
-      })
-      .eq('transaction_id', orderId);
-
-    res.status(502).json({ error: `Gagal membuat transaksi Midtrans: ${message}` });
+    console.error('Gagal membuat transaksi:', err);
+    res.status(502).json({ error: 'Pembayaran belum dapat dibuat. Silakan coba lagi.' });
   }
 });
 
@@ -1826,11 +2383,11 @@ app.get('/api/payments/midtrans/status/:orderId', authenticateUser, async (req: 
   const user = (req as any).user;
   const orderId = String(req.params.orderId || '');
   if (!orderId) {
-    res.status(400).json({ error: 'orderId wajib diisi.' });
+    res.status(400).json({ error: 'Data pembayaran tidak lengkap.' });
     return;
   }
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
@@ -1857,90 +2414,724 @@ app.get('/api/payments/midtrans/status/:orderId', authenticateUser, async (req: 
 });
 
 app.get('/api/admin/overview', authenticateUser, async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  if (!supabaseAdmin) {
-    res.status(403).json({ error: 'Supabase tidak dikonfigurasi.' });
-    return;
+  const user = await requirePlatformOwner(req, res);
+  if (!user || !supabaseAdmin) return;
+
+  // Akun yang sudah melewati masa simpan 7 hari dibersihkan saat panel dibuka.
+  try {
+    await cleanupExpiredUsers(user.id);
+  } catch (error) {
+    console.warn('Pembersihan akun terjadwal gagal dijalankan:', error);
   }
 
-  const { data: profile } = await supabaseAdmin
-    .from('profiles')
-    .select('system_role')
-    .eq('id', user.id)
-    .maybeSingle();
+  const [usersRes, brandsRes, licensesRes, txRes, logsRes, codesRes, auditRes, pricing, customerService, emailMap] =
+    await Promise.all([
+      supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('brands').select('*').order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('licenses').select('*').order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('transactions').select('*').order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('ai_usage_logs').select('*').order('created_at', { ascending: false }).limit(100),
+      supabaseAdmin.from('activation_codes').select('*').order('created_at', { ascending: false }).limit(200),
+      supabaseAdmin.from('admin_audit_logs').select('*').order('created_at', { ascending: false }).limit(100),
+      getPricingSettings(),
+      getCustomerServiceSettings(),
+      getAuthEmailMap(),
+    ]);
 
-  const isSuperAdmin = profile?.system_role === 'super_admin';
-  if (!isSuperAdmin) {
-    res.status(403).json({ error: 'Akses ditolak. Anda bukan platform administrator.' });
-    return;
+  const licenses = licensesRes.data || [];
+  const licenseByOwner = new Map<string, any>();
+  for (const license of licenses) {
+    if (!license.owner_user_id) continue;
+    if (!licenseByOwner.has(license.owner_user_id)) {
+      licenseByOwner.set(license.owner_user_id, license);
+    }
   }
 
-  const [usersRes, brandsRes, licensesRes, txRes, logsRes] = await Promise.all([
-    supabaseAdmin.from('profiles').select('*').order('created_at', { ascending: false }).limit(50),
-    supabaseAdmin.from('brands').select('*').order('created_at', { ascending: false }).limit(50),
-    supabaseAdmin.from('licenses').select('*').order('created_at', { ascending: false }).limit(50),
-    supabaseAdmin.from('transactions').select('*').order('created_at', { ascending: false }).limit(50),
-    supabaseAdmin.from('ai_usage_logs').select('*').order('created_at', { ascending: false }).limit(50),
-  ]);
+  const users = (usersRes.data || []).map((profile: any) => {
+    const license = licenseByOwner.get(profile.id);
+    return {
+      ...profile,
+      email: emailMap.get(profile.id) || '',
+      license: normalizeLicense(license),
+    };
+  });
 
   res.json({
-    users: usersRes.data || [],
+    users,
     brands: brandsRes.data || [],
-    licenses: licensesRes.data || [],
+    licenses: licenses.map((license: any) => normalizeLicense(license)),
     transactions: txRes.data || [],
     aiLogs: logsRes.data || [],
+    activationCodes: codesRes.data || [],
+    auditLogs: auditRes.data || [],
+    pricing,
+    customerService,
+    summary: {
+      users: users.length,
+      activeSubscriptions: licenses.filter((l: any) => l.status === 'active' && !l.is_legacy_lifetime).length,
+      legacyLifetime: licenses.filter((l: any) => l.is_legacy_lifetime).length,
+      trials: licenses.filter((l: any) => l.status === 'trialing').length,
+      pendingDeletion: users.filter((u: any) => u.status === 'pending_deletion').length,
+      transactions: (txRes.data || []).length,
+    },
   });
+});
+
+app.patch('/api/admin/users/:id', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+
+  const targetId = String(req.params.id || '');
+  const { full_name, email, system_role, status } = req.body || {};
+  if (!targetId) {
+    res.status(400).json({ error: 'Akun tidak valid.' });
+    return;
+  }
+
+  const targetProfile = await getProfileRow(targetId);
+  if (!targetProfile) {
+    res.status(404).json({ error: 'Akun tidak ditemukan.' });
+    return;
+  }
+
+  if (targetId === admin.id && system_role && system_role !== 'super_admin') {
+    res.status(400).json({ error: 'Anda tidak dapat menurunkan akses akun sendiri.' });
+    return;
+  }
+
+  if (targetId === admin.id && status && status !== 'active') {
+    res.status(400).json({ error: 'Anda tidak dapat menonaktifkan akun sendiri.' });
+    return;
+  }
+
+  if (targetProfile.system_role === 'super_admin'
+      && system_role === 'user'
+      && (await countPlatformOwners()) <= 1) {
+    res.status(400).json({ error: 'Pemilik platform terakhir tidak dapat diturunkan.' });
+    return;
+  }
+
+  try {
+    if (email && String(email).trim().toLowerCase() !== String((await getAuthEmailMap()).get(targetId) || '').toLowerCase()) {
+      const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(targetId, {
+        email: String(email).trim(),
+      });
+      if (authError) {
+        res.status(400).json({ error: 'Email akun belum dapat diperbarui.' });
+        return;
+      }
+    }
+
+    const updates: Record<string, unknown> = {};
+    if (typeof full_name === 'string' && full_name.trim()) updates.full_name = full_name.trim();
+    if (system_role === 'user' || system_role === 'super_admin') updates.system_role = system_role;
+    updates.updated_at = new Date().toISOString();
+
+    const { error } = await supabaseAdmin.from('profiles').update(updates).eq('id', targetId);
+    if (error) throw error;
+
+    if (status === 'active' || status === 'suspended' || status === 'pending_deletion') {
+      await setAccountStatus(targetId, status);
+    }
+
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'update_user',
+      targetType: 'user',
+      targetId,
+      details: { fields: Object.keys(updates) },
+    });
+
+    res.json({ success: true, message: 'Data akun berhasil diperbarui.' });
+  } catch (error) {
+    console.error('Gagal memperbarui akun:', error);
+    res.status(500).json({ error: 'Data akun belum dapat diperbarui.' });
+  }
+});
+
+app.post('/api/admin/users/:id/reset-password', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const targetId = String(req.params.id || '');
+
+  try {
+    const { data, error } = await supabaseAdmin.auth.admin.getUserById(targetId);
+    if (error || !data?.user?.email) {
+      res.status(404).json({ error: 'Email akun tidak ditemukan.' });
+      return;
+    }
+    const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(data.user.email, {
+      redirectTo: appUrl,
+    });
+    if (resetError) throw resetError;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'reset_password',
+      targetType: 'user',
+      targetId,
+    });
+    res.json({ success: true, message: 'Tautan reset kata sandi telah dikirim.' });
+  } catch {
+    res.status(500).json({ error: 'Tautan reset kata sandi belum dapat dikirim.' });
+  }
+});
+
+async function setAccountStatus(userId: string, status: 'active' | 'suspended' | 'pending_deletion') {
+  if (!supabaseAdmin) throw new Error('Layanan akun belum siap.');
+  const updates: Record<string, unknown> = {
+    status,
+    deleted_at: status === 'pending_deletion' ? new Date().toISOString() : null,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabaseAdmin.from('profiles').update(updates).eq('id', userId);
+  if (error) throw error;
+  try {
+    await supabaseAdmin.auth.admin.updateUserById(userId, {
+      ban_duration: status === 'active' ? 'none' : '876000h',
+    });
+  } catch {
+    // Status profil tetap menjadi sumber utama akses.
+  }
+}
+
+app.post('/api/admin/users/:id/suspend', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const targetId = String(req.params.id || '');
+  if (targetId === admin.id) {
+    res.status(400).json({ error: 'Anda tidak dapat menonaktifkan akun sendiri.' });
+    return;
+  }
+  try {
+    await setAccountStatus(targetId, 'suspended');
+    await writeAdminAudit({ adminId: admin.id, action: 'suspend_user', targetType: 'user', targetId });
+    res.json({ success: true, message: 'Akun berhasil dinonaktifkan.' });
+  } catch {
+    res.status(500).json({ error: 'Akun belum dapat dinonaktifkan.' });
+  }
+});
+
+app.post('/api/admin/users/:id/reactivate', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const targetId = String(req.params.id || '');
+  try {
+    await setAccountStatus(targetId, 'active');
+    await writeAdminAudit({ adminId: admin.id, action: 'reactivate_user', targetType: 'user', targetId });
+    res.json({ success: true, message: 'Akun berhasil diaktifkan kembali.' });
+  } catch {
+    res.status(500).json({ error: 'Akun belum dapat diaktifkan.' });
+  }
+});
+
+app.post('/api/admin/users/:id/soft-delete', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const targetId = String(req.params.id || '');
+  if (targetId === admin.id) {
+    res.status(400).json({ error: 'Anda tidak dapat menghapus akun sendiri.' });
+    return;
+  }
+  try {
+    await setAccountStatus(targetId, 'pending_deletion');
+    await writeAdminAudit({ adminId: admin.id, action: 'soft_delete_user', targetType: 'user', targetId });
+    res.json({ success: true, message: 'Akun dijadwalkan terhapus dalam 7 hari.' });
+  } catch {
+    res.status(500).json({ error: 'Akun belum dapat dijadwalkan untuk dihapus.' });
+  }
+});
+
+app.post('/api/admin/users/:id/restore', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const targetId = String(req.params.id || '');
+  try {
+    await setAccountStatus(targetId, 'active');
+    await writeAdminAudit({ adminId: admin.id, action: 'restore_user', targetType: 'user', targetId });
+    res.json({ success: true, message: 'Akun berhasil dipulihkan.' });
+  } catch {
+    res.status(500).json({ error: 'Akun belum dapat dipulihkan.' });
+  }
+});
+
+async function countPlatformOwners(): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  const { count } = await supabaseAdmin
+    .from('profiles')
+    .select('id', { count: 'exact', head: true })
+    .eq('system_role', 'super_admin');
+  return count || 0;
+}
+
+async function permanentlyDeleteUser(targetId: string, force: boolean): Promise<void> {
+  if (!supabaseAdmin) throw new Error('Layanan akun belum siap.');
+  const { data: ownedBrands } = await supabaseAdmin
+    .from('brands')
+    .select('id')
+    .eq('created_by', targetId);
+
+  if (ownedBrands?.length) {
+    if (!force) {
+      throw new Error('Akun masih memiliki brand. Pindahkan atau hapus brand terlebih dahulu.');
+    }
+
+    // Hapus media brand agar tidak ada berkas yatim setelah akun dihapus.
+    for (const brand of ownedBrands) {
+      try {
+        const { data: files } = await supabaseAdmin.storage
+          .from('content-media')
+          .list(brand.id, { limit: 1000 });
+        if (files?.length) {
+          await supabaseAdmin.storage
+            .from('content-media')
+            .remove(files.map((file: any) => `${brand.id}/${file.name}`));
+        }
+      } catch (error) {
+        console.warn('Gagal membersihkan media brand:', brand.id, error);
+      }
+    }
+
+    const { error: brandError } = await supabaseAdmin
+      .from('brands')
+      .delete()
+      .in('id', ownedBrands.map((brand: any) => brand.id));
+    if (brandError) throw brandError;
+  }
+
+  // Simpan riwayat finansial tanpa data pribadi.
+  const { error: transactionError } = await supabaseAdmin
+    .from('transactions')
+    .update({ user_id: null, raw_payload: { anonymized: true } })
+    .eq('user_id', targetId);
+  if (transactionError) throw transactionError;
+
+  await supabaseAdmin.from('activation_codes').update({ assigned_email: null }).eq('redeemed_by', targetId);
+  await supabaseAdmin.from('licenses').delete().eq('owner_user_id', targetId);
+
+  const { error } = await supabaseAdmin.auth.admin.deleteUser(targetId);
+  if (error) throw error;
+}
+
+app.delete('/api/admin/users/:id', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const targetId = String(req.params.id || '');
+  if (targetId === admin.id) {
+    res.status(400).json({ error: 'Anda tidak dapat menghapus akun sendiri.' });
+    return;
+  }
+
+  const targetProfile = await getProfileRow(targetId);
+  if (targetProfile?.system_role === 'super_admin' && (await countPlatformOwners()) <= 1) {
+    res.status(400).json({ error: 'Pemilik platform terakhir tidak dapat dihapus.' });
+    return;
+  }
+
+  try {
+    await permanentlyDeleteUser(targetId, Boolean(req.body?.force));
+    await writeAdminAudit({ adminId: admin.id, action: 'delete_user', targetType: 'user', targetId });
+    res.json({ success: true, message: 'Akun dihapus permanen.' });
+  } catch (error: any) {
+    res.status(400).json({ error: error?.message || 'Akun belum dapat dihapus.' });
+  }
+});
+
+async function cleanupExpiredUsers(adminId: string): Promise<number> {
+  if (!supabaseAdmin) return 0;
+  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data: pending } = await supabaseAdmin
+    .from('profiles')
+    .select('id, full_name, deleted_at, system_role')
+    .eq('status', 'pending_deletion')
+    .lt('deleted_at', cutoff);
+
+  let deleted = 0;
+  let remainingPlatformOwners = await countPlatformOwners();
+  for (const profile of pending || []) {
+    if (profile.id === adminId) continue;
+    if (profile.system_role === 'super_admin' && remainingPlatformOwners <= 1) continue;
+    try {
+      await permanentlyDeleteUser(profile.id, true);
+      deleted += 1;
+      if (profile.system_role === 'super_admin') remainingPlatformOwners -= 1;
+    } catch (error) {
+      console.warn('Gagal menghapus akun terjadwal:', profile.id, error);
+    }
+  }
+
+  if (deleted > 0) {
+    await writeAdminAudit({
+      adminId,
+      action: 'cleanup_deleted_users',
+      targetType: 'system',
+      details: { deleted },
+    });
+  }
+  return deleted;
+}
+
+app.post('/api/admin/users/cleanup', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  try {
+    const deleted = await cleanupExpiredUsers(admin.id);
+    res.json({ success: true, message: `${deleted} akun dibersihkan.`, deleted });
+  } catch {
+    res.status(500).json({ error: 'Pembersihan akun belum dapat dijalankan.' });
+  }
+});
+
+app.get('/api/admin/pricing', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  res.json({ pricing: await getPricingSettings() });
+});
+
+app.put('/api/admin/pricing', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const incoming = req.body?.pricing || req.body;
+  if (!incoming?.plans) {
+    res.status(400).json({ error: 'Pengaturan harga tidak lengkap.' });
+    return;
+  }
+
+  try {
+    const normalize = (planId: 'starter' | 'pro' | 'ultra') => {
+      const fallback = DEFAULT_PRICING_SETTINGS.plans[planId];
+      const row = incoming.plans[planId] || {};
+      const normalPrice = Math.max(0, Math.round(Number(row.normalPrice ?? fallback.normalPrice) || fallback.normalPrice));
+      const promoPrice = Math.max(0, Math.round(Number(row.promoPrice ?? fallback.promoPrice) || fallback.promoPrice));
+      const promoActive = Boolean(row.promoActive);
+      const promoStartsAt = row.promoStartsAt || null;
+      const promoEndsAt = row.promoEndsAt || null;
+      if (promoActive && !promoEndsAt) {
+        throw new Error('Tanggal akhir promo wajib diisi agar promo tidak berjalan tanpa batas.');
+      }
+      if (promoStartsAt && promoEndsAt && new Date(promoStartsAt).getTime() >= new Date(promoEndsAt).getTime()) {
+        throw new Error('Tanggal akhir promo harus setelah tanggal mulai.');
+      }
+      return {
+        normalPrice,
+        promoPrice: Math.min(promoPrice, normalPrice),
+        promoActive,
+        promoStartsAt,
+        promoEndsAt,
+        promoLabel: String(row.promoLabel || 'Promo'),
+      };
+    };
+
+    const pricing: PricingSettings = {
+      currency: 'IDR',
+      plans: {
+        starter: normalize('starter'),
+        pro: normalize('pro'),
+        ultra: normalize('ultra'),
+      },
+    };
+    await writeAppSetting('pricing', pricing, admin.id);
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'update_pricing',
+      targetType: 'settings',
+      targetId: 'pricing',
+      details: pricing as unknown as Record<string, unknown>,
+    });
+    res.json({ success: true, message: 'Harga dan promo berhasil disimpan.', pricing });
+  } catch (error: any) {
+    const message = String(error?.message || '');
+    if (message.startsWith('Tanggal')) {
+      res.status(400).json({ error: message });
+      return;
+    }
+    res.status(500).json({ error: 'Harga dan promo belum dapat disimpan.' });
+  }
+});
+
+app.get('/api/admin/customer-service', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  res.json({ customerService: await getCustomerServiceSettings() });
+});
+
+app.put('/api/admin/customer-service', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin) return;
+  const incoming = req.body?.customerService || req.body || {};
+  const customerService: CustomerServiceSettings = {
+    whatsapp: normalizeWhatsAppNumber(String(incoming.whatsapp || '')),
+    label: String(incoming.label || DEFAULT_CUSTOMER_SERVICE.label).slice(0, 80),
+    message: String(incoming.message || DEFAULT_CUSTOMER_SERVICE.message).slice(0, 300),
+    active: Boolean(incoming.active),
+  };
+  if (customerService.active && !customerService.whatsapp) {
+    res.status(400).json({ error: 'Nomor WhatsApp wajib diisi jika kontak diaktifkan.' });
+    return;
+  }
+
+  try {
+    await writeAppSetting('customer_service', customerService, admin.id);
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'update_customer_service',
+      targetType: 'settings',
+      targetId: 'customer_service',
+    });
+    res.json({ success: true, message: 'Kontak customer service berhasil disimpan.', customerService });
+  } catch {
+    res.status(500).json({ error: 'Kontak customer service belum dapat disimpan.' });
+  }
+});
+
+app.get('/api/admin/activation-codes', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const { data } = await supabaseAdmin
+    .from('activation_codes')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  res.json({ codes: data || [] });
+});
+
+app.post('/api/admin/activation-codes', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+
+  const planId = String(req.body?.planId || '').toLowerCase();
+  const plan = getPlan(planId);
+  if (!plan || (planId !== 'trial' && !plan.purchasable)) {
+    res.status(400).json({ error: 'Paket kode aktivasi tidak valid.' });
+    return;
+  }
+
+  const durationDays = planId === 'trial'
+    ? TRIAL_DAYS
+    : Math.max(1, Math.min(3650, Number(req.body?.durationDays) || 30));
+  const quantity = Math.max(1, Math.min(50, Number(req.body?.quantity) || 1));
+  const assignedEmail = req.body?.assignedEmail ? String(req.body.assignedEmail).trim().toLowerCase() : null;
+  const rawExpiresInDays = Number(req.body?.expiresInDays);
+  const expiresInDays = Number.isFinite(rawExpiresInDays)
+    ? Math.max(0, Math.min(3650, rawExpiresInDays))
+    : 30;
+  const expiresAt = expiresInDays > 0
+    ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+
+  try {
+    const rows = Array.from({ length: quantity }, () => ({
+      code: generateActivationCode(plan.id),
+      plan_id: plan.id,
+      plan_name: plan.name,
+      duration_days: durationDays,
+      max_uses: 1,
+      assigned_email: assignedEmail,
+      expires_at: expiresAt,
+      status: 'active',
+      created_by: admin.id,
+    }));
+    const { data, error } = await supabaseAdmin
+      .from('activation_codes')
+      .insert(rows)
+      .select('*');
+    if (error) throw error;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'create_activation_codes',
+      targetType: 'activation_code',
+      details: { planId, quantity, durationDays, assignedEmail },
+    });
+    res.json({ success: true, message: 'Kode aktivasi berhasil dibuat.', codes: data || [] });
+  } catch {
+    res.status(500).json({ error: 'Kode aktivasi belum dapat dibuat.' });
+  }
+});
+
+app.patch('/api/admin/activation-codes/:id/revoke', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const codeId = String(req.params.id || '');
+  try {
+    const { error } = await supabaseAdmin
+      .from('activation_codes')
+      .update({ status: 'revoked', updated_at: new Date().toISOString() })
+      .eq('id', codeId)
+      .eq('status', 'active');
+    if (error) throw error;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'revoke_activation_code',
+      targetType: 'activation_code',
+      targetId: codeId,
+    });
+    res.json({ success: true, message: 'Kode aktivasi berhasil dicabut.' });
+  } catch {
+    res.status(500).json({ error: 'Kode aktivasi belum dapat dicabut.' });
+  }
+});
+
+app.post('/api/admin/subscriptions/:userId/extend', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const targetUserId = String(req.params.userId || '');
+  const days = Math.max(1, Math.min(3650, Number(req.body?.days) || 30));
+
+  const { data: license } = await supabaseAdmin
+    .from('licenses')
+    .select('*')
+    .eq('owner_user_id', targetUserId)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!license) {
+    res.status(404).json({ error: 'Langganan aktif tidak ditemukan.' });
+    return;
+  }
+  if (license.is_legacy_lifetime) {
+    res.status(400).json({ error: 'Akun ini memiliki akses lama tanpa batas waktu.' });
+    return;
+  }
+
+  const base = license.current_period_end && new Date(license.current_period_end).getTime() > Date.now()
+    ? new Date(license.current_period_end).getTime()
+    : Date.now();
+  const periodEnd = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('licenses')
+      .update({
+        status: 'active',
+        current_period_end: periodEnd,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', license.id);
+    if (error) throw error;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'extend_subscription',
+      targetType: 'subscription',
+      targetId: targetUserId,
+      details: { days, periodEnd },
+    });
+    res.json({ success: true, message: `Langganan diperpanjang ${days} hari.`, periodEnd });
+  } catch {
+    res.status(500).json({ error: 'Langganan belum dapat diperpanjang.' });
+  }
+});
+
+app.patch('/api/admin/subscriptions/:userId', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const targetUserId = String(req.params.userId || '');
+  const { planId, status } = req.body || {};
+
+  const { data: license } = await supabaseAdmin
+    .from('licenses')
+    .select('*')
+    .eq('owner_user_id', targetUserId)
+    .in('status', ['active', 'trialing', 'past_due'])
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (!license) {
+    res.status(404).json({ error: 'Langganan aktif tidak ditemukan.' });
+    return;
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (status === 'revoked' || status === 'expired' || status === 'active') {
+    updates.status = status;
+  }
+  if (planId) {
+    const plan = getPlan(planId);
+    if (!plan || plan.id === 'trial') {
+      res.status(400).json({ error: 'Paket tidak valid.' });
+      return;
+    }
+    const periodStart = new Date();
+    const periodEnd = new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+    updates.plan_id = plan.id;
+    updates.plan_name = plan.name;
+    updates.max_brands = plan.maxBrands;
+    updates.max_team_members = plan.maxTeamMembers;
+    updates.ai_quota_total = plan.aiQuota;
+    updates.ai_quota_used = 0;
+    updates.is_legacy_lifetime = false;
+    updates.billing_cycle = 'monthly';
+    updates.current_period_start = periodStart.toISOString();
+    updates.current_period_end = periodEnd.toISOString();
+    updates.status = 'active';
+  }
+
+  try {
+    const { error } = await supabaseAdmin.from('licenses').update(updates).eq('id', license.id);
+    if (error) throw error;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'update_subscription',
+      targetType: 'subscription',
+      targetId: targetUserId,
+      details: updates,
+    });
+    res.json({ success: true, message: 'Langganan berhasil diperbarui.' });
+  } catch {
+    res.status(500).json({ error: 'Langganan belum dapat diperbarui.' });
+  }
+});
+
+app.get('/api/admin/audit-logs', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const { data } = await supabaseAdmin
+    .from('admin_audit_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  res.json({ logs: data || [] });
 });
 
 app.get('/api/ai/quota', authenticateUser, async (req: Request, res: Response) => {
   const user = (req as any).user;
 
   if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Database belum dikonfigurasi di server.' });
+    res.status(503).json({ error: 'Layanan belum siap. Silakan coba lagi.' });
     return;
   }
 
   try {
-    const { data: license } = await supabaseAdmin
-      .from('licenses')
-      .select('id, ai_quota_total, ai_quota_used')
-      .eq('owner_user_id', user.id)
-      .eq('status', 'active')
-      .maybeSingle();
+    const license = await getActiveLicenseRow(user.id);
 
     if (!license) {
       res.json({
-        remaining: TRIAL_PLAN.aiQuota,
-        total: TRIAL_PLAN.aiQuota,
+        remaining: 0,
+        total: 0,
         used: 0,
         hasLicense: false,
-        planId: TRIAL_PLAN.id,
-        planName: TRIAL_PLAN.name,
-        maxBrands: TRIAL_PLAN.maxBrands,
-        maxTeamMembers: TRIAL_PLAN.maxTeamMembers,
+        planId: null,
+        planName: null,
+        maxBrands: 1,
+        maxTeamMembers: 1,
       });
       return;
     }
 
-    const { data: licenseDetails } = await supabaseAdmin
-      .from('licenses')
-      .select('plan_id, plan_name, max_brands, max_team_members')
-      .eq('id', (license as any).id)
-      .maybeSingle();
-
-    const remaining = Math.max(0, license.ai_quota_total - license.ai_quota_used);
+    const remaining = Math.max(0, Number(license.ai_quota_total) - Number(license.ai_quota_used));
     res.json({
       remaining,
-      total: license.ai_quota_total,
-      used: license.ai_quota_used,
+      total: Number(license.ai_quota_total) || 0,
+      used: Number(license.ai_quota_used) || 0,
       hasLicense: true,
-      planId: licenseDetails?.plan_id || null,
-      planName: licenseDetails?.plan_name || null,
-      maxBrands: licenseDetails?.max_brands || 1,
-      maxTeamMembers: licenseDetails?.max_team_members || 1,
+      planId: license.plan_id || null,
+      planName: license.plan_name || null,
+      maxBrands: license.max_brands || 1,
+      maxTeamMembers: license.max_team_members || 1,
     });
   } catch (err) {
-    res.status(500).json({ error: 'Gagal memeriksa kuota AI.' });
+    res.status(500).json({ error: 'Kuota AI belum dapat diperiksa.' });
   }
 });
 
@@ -1950,12 +3141,12 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   const targetImage = imageUrl || imageBase64;
 
   if (!targetImage || !brandId || typeof targetImage !== 'string') {
-    res.status(400).json({ error: 'Parameter tidak lengkap (brandId dan file gambar/video wajib diisi).' });
+    res.status(400).json({ error: 'Data yang diperlukan belum lengkap. Pilih brand dan unggah file terlebih dahulu.' });
     return;
   }
 
   if (!hasGeminiKey) {
-    res.status(503).json({ error: 'Layanan AI belum dikonfigurasi. Hubungi admin untuk mengatur GEMINI_API_KEY.' });
+    res.status(503).json({ error: 'Layanan AI belum tersedia. Silakan coba lagi nanti.' });
     return;
   }
 
@@ -1977,7 +3168,7 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   const estimatedBytes = Buffer.byteLength(base64Data, 'base64');
   if (estimatedBytes > 3 * 1024 * 1024) {
     res.status(413).json({
-      error: 'Ukuran file terlalu besar. Maksimal 3 MB (agar base64 tetap di bawah batas 4.5 MB Vercel Functions).',
+      error: 'Ukuran file terlalu besar. Maksimal 3 MB. Kompres file sebelum mengunggah.',
     });
     return;
   }
@@ -2073,12 +3264,12 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
 
     const responseText = response.text?.trim() || '';
     if (!responseText) {
-      throw new Error('Gemini tidak mengembalikan teks analisis. Coba gunakan file yang lebih kecil atau model lain.');
+      throw new Error('Layanan AI tidak mengembalikan hasil analisis. Coba gunakan file yang lebih kecil.');
     }
 
     const parsedMetrics = parseJsonSafely(responseText);
     if (!parsedMetrics || typeof parsedMetrics !== 'object' || Array.isArray(parsedMetrics)) {
-      throw new Error('Respons Gemini bukan JSON metrik yang valid.');
+      throw new Error('Hasil analisis AI tidak dapat dibaca. Silakan coba lagi.');
     }
 
     const tokensConsumed = Number((response as any)?.usageMetadata?.totalTokenCount) || 0;
@@ -2110,9 +3301,8 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
 
     res.status(500).json({
       error: isOverloaded
-        ? 'Layanan AI Gemini sedang mengalami lonjakan antrian sementara. Kredit AI Anda telah dikembalikan otomatis. Silakan coba klik sekali lagi.'
-        : 'Gagal memproses gambar insight dengan AI Gemini. Kredit AI Anda telah dikembalikan secara otomatis.',
-      details: errMessage,
+        ? 'Layanan AI sedang mengalami lonjakan antrian sementara. Kredit AI Anda telah dikembalikan otomatis. Silakan coba klik sekali lagi.'
+        : 'Gagal memproses gambar insight. Kredit AI Anda telah dikembalikan secara otomatis.',
     });
   }
 });
@@ -2127,7 +3317,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
   }
 
   if (!hasGeminiKey) {
-    res.status(503).json({ error: 'Layanan AI belum dikonfigurasi. Hubungi admin untuk mengatur GEMINI_API_KEY.' });
+    res.status(503).json({ error: 'Layanan AI belum tersedia. Silakan coba lagi nanti.' });
     return;
   }
 
@@ -2302,32 +3492,31 @@ PRINSIP WAJIB:
 
     res.status(500).json({
       error: isOverloaded
-        ? 'Layanan AI Gemini sedang mengalami lonjakan antrian sementara. Kredit AI Anda telah dikembalikan otomatis. Silakan coba klik sekali lagi.'
+        ? 'Layanan AI sedang mengalami lonjakan antrian sementara. Kredit AI Anda telah dikembalikan otomatis. Silakan coba klik sekali lagi.'
         : 'Gagal menghasilkan rekomendasi strategi AI. Kredit AI Anda telah dikembalikan secara otomatis.',
-      details: errMessage,
     });
   }
 });
 
 // API fallback agar request ke endpoint tidak dikenal tidak jatuh ke index.html.
 app.use('/api', (_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Endpoint API tidak ditemukan.' });
+  res.status(404).json({ error: 'Layanan tidak ditemukan.' });
 });
 
 // Error handler terpusat, termasuk payload terlalu besar dan JSON rusak.
 app.use((err: any, _req: Request, res: Response, _next: () => void) => {
   if (err?.type === 'entity.too.large') {
     res.status(413).json({
-      error: 'Payload terlalu besar. Maksimal 4.5 MB (batas Vercel Functions). Kompres gambar/video sebelum mengunggah.',
+      error: 'Ukuran data terlalu besar. Maksimal 4,5 MB. Kompres gambar atau video sebelum mengunggah.',
     });
     return;
   }
   if (err instanceof SyntaxError && 'body' in err) {
-    res.status(400).json({ error: 'Body JSON tidak valid.' });
+    res.status(400).json({ error: 'Permintaan tidak dapat dibaca. Silakan coba lagi.' });
     return;
   }
   console.error('Unhandled server error:', err);
-  res.status(500).json({ error: 'Kesalahan internal server.' });
+  res.status(500).json({ error: 'Terjadi kendala. Silakan coba lagi.' });
 });
 
 // Diekspor untuk Vercel Function (api/[...path].ts) dan launcher lokal.

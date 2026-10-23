@@ -92,7 +92,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
 
   const handleDelete = async () => {
     if (!canDeleteBrand) {
-      setError('Hanya owner brand yang dapat menghapus workspace.');
+      setError('Hanya pemilik brand yang dapat menghapus workspace.');
       return;
     }
     if (!window.confirm(`PERINGATAN: Apakah Anda yakin ingin menghapus workspace "${brand.name}" beserta seluruh konten di dalamnya? Tindakan ini permanen.`)) {
@@ -107,7 +107,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
       onDeleted();
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal menghapus brand. Pastikan Anda adalah pemilik (owner) brand ini.');
+      setError(err instanceof Error ? err.message : 'Gagal menghapus brand. Pastikan Anda adalah pemilik brand ini.');
     } finally {
       setDeleting(false);
     }
@@ -248,7 +248,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
                 <span>Hapus Brand</span>
               </button>
             ) : (
-              <span className="text-[11px] text-slate-400">Hanya owner dapat menghapus brand</span>
+              <span className="text-[11px] text-slate-400">Hanya pemilik dapat menghapus brand</span>
             )}
 
             <div className="flex items-center gap-2">

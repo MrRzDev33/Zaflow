@@ -1,540 +1,926 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ShieldCheck,
-  Users,
-  Database,
-  Key,
-  CreditCard,
-  RefreshCw,
-  Upload,
-  Link2,
-  RotateCcw,
+  Ban,
+  CalendarPlus,
   CheckCircle2,
-  AlertCircle,
-  Eye,
-  Sliders,
+  Copy,
+  CreditCard,
+  Key,
+  Loader2,
+  Mail,
+  MessageCircle,
+  Pencil,
+  Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ScrollText,
+  ShieldCheck,
+  Tag,
+  Ticket,
+  Trash2,
+  UserCog,
+  Users,
+  X,
 } from 'lucide-react';
-import { supabase, isConfigured } from '../../config/supabase.ts';
-import { useAppBranding } from '../../hooks/useAppBranding.ts';
+import { supabase } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
-import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
+import { PURCHASABLE_PLANS, formatIDR, isPromoWindowActive } from '../../config/plans.ts';
+import { AdminBrandingPanel } from './AdminBrandingPanel.tsx';
 
 interface AdminPanelViewProps {
   currentUserEmail?: string;
 }
 
-export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
-  const { logoUrl, updateLogoUrl, uploadLogoFile, resetLogo, isCustomLogo } = useAppBranding();
+interface AdminUser {
+  id: string;
+  full_name: string;
+  email: string;
+  system_role: 'user' | 'super_admin';
+  status?: string;
+  deleted_at?: string | null;
+  trial_used_at?: string | null;
+  created_at: string;
+  license?: any;
+}
 
-  const [stats, setStats] = useState<any>({
+interface AdminStats {
+  users: AdminUser[];
+  brands: any[];
+  licenses: any[];
+  transactions: any[];
+  aiLogs: any[];
+  activationCodes: any[];
+  auditLogs: any[];
+  pricing: any;
+  customerService: any;
+  summary?: any;
+}
+
+type TabId = 'overview' | 'users' | 'subscriptions' | 'codes' | 'pricing' | 'support' | 'transactions' | 'audit' | 'settings';
+
+const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ className?: string }> }> = [
+  { id: 'overview', label: 'Ringkasan', icon: ShieldCheck },
+  { id: 'users', label: 'Pengguna', icon: Users },
+  { id: 'subscriptions', label: 'Langganan', icon: Key },
+  { id: 'codes', label: 'Kode Aktivasi', icon: Ticket },
+  { id: 'pricing', label: 'Harga & Promo', icon: Tag },
+  { id: 'support', label: 'Customer Service', icon: MessageCircle },
+  { id: 'transactions', label: 'Transaksi', icon: CreditCard },
+  { id: 'audit', label: 'Riwayat Admin', icon: ScrollText },
+  { id: 'settings', label: 'Pengaturan Aplikasi', icon: UserCog },
+];
+
+const licenseStatusLabel: Record<string, string> = {
+  active: 'Aktif',
+  trialing: 'Trial',
+  past_due: 'Masa Tenggang',
+  expired: 'Berakhir',
+  revoked: 'Dicabut',
+  canceled: 'Dibatalkan',
+};
+
+const accountStatusLabel: Record<string, string> = {
+  active: 'Aktif',
+  suspended: 'Dinonaktifkan',
+  pending_deletion: 'Menunggu Dihapus',
+};
+
+const txStatusLabel: Record<string, string> = {
+  pending: 'Menunggu',
+  success: 'Berhasil',
+  settlement: 'Berhasil',
+  failed: 'Gagal',
+  expired: 'Kedaluwarsa',
+};
+
+const auditActionLabel: Record<string, string> = {
+  update_user: 'Ubah akun',
+  reset_password: 'Kirim reset kata sandi',
+  suspend_user: 'Nonaktifkan akun',
+  reactivate_user: 'Aktifkan akun',
+  soft_delete_user: 'Jadwalkan hapus akun',
+  restore_user: 'Pulihkan akun',
+  delete_user: 'Hapus permanen akun',
+  cleanup_deleted_users: 'Bersihkan akun terjadwal',
+  update_pricing: 'Ubah harga & promo',
+  update_customer_service: 'Ubah customer service',
+  create_activation_codes: 'Buat kode aktivasi',
+  revoke_activation_code: 'Cabut kode aktivasi',
+  extend_subscription: 'Perpanjang langganan',
+  update_subscription: 'Ubah langganan',
+};
+
+const auditTargetLabel: Record<string, string> = {
+  user: 'Akun',
+  system: 'Sistem',
+  settings: 'Pengaturan',
+  subscription: 'Langganan',
+  activation_code: 'Kode aktivasi',
+};
+
+function formatDate(value?: string | null): string {
+  if (!value) return '-';
+  try {
+    return new Date(value).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch {
+    return '-';
+  }
+}
+
+function formatDateTime(value?: string | null): string {
+  if (!value) return '-';
+  try {
+    return new Date(value).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '-';
+  }
+}
+
+function toLocalInput(value?: string | null): string {
+  if (!value) return '';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function fromLocalInput(value: string): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
+  const [tab, setTab] = useState<TabId>('overview');
+  const [stats, setStats] = useState<AdminStats>({
     users: [],
     brands: [],
     licenses: [],
     transactions: [],
     aiLogs: [],
+    activationCodes: [],
+    auditLogs: [],
+    pricing: null,
+    customerService: null,
   });
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [flash, setFlash] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  // State untuk manajemen logo
-  const [logoMode, setLogoMode] = useState<'upload' | 'url'>('upload');
-  const [inputUrl, setInputUrl] = useState(logoUrl || '');
-  const [previewUrl, setPreviewUrl] = useState<string | null>(logoUrl || null);
-  const [logoFeedback, setLogoFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
-  const [isProcessingLogo, setIsProcessingLogo] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [userForm, setUserForm] = useState({ full_name: '', email: '', system_role: 'user', status: 'active' });
 
-  // Sync preview saat global logoUrl berubah
-  useEffect(() => {
-    setInputUrl(logoUrl || '');
-    setPreviewUrl(logoUrl || null);
-  }, [logoUrl]);
+  const [pricingDraft, setPricingDraft] = useState<any>(null);
+  const [supportDraft, setSupportDraft] = useState({ whatsapp: '', label: '', message: '', active: false });
+  const [codeForm, setCodeForm] = useState({
+    planId: 'starter',
+    durationDays: 30,
+    assignedEmail: '',
+    expiresInDays: 30,
+    quantity: 1,
+  });
 
-  const fetchAdminData = useCallback(async () => {
+  const emailById = useMemo(() => {
+    const map = new Map<string, string>();
+    stats.users.forEach((user) => map.set(user.id, user.email));
+    return map;
+  }, [stats.users]);
+
+  const request = useCallback(async (path: string, options?: { method?: string; body?: unknown }) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Sesi tidak ditemukan. Silakan masuk kembali.');
+    return apiFetchJson(path, {
+      method: options?.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      ...(options?.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    });
+  }, []);
+
+  const load = useCallback(async () => {
     setLoading(true);
     setErrorMsg(null);
     try {
-      if (!isConfigured) {
-        throw new Error('Supabase belum dikonfigurasi. Hubungkan kredensial Supabase untuk memuat data admin.');
-      }
-
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('Harap masuk terlebih dahulu.');
-
-      const json = await apiFetchJson('/api/admin/overview', {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
+      const data = await request('/api/admin/overview');
+      setStats(data);
+      setPricingDraft(data.pricing || null);
+      setSupportDraft({
+        whatsapp: data.customerService?.whatsapp || '',
+        label: data.customerService?.label || 'Bantuan ZaFlow',
+        message: data.customerService?.message || 'Halo, saya ingin bertanya tentang ZaFlow.',
+        active: Boolean(data.customerService?.active),
       });
-      setStats(json);
     } catch (err: unknown) {
-      setErrorMsg(getApiErrorMessage(err, 'Gagal memuat panel admin.'));
+      setErrorMsg(getApiErrorMessage(err, 'Panel admin belum dapat dimuat.'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [request]);
 
   useEffect(() => {
-    fetchAdminData();
-  }, [fetchAdminData]);
+    load();
+  }, [load]);
 
-  // Handler: Pilih file gambar lokal
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith('image/')) {
-      setLogoFeedback({ type: 'error', message: 'Berkas harus berupa gambar (PNG, JPG, SVG, WebP).' });
-      return;
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      setLogoFeedback({ type: 'error', message: 'Ukuran berkas maksimal 2 MB agar performa tetap cepat.' });
-      return;
-    }
-
-    setIsProcessingLogo(true);
-    setLogoFeedback(null);
+  const run = async (key: string, action: () => Promise<void>, success: string): Promise<boolean> => {
+    setBusy(key);
+    setFlash(null);
     try {
-      const dataUrl = await uploadLogoFile(file);
-      setPreviewUrl(dataUrl);
-      setInputUrl('');
-      setLogoFeedback({ type: 'success', message: 'Logo baru berhasil diunggah dan langsung aktif di seluruh aplikasi ZaFlow.' });
-    } catch (err: any) {
-      setLogoFeedback({ type: 'error', message: err.message || 'Gagal mengunggah logo.' });
+      await action();
+      setFlash({ type: 'success', message: success });
+      await load();
+      return true;
+    } catch (err: unknown) {
+      setFlash({ type: 'error', message: getApiErrorMessage(err, 'Tindakan belum dapat diproses.') });
+      return false;
     } finally {
-      setIsProcessingLogo(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setBusy(null);
     }
   };
 
-  // Handler: Simpan logo via URL eksternal
-  const handleSaveUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inputUrl.trim()) {
-      setLogoFeedback({ type: 'error', message: 'Harap masukkan URL gambar logo yang valid.' });
+  const handleEditUser = (user: AdminUser) => {
+    setEditingUser(user);
+    setUserForm({
+      full_name: user.full_name || '',
+      email: user.email || '',
+      system_role: user.system_role || 'user',
+      status: user.status || 'active',
+    });
+  };
+
+  const handleSaveUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingUser) return;
+    const saved = await run(
+      `user-${editingUser.id}`,
+      () => request(`/api/admin/users/${editingUser.id}`, { method: 'PATCH', body: userForm }),
+      'Data akun berhasil diperbarui.'
+    );
+    if (saved) setEditingUser(null);
+  };
+
+  const handleGenerateCodes = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await run(
+      'create-codes',
+      () => request('/api/admin/activation-codes', { method: 'POST', body: codeForm }),
+      'Kode aktivasi berhasil dibuat.'
+    );
+  };
+
+  const handlePermanentDelete = (user: AdminUser) => {
+    const ownedBrands = stats.brands.filter((brand) => brand.created_by === user.id).length;
+    if (!window.confirm(`Hapus permanen akun ${user.email || user.full_name}? Tindakan ini tidak dapat dibatalkan.`)) {
       return;
     }
 
-    setIsProcessingLogo(true);
-    try {
-      const trimmed = inputUrl.trim();
-      updateLogoUrl(trimmed);
-      setPreviewUrl(trimmed);
-      setLogoFeedback({ type: 'success', message: 'URL logo berhasil disimpan dan langsung diterapkan ke navigasi ZaFlow.' });
-    } catch (err: any) {
-      setLogoFeedback({ type: 'error', message: err.message || 'Gagal menyimpan URL logo.' });
-    } finally {
-      setIsProcessingLogo(false);
+    let force = false;
+    if (ownedBrands > 0) {
+      if (!window.confirm(`Akun ini memiliki ${ownedBrands} brand. Semua brand dan kontennya akan ikut dihapus. Lanjutkan?`)) {
+        return;
+      }
+      force = true;
     }
+
+    run(
+      `delete-${user.id}`,
+      () => request(`/api/admin/users/${user.id}`, { method: 'DELETE', body: { force } }),
+      'Akun dihapus permanen.'
+    );
   };
 
-  // Handler: Reset ke logo bawaan ZaFlow
-  const handleResetLogo = () => {
-    resetLogo();
-    setInputUrl('');
-    setPreviewUrl(null);
-    setLogoFeedback({ type: 'success', message: 'Logo telah dikembalikan ke logo bawaan ZaFlow.' });
+  const handleCleanup = () => {
+    if (!window.confirm('Bersihkan semua akun yang sudah melewati masa simpan 7 hari? Tindakan ini tidak dapat dibatalkan.')) {
+      return;
+    }
+    run(
+      'cleanup-users',
+      () => request('/api/admin/users/cleanup', { method: 'POST' }),
+      'Pembersihan akun selesai.'
+    );
+  };
+
+  const handleSavePricing = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!pricingDraft) return;
+    const payload = {
+      pricing: {
+        currency: 'IDR',
+        plans: {
+          starter: {
+            ...pricingDraft.plans.starter,
+            promoStartsAt: fromLocalInput(pricingDraft.plans.starter.promoStartsAt || ''),
+            promoEndsAt: fromLocalInput(pricingDraft.plans.starter.promoEndsAt || ''),
+          },
+          pro: {
+            ...pricingDraft.plans.pro,
+            promoStartsAt: fromLocalInput(pricingDraft.plans.pro.promoStartsAt || ''),
+            promoEndsAt: fromLocalInput(pricingDraft.plans.pro.promoEndsAt || ''),
+          },
+          ultra: {
+            ...pricingDraft.plans.ultra,
+            promoStartsAt: fromLocalInput(pricingDraft.plans.ultra.promoStartsAt || ''),
+            promoEndsAt: fromLocalInput(pricingDraft.plans.ultra.promoEndsAt || ''),
+          },
+        },
+      },
+    };
+    await run('save-pricing', () => request('/api/admin/pricing', { method: 'PUT', body: payload }), 'Harga dan promo berhasil disimpan.');
+  };
+
+  const handleSaveSupport = async (event: React.FormEvent) => {
+    event.preventDefault();
+    await run(
+      'save-support',
+      () => request('/api/admin/customer-service', { method: 'PUT', body: supportDraft }),
+      'Kontak customer service berhasil disimpan.'
+    );
+  };
+
+  const copyText = async (value: string) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setFlash({ type: 'success', message: 'Kode disalin.' });
+    } catch {
+      setFlash({ type: 'error', message: 'Kode belum dapat disalin.' });
+    }
   };
 
   if (loading) {
     return (
       <div className="py-20 text-center space-y-3">
         <div className="w-8 h-8 border-2 border-[#007AFF] border-t-transparent rounded-full animate-spin mx-auto" />
-        <p className="text-xs font-medium text-slate-500">Memuat konsol administrator...</p>
+        <p className="text-xs font-medium text-slate-500">Memuat panel admin...</p>
       </div>
     );
   }
 
   if (errorMsg) {
     return (
-      <div className="max-w-md mx-auto my-12 p-8 bg-white/80 backdrop-blur-xl border border-black/[0.06] rounded-3xl text-center shadow-[0_8px_30px_rgba(0,0,0,0.04)] space-y-4">
-        <div className="w-12 h-12 rounded-2xl bg-[#007AFF]/10 text-[#007AFF] border border-[#007AFF]/15 flex items-center justify-center mx-auto shadow-2xs">
-          <ShieldCheck className="w-6 h-6" strokeWidth={1.8} />
+      <div className="max-w-md mx-auto my-12 p-8 bg-white border border-slate-200 rounded-3xl text-center shadow-sm space-y-4">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
+          <ShieldCheck className="w-6 h-6" />
         </div>
-        <h2 className="text-base font-bold text-slate-900 tracking-tight">Akses Administrator Terbatas</h2>
+        <h2 className="text-base font-bold text-slate-900">Panel Admin Belum Dapat Dibuka</h2>
         <p className="text-xs text-slate-500 leading-relaxed">{errorMsg}</p>
-        <div className="pt-2">
-          <button
-            onClick={fetchAdminData}
-            className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066D6] text-white rounded-xl text-xs font-semibold transition-all ios-button cursor-pointer shadow-[0_2px_8px_rgba(0,122,255,0.25)]"
-          >
-            Segarkan Kembali
-          </button>
-        </div>
+        <button
+          onClick={load}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-semibold"
+        >
+          Coba Lagi
+        </button>
       </div>
     );
   }
 
+  const summary = stats.summary || {
+    users: stats.users.length,
+    activeSubscriptions: stats.licenses.filter((l) => l.status === 'active').length,
+    trials: stats.licenses.filter((l) => l.status === 'trialing').length,
+    pendingDeletion: stats.users.filter((u) => u.status === 'pending_deletion').length,
+    transactions: stats.transactions.length,
+  };
+
   return (
     <div className="space-y-5">
-      {/* Header bar: iOS Frosted Card */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white/80 backdrop-blur-xl p-5 sm:p-6 rounded-2xl border border-black/[0.06] shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
+      <div className="flex flex-col gap-4 rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-[#5856D6]/10 border border-[#5856D6]/15 text-[#5856D6] rounded-xl shadow-2xs">
-              <ShieldCheck className="w-4.5 h-4.5" strokeWidth={2} />
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-2 text-indigo-600">
+              <ShieldCheck className="h-5 w-5" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-slate-900 tracking-tight">Konsol Platform Super Admin</h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Pengaturan identitas brand aplikasi, lisensi lifetime, dan audit ekosistem ZaFlow.
+              <h1 className="text-base font-bold text-slate-900">Panel Admin ZaFlow</h1>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Kelola akun, langganan, kode aktivasi, harga, dan layanan pelanggan.
               </p>
             </div>
           </div>
         </div>
         <button
-          onClick={fetchAdminData}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-black/[0.04] hover:bg-black/[0.08] text-slate-700 font-medium text-xs rounded-xl transition-all ios-button cursor-pointer self-start sm:self-auto"
+          onClick={load}
+          className="inline-flex items-center gap-1.5 self-start rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:self-auto"
         >
-          <RefreshCw className="w-3.5 h-3.5" strokeWidth={1.8} />
-          <span>Segarkan Data</span>
+          <RefreshCw className="h-3.5 w-3.5" />
+          Segarkan Data
         </button>
       </div>
 
-      {/* Overview Metric Cards - iOS Widget Style */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/80 backdrop-blur-xl p-4.5 rounded-2xl border border-black/[0.06] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:bg-white/95 transition-all ios-button">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Total Pengguna</span>
-            <div className="w-8 h-8 rounded-[9px] bg-[#007AFF]/10 border border-[#007AFF]/15 text-[#007AFF] flex items-center justify-center shadow-2xs">
-              <Users className="w-4 h-4" strokeWidth={2} />
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">{stats.users?.length || 0}</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Akun terdaftar</p>
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-xl p-4.5 rounded-2xl border border-black/[0.06] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:bg-white/95 transition-all ios-button">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Workspace Brand</span>
-            <div className="w-8 h-8 rounded-[9px] bg-[#5856D6]/10 border border-[#5856D6]/15 text-[#5856D6] flex items-center justify-center shadow-2xs">
-              <Database className="w-4 h-4" strokeWidth={2} />
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">{stats.brands?.length || 0}</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Multi-brand workspace aktif</p>
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-xl p-4.5 rounded-2xl border border-black/[0.06] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:bg-white/95 transition-all ios-button">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Lisensi Aktif</span>
-            <div className="w-8 h-8 rounded-[9px] bg-[#34C759]/10 border border-[#34C759]/15 text-[#34C759] flex items-center justify-center shadow-2xs">
-              <Key className="w-4 h-4" strokeWidth={2} />
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">
-              {stats.licenses?.filter((l: any) => l.status === 'active').length || 0}
-            </h3>
-            <p className="text-[11px] text-[#34C759] font-medium mt-0.5">Akses lifetime terverifikasi</p>
-          </div>
-        </div>
-
-        <div className="bg-white/80 backdrop-blur-xl p-4.5 rounded-2xl border border-black/[0.06] shadow-[0_4px_20px_rgba(0,0,0,0.03)] hover:bg-white/95 transition-all ios-button">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-medium text-slate-500">Total Transaksi</span>
-            <div className="w-8 h-8 rounded-[9px] bg-[#FF9500]/10 border border-[#FF9500]/15 text-[#FF9500] flex items-center justify-center shadow-2xs">
-              <CreditCard className="w-4 h-4" strokeWidth={2} />
-            </div>
-          </div>
-          <div className="mt-2.5">
-            <h3 className="text-2xl font-bold tracking-tight text-slate-900 font-mono">{stats.transactions?.length || 0}</h3>
-            <p className="text-[11px] text-slate-400 mt-0.5">Transaksi pembayaran sukses</p>
-          </div>
+      <div className="overflow-x-auto rounded-2xl border border-black/[0.06] bg-white p-1.5 shadow-sm">
+        <div className="flex min-w-max gap-1">
+          {TABS.map((item) => {
+            const Icon = item.icon;
+            const active = tab === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setTab(item.id)}
+                className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                  active ? 'bg-slate-900 text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                }`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
-      {/* Modul Pengaturan Logo Aplikasi (Live Preview & Dual Upload / URL) */}
-      <div className="bg-white/80 backdrop-blur-xl border border-black/[0.06] rounded-2xl p-5 sm:p-6 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-black/[0.06] pb-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#007AFF]/10 text-[#007AFF] rounded-xl border border-[#007AFF]/15">
-                <Sliders className="w-3.5 h-3.5" strokeWidth={2} />
-              </div>
-              <h2 className="text-sm font-semibold tracking-tight text-slate-900">Pengaturan Logo Aplikasi</h2>
-            </div>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Atur logo resmi aplikasi ZaFlow. Perubahan langsung tersinkronisasi ke sidebar, topbar, dan halaman login.
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {isCustomLogo && (
-              <button
-                type="button"
-                onClick={handleResetLogo}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-black/[0.04] hover:bg-black/[0.08] text-slate-700 font-medium text-xs rounded-xl transition-all ios-button cursor-pointer"
-              >
-                <RotateCcw className="w-3 h-3" />
-                <span>Reset ke Default ZaFlow</span>
-              </button>
-            )}
-          </div>
+      {flash && (
+        <div className={`flex items-start gap-2 rounded-2xl border p-3.5 text-xs ${
+          flash.type === 'success'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+            : 'border-red-200 bg-red-50 text-red-700'
+        }`}>
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+          <span>{flash.message}</span>
         </div>
+      )}
 
-        {logoFeedback && (
-          <div
-            className={`p-3.5 rounded-2xl text-xs font-medium flex items-start gap-2.5 ${
-              logoFeedback.type === 'success'
-                ? 'bg-[#34C759]/10 text-[#34C759] border border-[#34C759]/20'
-                : 'bg-red-500/10 text-red-700 border border-red-500/20'
-            }`}
-          >
-            {logoFeedback.type === 'success' ? (
-              <CheckCircle2 className="w-4 h-4 text-[#34C759] shrink-0 mt-0.5" />
-            ) : (
-              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-            )}
-            <span>{logoFeedback.message}</span>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Sisi Kiri: Form Input & Unggah */}
-          <div className="lg:col-span-7 space-y-3.5">
-            {/* iOS Segmented Control */}
-            <div className="inline-flex p-1 bg-black/[0.05] rounded-xl gap-1 text-xs font-medium text-slate-600 border border-black/[0.04]">
-              <button
-                type="button"
-                onClick={() => setLogoMode('upload')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[9px] transition-all ios-button cursor-pointer ${
-                  logoMode === 'upload' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-semibold' : 'hover:text-slate-900'
-                }`}
-              >
-                <Upload className="w-3.5 h-3.5" strokeWidth={1.8} />
-                <span>Upload File Gambar</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setLogoMode('url')}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-[9px] transition-all ios-button cursor-pointer ${
-                  logoMode === 'url' ? 'bg-white text-slate-900 shadow-[0_2px_8px_rgba(0,0,0,0.08)] font-semibold' : 'hover:text-slate-900'
-                }`}
-              >
-                <Link2 className="w-3.5 h-3.5" strokeWidth={1.8} />
-                <span>Input URL Gambar</span>
-              </button>
-            </div>
-
-            {/* Mode Upload File */}
-            {logoMode === 'upload' && (
-              <div className="space-y-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  id="zaflow-logo-file-input"
-                />
-                <label
-                  htmlFor="zaflow-logo-file-input"
-                  className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-black/10 hover:border-[#007AFF]/60 bg-black/[0.02] hover:bg-[#007AFF]/5 rounded-2xl cursor-pointer transition-all group ios-button"
-                >
-                  <div className="w-12 h-12 rounded-2xl bg-white border border-black/10 flex items-center justify-center text-slate-600 group-hover:text-[#007AFF] shadow-2xs mb-2.5 transition-colors">
-                    <Upload className="w-5 h-5" strokeWidth={1.8} />
-                  </div>
-                  <p className="text-xs font-semibold text-slate-800">
-                    Klik untuk memilih berkas gambar logo
-                  </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Format didukung: PNG, JPG, SVG, WebP (Rasio 1:1 direkomendasikan, maks. 2MB)
-                  </p>
-                </label>
+      {tab === 'overview' && (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { label: 'Total Pengguna', value: summary.users, note: 'Akun terdaftar', color: 'blue' },
+              { label: 'Langganan Aktif', value: summary.activeSubscriptions, note: 'Paket berbayar aktif', color: 'emerald' },
+              { label: 'Trial Aktif', value: summary.trials, note: 'Sedang mencoba', color: 'indigo' },
+              { label: 'Menunggu Dihapus', value: summary.pendingDeletion, note: 'Dalam 7 hari', color: 'amber' },
+            ].map((card) => (
+              <div key={card.label} className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+                <p className="text-[11px] font-medium text-slate-500">{card.label}</p>
+                <p className="mt-2 text-2xl font-bold tracking-tight text-slate-900">{card.value}</p>
+                <p className="mt-1 text-[10px] text-slate-400">{card.note}</p>
               </div>
-            )}
-
-            {/* Mode URL */}
-            {logoMode === 'url' && (
-              <form onSubmit={handleSaveUrl} className="space-y-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Tautan / URL Gambar Logo
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="url"
-                      placeholder="https://domain-anda.com/logo-zaflow.png"
-                      value={inputUrl}
-                      onChange={(e) => {
-                        setInputUrl(e.target.value);
-                        setPreviewUrl(e.target.value || null);
-                      }}
-                      className="flex-1 px-3.5 py-2 text-xs bg-black/[0.03] border border-black/10 rounded-xl focus:outline-none focus:bg-white focus:ring-3 focus:ring-[#007AFF]/20 focus:border-[#007AFF] font-mono transition-all"
-                    />
-                    <button
-                      type="submit"
-                      disabled={isProcessingLogo}
-                      className="px-4 py-2 bg-[#007AFF] hover:bg-[#0066D6] disabled:opacity-50 text-white font-medium text-xs rounded-xl shadow-[0_2px_8px_rgba(0,122,255,0.25)] transition-all ios-button cursor-pointer shrink-0"
-                    >
-                      {isProcessingLogo ? 'Menyimpan...' : 'Terapkan URL'}
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Gunakan URL publik yang dapat diakses langsung via HTTPS.
-                </p>
-              </form>
-            )}
+            ))}
           </div>
-
-          {/* Sisi Kanan: Pratinjau Langsung (Dual View: Dark Sidebar & Light Card) */}
-          <div className="lg:col-span-5 bg-black/[0.02] border border-black/[0.06] rounded-2xl p-4.5 space-y-3.5">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-slate-800 flex items-center gap-1.5">
-                <Eye className="w-3.5 h-3.5 text-slate-500" strokeWidth={1.8} />
-                <span>Pratinjau Langsung (Live Preview)</span>
-              </span>
-              <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-lg bg-white border border-black/10 text-slate-600 font-medium shadow-2xs">
-                {isCustomLogo ? 'Kustom' : 'Default Vektor'}
-              </span>
-            </div>
-
-            {/* Pratinjau dalam mode Sidebar Gelap */}
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                Pada Navigasi Sidebar (iPadOS Dark)
-              </span>
-              <div className="p-3 bg-[#18181B] border border-white/10 rounded-xl flex items-center justify-between shadow-2xs">
-                <ZaFlowLogo size="md" showText={true} theme="dark" customLogoUrl={previewUrl} />
-                <span className="text-[10px] text-slate-400 font-mono">v1.2</span>
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-slate-900">Akses Cepat</h2>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button onClick={() => setTab('users')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Kelola Pengguna</button>
+                <button onClick={() => setTab('codes')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Buat Kode Aktivasi</button>
+                <button onClick={() => setTab('pricing')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Atur Harga Promo</button>
+                <button onClick={() => setTab('support')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Kontak WhatsApp</button>
               </div>
             </div>
-
-            {/* Pratinjau dalam mode Permukaan Terang */}
-            <div className="space-y-1">
-              <span className="text-[10px] uppercase tracking-wider font-semibold text-slate-400">
-                Pada Permukaan Terang / Header
-              </span>
-              <div className="p-3 bg-white/90 border border-black/10 rounded-xl flex items-center justify-between shadow-2xs">
-                <ZaFlowLogo size="md" showText={true} theme="light" customLogoUrl={previewUrl} />
-                <span className="text-[10px] text-slate-400 font-mono">Header View</span>
+            <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+              <h2 className="text-sm font-bold text-slate-900">Status Layanan</h2>
+              <div className="mt-3 space-y-2 text-xs text-slate-600">
+                <p className="flex items-center justify-between"><span>Kontak customer service</span><span className={stats.customerService?.active ? 'font-bold text-emerald-600' : 'font-bold text-slate-400'}>{stats.customerService?.active ? 'Aktif' : 'Belum aktif'}</span></p>
+                <p className="flex items-center justify-between"><span>Promo berjalan</span><span className="font-bold text-slate-800">{['starter', 'pro', 'ultra'].filter((id) => isPromoWindowActive(stats.pricing?.plans?.[id] || {})).length} paket</span></p>
+                <p className="flex items-center justify-between"><span>Pemilik akses lama</span><span className="font-bold text-slate-800">{stats.licenses.filter((l) => l.is_legacy_lifetime).length} akun</span></p>
               </div>
             </div>
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Grid Tabel Data Transaksi & Pengguna */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* Transactions Table */}
-        <div className="bg-white/80 backdrop-blur-xl border border-black/[0.06] rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-          <div className="px-5 py-3.5 border-b border-black/[0.06] flex items-center justify-between">
+      {tab === 'users' && (
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
             <div>
-              <h3 className="font-semibold text-xs text-slate-900">Riwayat Transaksi Pembayaran</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Webhook gerbang pembayaran terverifikasi</p>
+              <h2 className="text-sm font-bold text-slate-900">Daftar Pengguna</h2>
+              <p className="text-[11px] text-slate-400">Edit akun, atur akses, nonaktifkan, atau jadwalkan penghapusan.</p>
             </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg border border-black/10 bg-black/[0.02] text-slate-600">
-              {stats.transactions?.length || 0} entri
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-[10px] font-semibold text-slate-500">{stats.users.length} akun</span>
+              <button
+                type="button"
+                onClick={handleCleanup}
+                disabled={busy === 'cleanup-users'}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60"
+              >
+                {busy === 'cleanup-users' ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+                Bersihkan Terjadwal
+              </button>
+            </div>
           </div>
-          <div className="overflow-x-auto max-h-80">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-black/[0.02] text-[10px] uppercase font-semibold text-slate-500 sticky top-0 border-b border-black/[0.06]">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-2.5">ID Transaksi</th>
+                  <th className="px-4 py-2.5">Pengguna</th>
+                  <th className="px-4 py-2.5">Akses</th>
+                  <th className="px-4 py-2.5">Paket</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5 text-right">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {stats.users.map((user) => (
+                  <tr key={user.id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-800">{user.full_name || 'Tanpa Nama'}</p>
+                      <p className="text-[10px] text-slate-400">{user.email || '-'}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${user.system_role === 'super_admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {user.system_role === 'super_admin' ? 'Admin' : 'Pengguna'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.license ? (
+                        <div>
+                          <p className="font-semibold text-slate-700">{user.license.plan_name}</p>
+                          <p className="text-[10px] text-slate-400">{licenseStatusLabel[user.license.status] || user.license.status}</p>
+                        </div>
+                      ) : (
+                        <span className="text-slate-400">Belum ada</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                        user.status === 'active' || !user.status ? 'bg-emerald-100 text-emerald-700'
+                          : user.status === 'suspended' ? 'bg-red-100 text-red-700'
+                            : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {accountStatusLabel[user.status || 'active']}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <button title="Edit akun" onClick={() => handleEditUser(user)} className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-3.5 w-3.5" /></button>
+                        <button title="Kirim tautan reset kata sandi" onClick={() => run(`reset-${user.id}`, () => request(`/api/admin/users/${user.id}/reset-password`, { method: 'POST' }), 'Tautan reset kata sandi telah dikirim.')} className="rounded-lg border border-slate-200 p-1.5 text-slate-500 hover:bg-slate-100"><Mail className="h-3.5 w-3.5" /></button>
+                        {user.status === 'pending_deletion' ? (
+                          <>
+                            <button title="Pulihkan akun" onClick={() => run(`restore-${user.id}`, () => request(`/api/admin/users/${user.id}/restore`, { method: 'POST' }), 'Akun berhasil dipulihkan.')} className="rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-600 hover:bg-emerald-100"><RotateCcw className="h-3.5 w-3.5" /></button>
+                            <button title="Hapus permanen" onClick={() => handlePermanentDelete(user)} className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </>
+                        ) : user.status === 'suspended' ? (
+                          <button title="Aktifkan akun" onClick={() => run(`activate-${user.id}`, () => request(`/api/admin/users/${user.id}/reactivate`, { method: 'POST' }), 'Akun berhasil diaktifkan.')} className="rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-600 hover:bg-emerald-100"><RotateCcw className="h-3.5 w-3.5" /></button>
+                        ) : (
+                          <button title="Nonaktifkan akun" onClick={() => run(`suspend-${user.id}`, () => request(`/api/admin/users/${user.id}/suspend`, { method: 'POST' }), 'Akun berhasil dinonaktifkan.')} className="rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-600 hover:bg-amber-100"><Ban className="h-3.5 w-3.5" /></button>
+                        )}
+                        {user.status !== 'pending_deletion' && (
+                          <button title="Jadwalkan hapus 7 hari" onClick={() => { if (window.confirm(`Jadwalkan penghapusan akun ${user.email || user.full_name}? Akun akan dihapus permanen setelah 7 hari.`)) run(`soft-${user.id}`, () => request(`/api/admin/users/${user.id}/soft-delete`, { method: 'POST' }), 'Akun dijadwalkan terhapus dalam 7 hari.'); }} className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5" /></button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'subscriptions' && (
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
+          <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Langganan Pengguna</h2>
+              <p className="text-[11px] text-slate-400">Perpanjang, ubah paket, atau hentikan akses.</p>
+            </div>
+            <span className="text-[10px] font-semibold text-slate-400">{stats.licenses.length} data</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-2.5">Pengguna</th>
+                  <th className="px-4 py-2.5">Paket</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5">Aktif Sampai</th>
+                  <th className="px-4 py-2.5 text-right">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {stats.users.filter((user) => user.license).map((user) => (
+                  <tr key={user.id} className="hover:bg-slate-50/60">
+                    <td className="px-4 py-3">
+                      <p className="font-semibold text-slate-800">{user.full_name || 'Tanpa Nama'}</p>
+                      <p className="text-[10px] text-slate-400">{user.email || '-'}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      {user.license.is_legacy_lifetime ? (
+                        <span className="font-semibold text-slate-700">{user.license.plan_name}</span>
+                      ) : (
+                        <select
+                          value={user.license.plan_id === 'trial' ? 'trial' : user.license.plan_id}
+                          onChange={(event) => run(`plan-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}`, { method: 'PATCH', body: { planId: event.target.value } }), 'Paket berhasil diubah.')}
+                          className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
+                        >
+                          <option value="trial" disabled>Trial</option>
+                          {PURCHASABLE_PLANS.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${user.license.status === 'active' ? 'bg-emerald-100 text-emerald-700' : user.license.status === 'trialing' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                        {licenseStatusLabel[user.license.status] || user.license.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">
+                      {user.license.is_legacy_lifetime ? 'Seumur hidup' : formatDate(user.license.current_period_end)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        {!user.license.is_legacy_lifetime && (
+                          <button onClick={() => run(`extend-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}/extend`, { method: 'POST', body: { days: 30 } }), 'Langganan diperpanjang 30 hari.')} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"><CalendarPlus className="h-3 w-3" />+30 hari</button>
+                        )}
+                        <button onClick={() => { if (window.confirm('Hentikan akses langganan akun ini?')) run(`revoke-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}`, { method: 'PATCH', body: { status: 'revoked' } }), 'Langganan dihentikan.'); }} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"><Ban className="h-3 w-3" />Hentikan</button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {stats.users.filter((user) => user.license).length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Belum ada langganan.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {tab === 'codes' && (
+        <div className="grid gap-5 lg:grid-cols-[340px_1fr]">
+          <form onSubmit={handleGenerateCodes} className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Ticket className="h-4 w-4 text-blue-600" />
+              <h2 className="text-sm font-bold text-slate-900">Buat Kode Aktivasi</h2>
+            </div>
+            <label className="block text-[11px] font-semibold text-slate-600">Paket
+              <select value={codeForm.planId} onChange={(event) => setCodeForm({ ...codeForm, planId: event.target.value, durationDays: event.target.value === 'trial' ? 3 : 30 })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                <option value="trial">Trial 3 hari</option>
+                {PURCHASABLE_PLANS.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+              </select>
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-[11px] font-semibold text-slate-600">Masa aktif (hari)
+                <input type="number" min={1} max={3650} disabled={codeForm.planId === 'trial'} value={codeForm.durationDays} onChange={(event) => setCodeForm({ ...codeForm, durationDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs disabled:text-slate-400" />
+              </label>
+              <label className="block text-[11px] font-semibold text-slate-600">Jumlah kode
+                <input type="number" min={1} max={50} value={codeForm.quantity} onChange={(event) => setCodeForm({ ...codeForm, quantity: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              </label>
+            </div>
+            <label className="block text-[11px] font-semibold text-slate-600">Kunci email (opsional)
+              <input type="email" value={codeForm.assignedEmail} onChange={(event) => setCodeForm({ ...codeForm, assignedEmail: event.target.value })} placeholder="nama@email.com" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+            </label>
+            <label className="block text-[11px] font-semibold text-slate-600">Kedaluwarsa kode (hari)
+              <input type="number" min={0} max={3650} value={codeForm.expiresInDays} onChange={(event) => setCodeForm({ ...codeForm, expiresInDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+            </label>
+            <button type="submit" disabled={busy === 'create-codes'} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
+              {busy === 'create-codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              Buat Kode
+            </button>
+            <p className="text-[10px] leading-relaxed text-slate-400">Kode sekali pakai. Bisa dibatasi untuk email tertentu dan dicabut kapan saja.</p>
+          </form>
+
+          <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
+            <div className="border-b border-black/[0.06] px-5 py-4">
+              <h2 className="text-sm font-bold text-slate-900">Daftar Kode</h2>
+              <p className="text-[11px] text-slate-400">Pantau pemakaian dan cabut kode yang masih aktif.</p>
+            </div>
+            <div className="max-h-[560px] overflow-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+                  <tr>
+                    <th className="px-4 py-2.5">Kode</th>
+                    <th className="px-4 py-2.5">Paket</th>
+                    <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">Email</th>
+                    <th className="px-4 py-2.5">Kedaluwarsa</th>
+                    <th className="px-4 py-2.5 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {stats.activationCodes.map((code) => {
+                    const isExpired = code.status === 'active' && code.expires_at && new Date(code.expires_at).getTime() < Date.now();
+                    const effectiveStatus = isExpired ? 'expired' : code.status;
+                    return (
+                      <tr key={code.id}>
+                        <td className="px-4 py-2.5">
+                          <button onClick={() => copyText(code.code)} className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-800 hover:text-blue-600">
+                            {code.code}
+                            <Copy className="h-3 w-3" />
+                          </button>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-600">{code.plan_name}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${effectiveStatus === 'active' ? 'bg-emerald-100 text-emerald-700' : effectiveStatus === 'revoked' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {effectiveStatus === 'active' ? 'Aktif' : effectiveStatus === 'used' ? 'Terpakai' : effectiveStatus === 'revoked' ? 'Dicabut' : 'Kedaluwarsa'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-500">{code.assigned_email || '-'}</td>
+                        <td className="px-4 py-2.5 text-slate-500">{formatDate(code.expires_at)}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          {effectiveStatus === 'active' && (
+                            <button onClick={() => run(`revoke-code-${code.id}`, () => request(`/api/admin/activation-codes/${code.id}/revoke`, { method: 'PATCH' }), 'Kode berhasil dicabut.')} className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-600 hover:bg-red-100">Cabut</button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {stats.activationCodes.length === 0 && (
+                    <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Belum ada kode aktivasi.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'pricing' && pricingDraft && (
+        <form onSubmit={handleSavePricing} className="space-y-5">
+          <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Harga & Promo</h2>
+                <p className="mt-1 text-[11px] text-slate-500">Promo hanya berlaku untuk pembelian paket baru, bukan perpanjangan.</p>
+              </div>
+              <button type="submit" disabled={busy === 'save-pricing'} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
+                {busy === 'save-pricing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Simpan Harga
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-4 lg:grid-cols-3">
+            {(['starter', 'pro', 'ultra'] as const).map((planId) => {
+              const plan = pricingDraft.plans[planId];
+              return (
+                <div key={planId} className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-slate-900">{planId.charAt(0).toUpperCase() + planId.slice(1)}</h3>
+                    <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
+                      <input type="checkbox" checked={Boolean(plan.promoActive)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoActive: event.target.checked } } })} />
+                      Promo aktif
+                    </label>
+                  </div>
+                  <label className="block text-[11px] font-semibold text-slate-600">Harga normal
+                    <input type="number" min={0} value={plan.normalPrice} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, normalPrice: Number(event.target.value) } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-slate-600">Harga promo
+                    <input type="number" min={0} value={plan.promoPrice} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoPrice: Number(event.target.value) } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-slate-600">Label promo
+                    <input value={plan.promoLabel || ''} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoLabel: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-slate-600">Mulai promo
+                    <input type="datetime-local" value={toLocalInput(plan.promoStartsAt)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoStartsAt: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  </label>
+                  <label className="block text-[11px] font-semibold text-slate-600">Akhir promo
+                    <input type="datetime-local" value={toLocalInput(plan.promoEndsAt)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoEndsAt: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  </label>
+                  <p className="rounded-xl bg-slate-50 p-2 text-[10px] text-slate-500">
+                    Harga berlaku: <strong>{formatIDR(isPromoWindowActive(plan) ? plan.promoPrice : plan.normalPrice)}</strong> / bulan
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+        </form>
+      )}
+
+      {tab === 'support' && (
+        <form onSubmit={handleSaveSupport} className="max-w-2xl rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm space-y-4">
+          <div className="flex items-center gap-2">
+            <MessageCircle className="h-4 w-4 text-emerald-600" />
+            <div>
+              <h2 className="text-sm font-bold text-slate-900">Kontak Customer Service</h2>
+              <p className="text-[11px] text-slate-500">Satu nomor WhatsApp untuk bantuan pengguna.</p>
+            </div>
+          </div>
+          <label className="block text-[11px] font-semibold text-slate-600">Nomor WhatsApp
+            <input value={supportDraft.whatsapp} onChange={(event) => setSupportDraft({ ...supportDraft, whatsapp: event.target.value })} placeholder="0812xxxxxxx atau 62812xxxxxxx" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+          </label>
+          <label className="block text-[11px] font-semibold text-slate-600">Nama layanan
+            <input value={supportDraft.label} onChange={(event) => setSupportDraft({ ...supportDraft, label: event.target.value })} placeholder="Bantuan ZaFlow" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+          </label>
+          <label className="block text-[11px] font-semibold text-slate-600">Pesan pembuka
+            <textarea rows={3} value={supportDraft.message} onChange={(event) => setSupportDraft({ ...supportDraft, message: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+          </label>
+          <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+            <input type="checkbox" checked={supportDraft.active} onChange={(event) => setSupportDraft({ ...supportDraft, active: event.target.checked })} />
+            Tampilkan tombol WhatsApp di aplikasi
+          </label>
+          <div>
+            <button type="submit" disabled={busy === 'save-support'} className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60">
+              {busy === 'save-support' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              Simpan Kontak
+            </button>
+          </div>
+        </form>
+      )}
+
+      {tab === 'transactions' && (
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
+          <div className="border-b border-black/[0.06] px-5 py-4">
+            <h2 className="text-sm font-bold text-slate-900">Riwayat Transaksi</h2>
+            <p className="text-[11px] text-slate-400">Pembayaran paket baru dan perpanjangan.</p>
+          </div>
+          <div className="max-h-[560px] overflow-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+                <tr>
+                  <th className="px-4 py-2.5">Transaksi</th>
+                  <th className="px-4 py-2.5">Pengguna</th>
+                  <th className="px-4 py-2.5">Paket</th>
                   <th className="px-4 py-2.5">Nominal</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Waktu</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-black/[0.05] font-mono text-[11px]">
-                {stats.transactions?.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-slate-400 font-sans">
-                      Belum ada transaksi tercatat.
-                    </td>
+              <tbody className="divide-y divide-slate-100">
+                {stats.transactions.map((tx) => (
+                  <tr key={tx.id}>
+                    <td className="px-4 py-2.5 font-mono text-[10px] text-slate-600">{tx.transaction_id}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{emailById.get(tx.user_id) || '-'}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{tx.plan_id || '-'}{tx.is_renewal ? ' • perpanjangan' : ''}</td>
+                    <td className="px-4 py-2.5 font-semibold text-slate-800">{formatIDR(Number(tx.amount) || 0)}</td>
+                    <td className="px-4 py-2.5"><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${tx.status === 'success' || tx.status === 'settlement' ? 'bg-emerald-100 text-emerald-700' : tx.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{txStatusLabel[tx.status] || tx.status}</span></td>
+                    <td className="px-4 py-2.5 text-slate-400">{formatDateTime(tx.created_at)}</td>
                   </tr>
-                ) : (
-                  stats.transactions.map((t: any) => (
-                    <tr key={t.id} className="hover:bg-black/[0.02] transition-colors">
-                      <td className="px-4 py-2.5 text-slate-700 font-medium truncate max-w-[120px]">
-                        {t.id.slice(0, 10)}...
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-900 font-semibold">
-                        Rp {Number(t.amount || 0).toLocaleString('id-ID')}
-                      </td>
-                      <td className="px-4 py-2.5">
-                        <span className="inline-flex items-center gap-1.5 font-sans text-xs text-[#34C759] font-medium">
-                          <span className="w-1.5 h-1.5 rounded-full bg-[#34C759]" />
-                          <span>Berhasil</span>
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400 text-[10px]">
-                        {new Date(t.created_at).toLocaleDateString('id-ID')}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
+                {stats.transactions.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Belum ada transaksi.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
+      )}
 
-        {/* Users Table */}
-        <div className="bg-white/80 backdrop-blur-xl border border-black/[0.06] rounded-2xl overflow-hidden shadow-[0_4px_20px_rgba(0,0,0,0.03)]">
-          <div className="px-5 py-3.5 border-b border-black/[0.06] flex items-center justify-between">
-            <div>
-              <h3 className="font-semibold text-xs text-slate-900">Daftar Pengguna Terdaftar</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">Pengguna terdaftar di platform ZaFlow</p>
-            </div>
-            <span className="text-[10px] font-mono px-2 py-0.5 rounded-lg border border-black/10 bg-black/[0.02] text-slate-600">
-              {stats.users?.length || 0} akun
-            </span>
+      {tab === 'audit' && (
+        <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
+          <div className="border-b border-black/[0.06] px-5 py-4">
+            <h2 className="text-sm font-bold text-slate-900">Riwayat Admin</h2>
+            <p className="text-[11px] text-slate-400">Catatan tindakan admin pada akun, langganan, dan pengaturan.</p>
           </div>
-          <div className="overflow-x-auto max-h-80">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead className="bg-black/[0.02] text-[10px] uppercase font-semibold text-slate-500 sticky top-0 border-b border-black/[0.06]">
+          <div className="max-h-[560px] overflow-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
-                  <th className="px-4 py-2.5">Pengguna</th>
-                  <th className="px-4 py-2.5">Peran Sistem</th>
-                  <th className="px-4 py-2.5">Terdaftar</th>
+                  <th className="px-4 py-2.5">Waktu</th>
+                  <th className="px-4 py-2.5">Admin</th>
+                  <th className="px-4 py-2.5">Tindakan</th>
+                  <th className="px-4 py-2.5">Target</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-black/[0.05] text-xs">
-                {stats.users?.length === 0 ? (
-                  <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-slate-400">
-                      Belum ada pengguna tercatat.
-                    </td>
+              <tbody className="divide-y divide-slate-100">
+                {stats.auditLogs.map((log) => (
+                  <tr key={log.id}>
+                    <td className="px-4 py-2.5 text-slate-400">{formatDateTime(log.created_at)}</td>
+                    <td className="px-4 py-2.5 text-slate-600">{emailById.get(log.admin_id) || '-'}</td>
+                    <td className="px-4 py-2.5 font-semibold text-slate-700">{auditActionLabel[log.action] || log.action}</td>
+                    <td className="px-4 py-2.5 text-slate-500">{auditTargetLabel[log.target_type] || log.target_type}{log.target_id ? ` • ${String(log.target_id).slice(0, 16)}` : ''}</td>
                   </tr>
-                ) : (
-                  stats.users.map((u: any) => (
-                    <tr key={u.id} className="hover:bg-black/[0.02] transition-colors">
-                      <td className="px-4 py-2.5">
-                        <p className="font-medium text-slate-800">{u.full_name || 'Tanpa Nama'}</p>
-                        <p className="text-[11px] font-mono text-slate-400">{u.email}</p>
-                      </td>
-                      <td className="px-4 py-2.5">
-                        {u.system_role === 'super_admin' ? (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-[#5856D6] font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#5856D6]" />
-                            <span>Super Admin</span>
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-medium">
-                            <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                            <span>User</span>
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2.5 text-slate-400 font-mono text-[11px]">
-                        {new Date(u.created_at).toLocaleDateString('id-ID')}
-                      </td>
-                    </tr>
-                  ))
-                )}
+                ))}
+                {stats.auditLogs.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-400">Belum ada catatan audit.</td></tr>}
               </tbody>
             </table>
           </div>
         </div>
-      </div>
+      )}
+
+      {tab === 'settings' && <AdminBrandingPanel />}
+
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
+          <form onSubmit={handleSaveUser} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">Edit Akun</h2>
+                <p className="text-[11px] text-slate-400">Perbarui data dan status akses pengguna.</p>
+              </div>
+              <button type="button" onClick={() => setEditingUser(null)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <label className="block text-[11px] font-semibold text-slate-600">Nama lengkap
+              <input value={userForm.full_name} onChange={(event) => setUserForm({ ...userForm, full_name: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+            </label>
+            <label className="block text-[11px] font-semibold text-slate-600">Email
+              <input type="email" readOnly value={userForm.email} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-500" />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-[11px] font-semibold text-slate-600">Peran
+                <select value={userForm.system_role} onChange={(event) => setUserForm({ ...userForm, system_role: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                  <option value="user">Pengguna</option>
+                  <option value="super_admin">Admin</option>
+                </select>
+              </label>
+              <label className="block text-[11px] font-semibold text-slate-600">Status
+                <select value={userForm.status} onChange={(event) => setUserForm({ ...userForm, status: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                  <option value="active">Aktif</option>
+                  <option value="suspended">Dinonaktifkan</option>
+                  <option value="pending_deletion">Menunggu Dihapus</option>
+                </select>
+              </label>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setEditingUser(null)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">Batal</button>
+              <button type="submit" disabled={busy === `user-${editingUser.id}`} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
+                {busy === `user-${editingUser.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Simpan
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

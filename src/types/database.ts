@@ -6,7 +6,8 @@ export type SystemRole = 'user' | 'super_admin';
 export type BrandMemberRole = 'owner' | 'admin' | 'editor' | 'viewer';
 export type ContentStatus = 'idea' | 'draft' | 'in_review' | 'approved' | 'scheduled' | 'published' | string;
 export type ContentFormat = 'single_image' | 'carousel' | 'reel_short' | 'video' | 'story' | 'text_thread';
-export type LicenseStatus = 'active' | 'revoked' | 'expired';
+export type LicenseStatus = 'active' | 'trialing' | 'past_due' | 'expired' | 'revoked' | 'canceled';
+export type AccountStatus = 'active' | 'suspended' | 'pending_deletion';
 export type MetricSource = 'manual' | 'ai_screenshot' | 'ai_video';
 
 export interface WorkflowStatusConfig {
@@ -21,6 +22,10 @@ export interface Profile {
   full_name: string;
   avatar_url?: string | null;
   system_role: SystemRole;
+  status?: AccountStatus;
+  deleted_at?: string | null;
+  trial_used_at?: string | null;
+  email?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -37,6 +42,12 @@ export interface License {
   status: LicenseStatus;
   owner_user_id?: string | null;
   activated_at?: string | null;
+  billing_cycle?: 'monthly' | 'trial' | 'lifetime' | string;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  auto_renew?: boolean;
+  cancel_at_period_end?: boolean;
+  is_legacy_lifetime?: boolean;
   created_at: string;
   updated_at: string;
 }

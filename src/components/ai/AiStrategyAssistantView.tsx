@@ -53,7 +53,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
     if (!brand) return;
 
     if (aiCreditsRemaining <= 0) {
-      setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Lisensi.');
+      setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Paket & Kuota.');
       return;
     }
 
@@ -147,7 +147,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
             <div className="text-xs space-y-1 text-slate-600 border-t border-slate-100 pt-2.5">
               <p>Workspace: <strong className="text-slate-900">{brand.name}</strong></p>
               <p>Industri: <strong className="text-slate-900">{brand.industry || 'Umum'}</strong></p>
-              <p>Postingan di Database: <strong className="text-slate-900">{posts.length} post</strong></p>
+              <p>Postingan di koleksi konten: <strong className="text-slate-900">{posts.length} post</strong></p>
             </div>
           </div>
 
@@ -211,7 +211,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
               Pemisahan Fakta vs Rekomendasi
             </p>
             <p className="leading-relaxed">
-              Sistem ini membedakan secara tegas antara <strong>fakta historis nyata</strong> dari database brand Anda dan <strong>rekomendasi berbasis AI</strong>. AI tidak menjamin 100% viralitas otomatis.
+              Sistem ini membedakan secara tegas antara <strong>fakta historis nyata</strong> dari data brand Anda dan <strong>rekomendasi berbasis AI</strong>. AI tidak menjamin 100% viralitas otomatis.
             </p>
           </div>
         </div>

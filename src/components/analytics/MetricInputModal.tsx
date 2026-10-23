@@ -179,7 +179,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
       onSaved();
       onClose();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Gagal menyimpan metrik ke database.');
+      setError(err instanceof Error ? err.message : 'Gagal menyimpan metrik.');
     } finally {
       setLoading(false);
     }

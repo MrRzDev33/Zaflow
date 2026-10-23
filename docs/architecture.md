@@ -1,6 +1,6 @@
 ﻿# NaraSosial - Arsitektur Sistem, Keamanan & Skema Database
 
-Dokumen ini merangkum fondasi teknis platform SaaS Social Media Marketing **ZaFlow** untuk pasar Indonesia (lisensi sekali bayar dengan kuota AI terukur).
+Dokumen ini merangkum fondasi teknis platform SaaS Social Media Marketing **ZaFlow** untuk pasar Indonesia (langganan bulanan dengan promo berjangka, trial 3 hari, dan kuota AI terukur).
 
 ---
 
@@ -79,13 +79,16 @@ Aplikasi memisahkan layer secara tegas antara Presentation (Frontend React), Dat
 | Pro | Rp 99.000 | 350 | 3 | 5 | Ya |
 | Ultra | Rp 150.000 | 2.000 | 999 | 999 | Ya |
 
-Harga dan kuota tidak pernah diambil dari request body browser. Server selalu membaca katalog ini. Pembelian paket baru **menambahkan** kredit ke sisa kuota, bukan mereset pemakaian.
+Harga dan kuota tidak pernah diambil dari request body browser. Server selalu membaca katalog ini dan pengaturan harga di `app_settings`. Pembelian paket baru memakai harga promo bila sedang berlaku; perpanjangan selalu memakai harga normal. Setiap aktivasi/perpanjangan memulai siklus kuota AI baru.
 
 
 | Tabel | Keterangan | Relasi Kunci |
 |---|---|---|
-| `profiles` | Data profil pengguna (nama, avatar, system_role). Dibuat otomatis via Trigger Postgres saat sign-up. | `id -> auth.users.id` (1:1) |
-| `licenses` | Menyimpan status lisensi sekali bayar, batas brand/member, dan sisa kuota AI. | `owner_user_id -> auth.users.id` |
+| `profiles` | Data profil pengguna (nama, avatar, system_role, status akun, penanda trial). Dibuat otomatis via Trigger Postgres saat sign-up. | `id -> auth.users.id` (1:1) |
+| `licenses` | Menyimpan langganan bulanan/trial, perioda aktif, masa tenggang, batas brand/member, dan kuota AI. | `owner_user_id -> auth.users.id` |
+| `activation_codes` | Kode aktivasi sekali pakai untuk semua paket termasuk trial, dengan kunci email, masa berlaku, dan pencabutan. | `created_by -> auth.users.id`, `redeemed_by -> auth.users.id` |
+| `admin_audit_logs` | Audit tindakan admin pada akun, langganan, kode, harga, dan layanan pelanggan. | `admin_id -> auth.users.id` |
+| `app_settings` | Pengaturan harga/promo per paket dan kontak customer service WhatsApp. | - |
 | `brands` | Workspace independen untuk setiap brand atau klien agensi. | `created_by -> auth.users.id` |
 | `brand_members` | Pemetaan anggota tim ke brand dengan Role (owner, admin, editor, viewer). | `brand_id -> brands.id`, `user_id -> auth.users.id` |
 | `content_posts` | Database konten ide, draft, terjadwal, dan dipublikasikan. | `brand_id -> brands.id`, `author_id -> auth.users.id` |
@@ -145,14 +148,15 @@ Harga dan kuota tidak pernah diambil dari request body browser. Server selalu me
    - *Risiko*: Pengguna mengirim payload `{ "role": "admin" }` saat mendaftar.
    - *Mitigasi*: Trigger database `handle_new_user` secara paksa menetapkan `system_role = 'user'`, mengabaikan metadata buatan client.
 
-### B. Biaya Operasional & Model Keberlanjutan (Sekali Bayar)
+### B. Biaya Operasional & Model Keberlanjutan (Langganan Bulanan)
 1. **Biaya Hosting & Database**:
    - Supabase Free Tier mencakup 500MB database, 50.000 Monthly Active Users. Cukup untuk fase awal.
    - Cloud Run / Node hosting berskala sesuai beban serverless.
 2. **Biaya Token AI (Gemini 2.5/Flash)**:
-   - Kuota AI dibatasi per paket: Trial 50, Starter 150, Pro 350, Ultra 2.000 kredit.
-   - Gemini 2.5 Flash memiliki biaya input/output token yang sangat efisien (~$0.075 per juta token input teks/gambar). Dengan 150 panggilan OCR per pengguna, biaya AI diperkirakan < $0.05 (Rp 800), mempertahankan margin keuntungan yang sehat.
-   - Opsi pembelian *top-up credit pack* dapat disediakan setelah kuota awal habis.
+   - Kuota AI dibatasi per paket: Trial 20, Starter 100, Pro 300, Ultra 1.000 kredit per siklus bulanan.
+   - Harga normal bulanan: Starter Rp 29.000, Pro Rp 59.000, Ultra Rp 119.000. Harga promo berjangka: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000; promo tidak berlaku untuk perpanjangan.
+   - Gemini 2.5 Flash memiliki biaya input/output token yang sangat efisien (~$0.075 per juta token input teks/gambar). Dengan 100 panggilan OCR per pengguna Starter, biaya AI diperkirakan < $0.05 (Rp 800), mempertahankan margin keuntungan yang sehat.
+   - Kredit AI direset setiap aktivasi/perpanjangan siklus. Tidak ada paket tahunan atau seumur hidup untuk pembelian baru.
 
 ---
 
@@ -163,7 +167,7 @@ Harga dan kuota tidak pernah diambil dari request body browser. Server selalu me
 3. Server memvalidasi paket dari katalog, membuat baris `transactions` berstatus `pending`, lalu memanggil Snap API Midtrans.
 4. Server mengembalikan `redirectUrl`; browser diarahkan ke halaman pembayaran Midtrans.
 5. Setelah pembayaran, Midtrans mengirim notifikasi ke `POST /api/webhook/midtrans`.
-6. Server memverifikasi signature, mencocokkan nominal, memetakan status, lalu memanggil RPC `activate_license_from_payment` (idempoten).
+6. Server memverifikasi signature, mencocokkan nominal, memetakan status, lalu memanggil RPC `activate_subscription_from_payment` (idempoten). RPC memperpanjang dari akhir periode berjalan dan mereset kuota siklus baru.
 7. Klien dapat memeriksa status via `GET /api/payments/midtrans/status/:orderId`.
 
 Status internal transaksi: `pending`, `success`, `failed`, `expired`, `refunded`.

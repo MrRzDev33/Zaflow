@@ -340,7 +340,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
         {loading ? (
           <div className="p-16 text-center">
             <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
-            <p className="text-xs text-slate-500">Memuat kalender dari Supabase...</p>
+            <p className="text-xs text-slate-500">Memuat kalender...</p>
           </div>
         ) : (
           <div className="grid grid-cols-7 auto-rows-fr divide-x divide-y divide-slate-100 min-h-[580px]">

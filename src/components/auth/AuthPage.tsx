@@ -16,6 +16,14 @@ export const AuthPage: React.FC = () => {
     is_expired?: boolean;
   } | null>(null);
 
+  const inviteRoleLabel = invitePreview?.role === 'admin'
+    ? 'Admin'
+    : invitePreview?.role === 'editor'
+      ? 'Editor'
+      : invitePreview?.role === 'viewer'
+        ? 'Anggota'
+        : null;
+
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const tokenFromUrl = params.get('invite_token');
@@ -103,7 +111,7 @@ export const AuthPage: React.FC = () => {
                   <span>Kolaborasi & Hak Akses</span>
                 </div>
                 <p className="text-[11px] text-slate-500 leading-normal pl-9.5">
-                  Undang anggota tim dengan sistem peran aman (Owner, Admin, Editor).
+                  Undang anggota tim dengan sistem peran aman (Pemilik, Admin, Editor).
                 </p>
               </div>
             </div>
@@ -122,8 +130,13 @@ export const AuthPage: React.FC = () => {
                   </p>
                   <p className="text-slate-600 mt-0.5 text-[11px]">
                     Masuk atau buat akun baru untuk menerima peran{' '}
-                    <strong className="text-slate-800">{invitePreview.role || 'Member'}</strong>.
+                    <strong className="text-slate-800">{inviteRoleLabel || 'Anggota'}</strong>.
                   </p>
+                  {invitePreview.email_masked && (
+                    <p className="text-slate-500 mt-1 text-[10px]">
+                      Undangan untuk {invitePreview.email_masked}
+                    </p>
+                  )}
                 </div>
               )}
 

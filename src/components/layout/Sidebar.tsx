@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard,
-  Database,
+  Library,
   CalendarDays,
   Kanban,
   BarChart3,
@@ -13,6 +13,7 @@ import {
   Key,
   ShieldCheck,
   Zap,
+  MessageCircle,
 } from 'lucide-react';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 
@@ -23,6 +24,8 @@ interface SidebarProps {
   aiCreditsTotal: number;
   isCollapsed: boolean;
   isSuperAdmin?: boolean;
+  whatsappUrl?: string | null;
+  whatsappLabel?: string;
 }
 
 interface NavItem {
@@ -43,15 +46,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   aiCreditsTotal,
   isCollapsed,
   isSuperAdmin = false,
+  whatsappUrl,
+  whatsappLabel = 'Bantuan',
 }) => {
   const navSections: NavSection[] = [
     {
       title: 'Perencanaan',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'content_db', label: 'Database Konten', icon: Database },
+        { id: 'content_db', label: 'Koleksi Konten', icon: Library },
         { id: 'calendar', label: 'Kalender Konten', icon: CalendarDays },
-        { id: 'kanban', label: 'Kanban Workflow', icon: Kanban },
+        { id: 'kanban', label: 'Alur Konten', icon: Kanban },
       ],
     },
     {
@@ -59,18 +64,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       items: [
         { id: 'analytics', label: 'Analitik & Laporan', icon: BarChart3 },
         { id: 'content_posts', label: 'Konten Post', icon: FileImage },
-        { id: 'ai_extractor', label: 'Metrics Extractor', icon: ScanEye },
-        { id: 'ai_strategy', label: 'Strategy Assistant', icon: BrainCircuit },
+        { id: 'ai_extractor', label: 'Ambil Metrik AI', icon: ScanEye },
+        { id: 'ai_strategy', label: 'Asisten Strategi', icon: BrainCircuit },
       ],
     },
     {
       title: 'Akses & Tim',
       items: [
         { id: 'team', label: 'Anggota & Tim', icon: Users },
-        { id: 'activity_logs', label: 'Log Aktivitas', icon: History },
+        { id: 'activity_logs', label: 'Riwayat Aktivitas', icon: History },
         { id: 'license', label: 'Paket & Kuota', icon: Key },
         ...(isSuperAdmin
-          ? [{ id: 'admin', label: 'Platform Admin', icon: ShieldCheck }]
+          ? [{ id: 'admin', label: 'Admin', icon: ShieldCheck }]
           : []),
       ],
     },
@@ -132,6 +137,24 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         ))}
       </div>
+
+      {/* Bantuan pelanggan */}
+      {whatsappUrl && (
+        <div className={`px-3 pb-2 ${isCollapsed ? 'flex justify-center' : ''}`}>
+          <a
+            href={whatsappUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={isCollapsed ? whatsappLabel : undefined}
+            className={`inline-flex items-center rounded-xl border border-emerald-200/70 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100 transition ${
+              isCollapsed ? 'justify-center p-2' : 'w-full justify-start gap-2 px-3 py-2 text-xs font-semibold'
+            }`}
+          >
+            <MessageCircle className="h-4 w-4 shrink-0" />
+            {!isCollapsed && <span className="truncate">{whatsappLabel}</span>}
+          </a>
+        </div>
+      )}
 
       {/* Quota box: Astra frosted glass widget */}
       {!isCollapsed ? (

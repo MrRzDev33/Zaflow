@@ -248,7 +248,7 @@ export const WorkflowSettingsModal: React.FC<WorkflowSettingsModalProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-slate-800">Daftar Pilar Konten Aktif</h3>
                 <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
-                  Pilar ini akan otomatis muncul pada formulir pembuatan konten, edit postingan, filter database, dan kalender.
+                  Pilar ini akan otomatis muncul pada formulir pembuatan konten, edit postingan, filter konten, dan kalender.
                 </p>
               </div>
 
@@ -434,7 +434,7 @@ export const WorkflowSettingsModal: React.FC<WorkflowSettingsModalProps> = ({
         {/* Footer Actions */}
         <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
           <p className="text-xs text-slate-500">
-            Perubahan langsung aktif di Kanban, Kalender, dan Database Konten.
+            Perubahan langsung aktif di Kanban, Kalender, dan Koleksi Konten.
           </p>
           <div className="flex items-center gap-2.5">
             <button

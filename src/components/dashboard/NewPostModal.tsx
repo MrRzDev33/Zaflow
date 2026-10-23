@@ -4,6 +4,7 @@ import { CreatePostInput } from '../../services/database/contentService.ts';
 import { ContentFormat, ContentStatus, Brand, WorkflowStatusConfig } from '../../types/database.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
 import { mediaService } from '../../services/storage/mediaService.ts';
+import { formatFileSize } from '../../services/storage/imageCompression.ts';
 import { ContentThumbnail } from '../content/ContentThumbnail.tsx';
 
 interface NewPostModalProps {
@@ -33,6 +34,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
   const [postUrl, setPostUrl] = useState('');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [pillar, setPillar] = useState(initialPillar);
   const [format, setFormat] = useState<ContentFormat>(initialFormat);
   const [status, setStatus] = useState<ContentStatus>('draft');
@@ -60,6 +62,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
       setPostUrl('');
       setMediaUrls([]);
       setUploadingMedia(false);
+      setUploadNotice(null);
       setStatus(loadedStatuses[0]?.id || 'idea');
       setScheduledAt('');
       setProductionDate('');
@@ -86,11 +89,24 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
 
     try {
       const uploaded: string[] = [];
+      let originalBytes = 0;
+      let uploadedBytes = 0;
+      let compressedCount = 0;
       for (const file of Array.from(files).slice(0, 5)) {
-        const path = await mediaService.uploadContentImage(file, brandId);
-        uploaded.push(path);
+        const result = await mediaService.uploadContentImageDetailed(file, brandId);
+        uploaded.push(result.path);
+        originalBytes += result.originalBytes;
+        uploadedBytes += result.uploadedBytes;
+        if (result.wasCompressed) compressedCount += 1;
       }
       setMediaUrls((prev) => [...prev, ...uploaded].slice(0, 5));
+      if (compressedCount > 0) {
+        setUploadNotice(
+          `${compressedCount} gambar dioptimalkan otomatis: ${formatFileSize(originalBytes)} menjadi ${formatFileSize(uploadedBytes)}.`
+        );
+      } else {
+        setUploadNotice(null);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Gagal mengunggah gambar konten.');
     } finally {
@@ -296,7 +312,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
                 ) : (
                   <ImagePlus className="w-4 h-4 text-pink-600" />
                 )}
-                <span>{uploadingMedia ? 'Mengunggah gambar...' : 'Pilih Gambar (maks. 10 MB)'}</span>
+                <span>{uploadingMedia ? 'Mengoptimalkan & mengunggah...' : 'Pilih Gambar (maks. 1 MB)'}</span>
                 <input
                   type="file"
                   accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
@@ -309,8 +325,13 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
                   }}
                 />
               </label>
+              {uploadNotice && (
+                <p className="text-[10px] font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
+                  {uploadNotice}
+                </p>
+              )}
               <p className="text-[10px] text-slate-400 leading-relaxed">
-                Gambar disimpan di bucket Supabase Storage <span className="font-mono">content-media</span>. Maksimal 5 gambar per konten.
+                Gambar dioptimalkan otomatis agar ringan. Maksimal 5 gambar per konten, masing-masing 1 MB.
               </p>
             </div>
           </div>

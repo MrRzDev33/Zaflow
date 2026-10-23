@@ -93,7 +93,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
   }, [fetchData]);
 
   const handleDeleteMetric = async (id: string) => {
-    if (!window.confirm('Hapus snapshot metrik ini dari database?')) return;
+    if (!window.confirm('Hapus catatan metrik ini?')) return;
     try {
       await metricsService.deleteMetric(id);
       setNotice('Snapshot metrik berhasil dihapus.');

@@ -223,7 +223,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tarik dan lepas kartu konten antar kolom alur kerja untuk memperbarui status di database Supabase
+            Tarik dan lepas kartu konten antar kolom alur kerja untuk memperbarui status
           </p>
         </div>
 
@@ -307,7 +307,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
       {loading ? (
         <div className="bg-white border border-slate-200/80 rounded-xl p-16 text-center shadow-xs">
           <Loader2 className="w-6 h-6 animate-spin text-blue-600 mx-auto mb-2" />
-          <p className="text-xs text-slate-500">Memuat alur kerja dari Supabase...</p>
+          <p className="text-xs text-slate-500">Memuat alur kerja...</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 items-start overflow-x-auto pb-4">

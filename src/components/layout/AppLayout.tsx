@@ -1,4 +1,5 @@
 import React, { ReactNode, useState } from 'react';
+import { MessageCircle } from 'lucide-react';
 import { Sidebar } from './Sidebar.tsx';
 import { Topbar } from './Topbar.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';
@@ -19,6 +20,7 @@ interface AppLayoutProps {
   onOpenBrandSettings?: () => void;
   onOpenNewPost: () => void;
   onSignOut: () => void;
+  customerService?: { whatsappUrl: string | null; label: string } | null;
   children: ReactNode;
 }
 
@@ -37,6 +39,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   onOpenBrandSettings,
   onOpenNewPost,
   onSignOut,
+  customerService,
   children,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -58,6 +61,8 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           aiCreditsTotal={aiCreditsTotal}
           isCollapsed={isSidebarCollapsed}
           isSuperAdmin={isSuperAdmin}
+          whatsappUrl={customerService?.whatsappUrl || null}
+          whatsappLabel={customerService?.label || 'Bantuan'}
         />
 
         {/* Main Content Pane */}
@@ -79,6 +84,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             onSignOut={onSignOut}
             isSidebarCollapsed={isSidebarCollapsed}
             onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+            customerService={customerService}
           />
 
           {/* Workspace Canvas Full Width */}
@@ -86,6 +92,20 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             <div className="w-full space-y-5">
               {children}
             </div>
+            <footer className="mt-8 flex flex-col gap-2 border-t border-white/50 pt-4 pb-1 text-[11px] text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+              <span>© {new Date().getFullYear()} ZaFlow</span>
+              {customerService?.whatsappUrl && (
+                <a
+                  href={customerService.whatsappUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 hover:text-emerald-800"
+                >
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {customerService.label || 'Bantuan'} via WhatsApp
+                </a>
+              )}
+            </footer>
           </main>
         </div>
       </div>

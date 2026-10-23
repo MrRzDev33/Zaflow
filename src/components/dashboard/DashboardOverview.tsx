@@ -10,7 +10,6 @@ import {
   Share2,
   Zap,
   ArrowRight,
-  Database,
   Kanban,
   CalendarDays,
 } from 'lucide-react';
@@ -165,7 +164,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
         </div>
       </div>
 
-      {/* Kartu Metrik Riil 100% dari Database */}
+      {/* Kartu Metrik Riil */}
       <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* Total Konten */}
         <div className="astra-card p-4 flex flex-col justify-between">
@@ -251,7 +250,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 onClick={() => onSelectTab && onSelectTab('content_db')}
                 className="text-xs font-semibold text-[#2563EB] hover:text-[#1D4ED8] flex items-center gap-1 cursor-pointer transition-colors"
               >
-                <span>Lihat Database</span>
+                <span>Lihat Koleksi</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -259,7 +258,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             {stats.recentPosts.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200/80 rounded-2xl bg-white/30">
                 <Calendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
-                <p className="text-xs font-semibold text-slate-700">Belum ada konten dalam database</p>
+                <p className="text-xs font-semibold text-slate-700">Belum ada konten dalam koleksi</p>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Mulai dengan membuat draf atau rencana konten pertama Anda
                 </p>

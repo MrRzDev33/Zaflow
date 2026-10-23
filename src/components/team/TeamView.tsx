@@ -10,6 +10,13 @@ interface TeamViewProps {
   canManageAdmins?: boolean;
 }
 
+const roleLabels: Record<string, string> = {
+  owner: 'Pemilik',
+  admin: 'Admin',
+  editor: 'Editor',
+  viewer: 'Anggota',
+};
+
 export const TeamView: React.FC<TeamViewProps> = ({
   brand,
   currentUserId,
@@ -150,7 +157,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
             <h1 className="text-xl font-extrabold text-slate-900">Anggota & Tim: {brand.name}</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Kelola hak akses rekan tim (Owner, Admin, Editor, Viewer) dengan isolasi data terjamin.
+            Kelola hak akses rekan tim (Pemilik, Admin, Editor, Anggota) dengan data yang terpisah aman.
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -224,7 +231,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                             <span className="font-bold text-slate-900 block">
                               {profile?.full_name || 'Pengguna'} {isSelf && '(Anda)'}
                             </span>
-                            <span className="text-slate-400 text-[11px]">{m.user_id}</span>
+                            <span className="text-slate-400 text-[11px]">Anggota workspace</span>
                           </div>
                         </div>
                       </td>
@@ -241,7 +248,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                           }`}
                         >
                           <Shield className="w-3 h-3" />
-                          <span>{m.role}</span>
+                          <span>{roleLabels[m.role] || 'Anggota'}</span>
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-500">
@@ -260,7 +267,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                           >
                             {effectiveCanManageAdmins && <option value="admin">Admin</option>}
                             <option value="editor">Editor</option>
-                            <option value="viewer">Viewer</option>
+                            <option value="viewer">Anggota</option>
                           </select>
                         )}
                         {m.role !== 'owner' && (effectiveCanManage || isSelf) && (
@@ -315,7 +322,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                       </td>
                       <td className="px-6 py-3.5">
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase bg-slate-100 text-slate-700">
-                          {invite.role}
+                          {roleLabels[invite.role] || 'Anggota'}
                         </span>
                       </td>
                       <td className="px-6 py-3.5 text-slate-500 text-[11px]">
@@ -346,7 +353,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                             </button>
                           </>
                         ) : (
-                          <span className="text-[11px] text-slate-400">Hanya owner/admin</span>
+                          <span className="text-[11px] text-slate-400">Hanya pemilik/admin</span>
                         )}
                       </td>
                     </tr>
@@ -385,7 +392,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                   <div>
                     <span className="font-bold block">Undangan Berhasil Dibuat!</span>
                     <span className="text-[11px] text-emerald-700 mt-0.5 block leading-relaxed">
-                      Pengiriman otomatis ke inbox Gmail memerlukan konfigurasi SMTP server. Anda dapat langsung menyalin tautan undangan di bawah ini dan mengirimkannya ke rekan Anda via WhatsApp, Telegram, atau Email:
+                      Salin tautan undangan di bawah ini dan kirimkan ke rekan Anda melalui WhatsApp, Telegram, atau Email:
                     </span>
                   </div>
                 </div>
@@ -446,7 +453,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Hak Akses Role</label>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Peran Anggota</label>
                   <select
                     value={inviteRole}
                     onChange={(e) => setInviteRole(e.target.value as any)}
@@ -456,7 +463,7 @@ export const TeamView: React.FC<TeamViewProps> = ({
                       <option value="admin">Admin (Operasional & Anggota)</option>
                     )}
                     <option value="editor">Editor (Membuat & Mengedit Konten)</option>
-                    <option value="viewer">Viewer (Hanya Melihat Data)</option>
+                    <option value="viewer">Anggota (Hanya Melihat Data)</option>
                   </select>
                 </div>
 

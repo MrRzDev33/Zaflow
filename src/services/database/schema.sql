@@ -9,6 +9,8 @@
 --   1. migrations/20261013_01_security_hardening_profiles_and_brands.sql
 --   2. migrations/20261013_02_create_brand_invitations_and_activity_logs.sql
 --   3. migrations/20261020_01_licensing_payments_limits_and_rpc.sql
+--   4. migrations/20261020_02_content_brief_post_links_and_storage.sql
+--   5. migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql
 --
 -- Tanpa migrasi di atas, kebijakan RLS pada berkas ini masih rentan
 -- (termasuk eskalasi role dan pelanggaran batas paket).
@@ -26,16 +28,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- 2. TABEL LICENSES (Sistem Lisensi Sekali Bayar & Kuota AI)
+-- 2. TABEL LICENSES (Langganan Bulanan, Trial, dan Kuota AI)
 CREATE TABLE IF NOT EXISTS public.licenses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     license_key TEXT UNIQUE NOT NULL,
-    plan_name TEXT NOT NULL DEFAULT 'Lifetime Starter', -- 'Lifetime Starter', 'Lifetime Agency Pro'
-    max_brands INT NOT NULL DEFAULT 3,
-    max_team_members INT NOT NULL DEFAULT 5,
-    ai_quota_total INT NOT NULL DEFAULT 150, -- Kuota AI seumur hidup
+    plan_name TEXT NOT NULL DEFAULT 'Starter',
+    max_brands INT NOT NULL DEFAULT 1,
+    max_team_members INT NOT NULL DEFAULT 2,
+    ai_quota_total INT NOT NULL DEFAULT 100, -- Kuota AI per siklus langganan
     ai_quota_used INT NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'revoked', 'expired')),
+    status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'trialing', 'past_due', 'expired', 'revoked', 'canceled')),
     owner_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL,
     activated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

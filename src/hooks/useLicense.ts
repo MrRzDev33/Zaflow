@@ -1,17 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { licenseService } from '../services/license/licenseService.ts';
 import { LicenseQuotaInfo } from '../types/license.ts';
-import { TRIAL_PLAN } from '../config/plans.ts';
 
 export function useLicense(userId: string | undefined) {
   const [quotaInfo, setQuotaInfo] = useState<LicenseQuotaInfo>({
     hasActiveLicense: false,
     license: null,
-    aiCreditsTotal: TRIAL_PLAN.aiQuota,
+    aiCreditsTotal: 0,
     aiCreditsUsed: 0,
-    aiCreditsRemaining: TRIAL_PLAN.aiQuota,
+    aiCreditsRemaining: 0,
     percentageUsed: 0,
-    maxBrands: TRIAL_PLAN.maxBrands,
+    maxBrands: 1,
     currentBrandCount: 0,
   });
   const [loading, setLoading] = useState<boolean>(true);

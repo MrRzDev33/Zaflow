@@ -7,6 +7,56 @@ interface ActivityLogsViewProps {
   brand: Brand | null;
 }
 
+const entityLabels: Record<string, string> = {
+  content_post: 'Konten',
+  brand: 'Brand',
+  brand_member: 'Anggota Tim',
+  brand_invitation: 'Undangan Tim',
+  metric: 'Metrik',
+  workflow_status: 'Status Alur Kerja',
+};
+
+const statusLabels: Record<string, string> = {
+  idea: 'Ide',
+  draft: 'Draf',
+  in_review: 'Ditinjau',
+  approved: 'Disetujui',
+  scheduled: 'Terjadwal',
+  published: 'Terbit',
+};
+
+const roleLabels: Record<string, string> = {
+  owner: 'Pemilik',
+  admin: 'Admin',
+  editor: 'Editor',
+  viewer: 'Anggota',
+};
+
+function formatLogDetails(details: Record<string, unknown> | null | undefined): string {
+  if (!details) return 'Perubahan tersimpan';
+
+  const data = details as Record<string, unknown>;
+  const parts: string[] = [];
+  if (typeof data.title === 'string' && data.title.trim()) parts.push(data.title.trim());
+  if (typeof data.status === 'string' && data.status.trim()) {
+    parts.push(statusLabels[data.status] || data.status);
+  }
+  if (typeof data.name === 'string' && data.name.trim() && !parts.includes(data.name.trim())) {
+    parts.push(data.name.trim());
+  }
+  if (typeof data.role === 'string' && data.role.trim()) {
+    parts.push(roleLabels[data.role] || data.role);
+  }
+  if (typeof data.new_role === 'string' && data.new_role.trim()) {
+    parts.push(`Peran: ${roleLabels[data.new_role] || data.new_role}`);
+  }
+  if (typeof data.removed_role === 'string' && data.removed_role.trim()) {
+    parts.push(`Peran: ${roleLabels[data.removed_role] || data.removed_role}`);
+  }
+
+  return parts.length ? parts.join(' · ') : 'Perubahan tersimpan';
+}
+
 export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,7 +89,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
       <div className="p-8 text-center text-slate-500">
         <History className="w-12 h-12 mx-auto text-slate-400 mb-3" />
         <h2 className="text-lg font-bold text-slate-800">Pilih Brand Terlebih Dahulu</h2>
-        <p className="text-sm text-slate-500 mt-1">Log aktivitas dicatat secara real-time untuk setiap brand.</p>
+        <p className="text-sm text-slate-500 mt-1">Riwayat perubahan akan tampil di sini untuk setiap brand.</p>
       </div>
     );
   }
@@ -63,10 +113,10 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
         <div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color_hex }} />
-            <h1 className="text-xl font-extrabold text-slate-900">Log Aktivitas & Audit Trail: {brand.name}</h1>
+            <h1 className="text-xl font-extrabold text-slate-900">Riwayat Aktivitas: {brand.name}</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Pencatatan timestamp server untuk autentikasi, perubahan konten, revisi brand, dan operasional tim.
+            Catatan perubahan konten, brand, dan aktivitas tim.
           </p>
         </div>
         <button
@@ -74,7 +124,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
           className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl transition-colors cursor-pointer self-start sm:self-auto"
         >
           <RefreshCw className="w-4 h-4" />
-          <span>Segarkan Log</span>
+          <span>Segarkan</span>
         </button>
       </div>
 
@@ -112,11 +162,11 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
           <h3 className="font-bold text-sm text-slate-800">Riwayat Peristiwa ({filteredLogs.length})</h3>
-          <span className="text-[11px] text-slate-400">Timestamp Server Terverifikasi</span>
+          <span className="text-[11px] text-slate-400">Waktu Tercatat</span>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-slate-400 text-xs">Memuat log aktivitas...</div>
+          <div className="p-12 text-center text-slate-400 text-xs">Memuat riwayat aktivitas...</div>
         ) : filteredLogs.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs">Belum ada catatan aktivitas untuk kriteria ini.</div>
         ) : (
@@ -124,18 +174,18 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-[11px] uppercase font-bold text-slate-500 border-b border-slate-200">
-                  <th className="px-6 py-3">Waktu Server</th>
-                  <th className="px-6 py-3">Aktor / User</th>
-                  <th className="px-6 py-3">Jenis Tindakan</th>
-                  <th className="px-6 py-3">Entitas</th>
-                  <th className="px-6 py-3">Ringkasan Detail</th>
+                  <th className="px-6 py-3">Waktu</th>
+                  <th className="px-6 py-3">Pelaku</th>
+                  <th className="px-6 py-3">Tindakan</th>
+                  <th className="px-6 py-3">Bagian</th>
+                  <th className="px-6 py-3">Keterangan</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {filteredLogs.map((log) => {
                   const profile = (log as any).profiles;
                   return (
-                    <tr key={log.id} className="hover:bg-slate-50/60 transition-colors font-mono text-[11px]">
+                    <tr key={log.id} className="hover:bg-slate-50/60 transition-colors text-[11px]">
                       <td className="px-6 py-4 text-slate-500">
                         {new Date(log.created_at).toLocaleString('id-ID', {
                           dateStyle: 'medium',
@@ -143,16 +193,18 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
                         })}
                       </td>
                       <td className="px-6 py-4 text-slate-800 font-sans font-semibold">
-                        {profile?.full_name || log.user_id?.slice(0, 8) || 'Sistem / Anonim'}
+                        {profile?.full_name || 'Sistem'}
                       </td>
                       <td className="px-6 py-4">
                         <span className="px-2 py-1 bg-blue-50 text-blue-700 border border-blue-200 rounded-md font-bold">
                           {log.action}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-600">{log.entity_type}</td>
+                      <td className="px-6 py-4 text-slate-600">
+                        {entityLabels[log.entity_type] || 'Aktivitas'}
+                      </td>
                       <td className="px-6 py-4 text-slate-500 max-w-xs truncate">
-                        {JSON.stringify(log.details)}
+                        {formatLogDetails(log.details)}
                       </td>
                     </tr>
                   );
