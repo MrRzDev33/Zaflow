@@ -16,6 +16,8 @@ import { supabase, isConfigured } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { accessService, type AccessStatus } from '../../services/access/accessService.ts';
 import { formatIDR } from '../../config/plans.ts';
+import { Pagination } from '../common/Pagination.tsx';
+import { usePagination } from '../../hooks/usePagination.ts';
 
 interface LicenseQuotaViewProps {
   userId?: string;
@@ -54,6 +56,8 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [transactions, setTransactions] = useState<any[]>([]);
   const [aiLogs, setAiLogs] = useState<any[]>([]);
+  const txPagination = usePagination(transactions, { initialPageSize: 10 });
+  const aiLogPagination = usePagination(aiLogs, { initialPageSize: 10 });
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -78,13 +82,13 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
                 .select('*')
                 .eq('license_id', access.license.id)
                 .order('created_at', { ascending: false })
-                .limit(20)
+                .limit(100)
             : await supabase
                 .from('ai_usage_logs')
                 .select('*')
                 .eq('user_id', user.id)
                 .order('created_at', { ascending: false })
-                .limit(20);
+                .limit(100);
           setAiLogs(logResult.data || []);
         }
       }
@@ -384,7 +388,7 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
             <div className="p-8 text-center text-slate-400 text-xs">Belum ada transaksi.</div>
           ) : (
             <div className="divide-y divide-slate-100 text-xs">
-              {transactions.map((tx) => (
+              {txPagination.pageItems.map((tx) => (
                 <div key={tx.id} className="px-6 py-3.5 flex items-center justify-between">
                   <div>
                     <span className="font-bold text-slate-800 block">{tx.transaction_id}</span>
@@ -409,6 +413,14 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
               ))}
             </div>
           )}
+          <Pagination
+            page={txPagination.page}
+            pageSize={txPagination.pageSize}
+            totalItems={txPagination.totalItems}
+            onPageChange={txPagination.goToPage}
+            onPageSizeChange={txPagination.changePageSize}
+            itemLabel="transaksi"
+          />
         </div>
 
         <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
@@ -420,7 +432,7 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
             <div className="p-8 text-center text-slate-400 text-xs">Belum ada pemakaian AI.</div>
           ) : (
             <div className="divide-y divide-slate-100 text-xs">
-              {aiLogs.map((log) => (
+              {aiLogPagination.pageItems.map((log) => (
                 <div key={log.id} className="px-6 py-3.5 flex items-center justify-between">
                   <div>
                     <span className="font-bold text-slate-800 block">{aiActionLabel[log.action_type] || 'Pemakaian AI'}</span>
@@ -436,6 +448,14 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
               ))}
             </div>
           )}
+          <Pagination
+            page={aiLogPagination.page}
+            pageSize={aiLogPagination.pageSize}
+            totalItems={aiLogPagination.totalItems}
+            onPageChange={aiLogPagination.goToPage}
+            onPageSizeChange={aiLogPagination.changePageSize}
+            itemLabel="pemakaian"
+          />
         </div>
       </div>
 

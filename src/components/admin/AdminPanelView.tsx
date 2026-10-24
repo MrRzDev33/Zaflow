@@ -27,6 +27,8 @@ import { supabase } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { PURCHASABLE_PLANS, formatIDR, isPromoWindowActive } from '../../config/plans.ts';
 import { AdminBrandingPanel } from './AdminBrandingPanel.tsx';
+import { Pagination } from '../common/Pagination.tsx';
+import { usePagination } from '../../hooks/usePagination.ts';
 
 interface AdminPanelViewProps {
   currentUserEmail?: string;
@@ -203,6 +205,17 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
     stats.users.forEach((user) => map.set(user.id, user.email));
     return map;
   }, [stats.users]);
+
+  const subscriptionUsers = useMemo(
+    () => stats.users.filter((user) => user.license),
+    [stats.users]
+  );
+
+  const usersPagination = usePagination(stats.users, { initialPageSize: 10 });
+  const subscriptionsPagination = usePagination(subscriptionUsers, { initialPageSize: 10 });
+  const codesPagination = usePagination(stats.activationCodes, { initialPageSize: 10 });
+  const transactionsPagination = usePagination(stats.transactions, { initialPageSize: 10 });
+  const auditPagination = usePagination(stats.auditLogs, { initialPageSize: 10 });
 
   const request = useCallback(async (path: string, options?: { method?: string; body?: unknown }) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -572,7 +585,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.users.map((user) => (
+                {usersPagination.pageItems.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50/60">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-slate-800">{user.full_name || 'Tanpa Nama'}</p>
@@ -626,6 +639,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={usersPagination.page}
+            pageSize={usersPagination.pageSize}
+            totalItems={usersPagination.totalItems}
+            onPageChange={usersPagination.goToPage}
+            onPageSizeChange={usersPagination.changePageSize}
+            itemLabel="akun"
+          />
         </div>
       )}
 
@@ -636,7 +657,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <h2 className="text-sm font-bold text-slate-900">Langganan Pengguna</h2>
               <p className="text-[11px] text-slate-400">Perpanjang, ubah paket, atau hentikan akses.</p>
             </div>
-            <span className="text-[10px] font-semibold text-slate-400">{stats.licenses.length} data</span>
+            <span className="text-[10px] font-semibold text-slate-400">{subscriptionUsers.length} data</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
@@ -650,7 +671,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.users.filter((user) => user.license).map((user) => (
+                {subscriptionsPagination.pageItems.map((user) => (
                   <tr key={user.id} className="hover:bg-slate-50/60">
                     <td className="px-4 py-3">
                       <p className="font-semibold text-slate-800">{user.full_name || 'Tanpa Nama'}</p>
@@ -688,12 +709,20 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                     </td>
                   </tr>
                 ))}
-                {stats.users.filter((user) => user.license).length === 0 && (
+                {subscriptionUsers.length === 0 && (
                   <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-400">Belum ada langganan.</td></tr>
                 )}
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={subscriptionsPagination.page}
+            pageSize={subscriptionsPagination.pageSize}
+            totalItems={subscriptionsPagination.totalItems}
+            onPageChange={subscriptionsPagination.goToPage}
+            onPageSizeChange={subscriptionsPagination.changePageSize}
+            itemLabel="langganan"
+          />
         </div>
       )}
 
@@ -729,7 +758,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               {busy === 'create-codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Buat Kode
             </button>
-            <p className="text-[10px] leading-relaxed text-slate-400">Kode sekali pakai. Bisa dibatasi untuk email tertentu dan dicabut kapan saja.</p>
+            <p className="text-[10px] leading-relaxed text-slate-400">Kode sekali pakai. Pilih paket Trial untuk memenuhi permintaan trial dari customer service. Kode bisa dibatasi untuk email tertentu dan dicabut kapan saja.</p>
           </form>
 
           <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
@@ -737,9 +766,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <h2 className="text-sm font-bold text-slate-900">Daftar Kode</h2>
               <p className="text-[11px] text-slate-400">Pantau pemakaian dan cabut kode yang masih aktif.</p>
             </div>
-            <div className="max-h-[560px] overflow-auto">
+            <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
-                <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+                <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                   <tr>
                     <th className="px-4 py-2.5">Kode</th>
                     <th className="px-4 py-2.5">Paket</th>
@@ -750,7 +779,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {stats.activationCodes.map((code) => {
+                  {codesPagination.pageItems.map((code) => {
                     const isExpired = code.status === 'active' && code.expires_at && new Date(code.expires_at).getTime() < Date.now();
                     const effectiveStatus = isExpired ? 'expired' : code.status;
                     return (
@@ -789,6 +818,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                 </tbody>
               </table>
             </div>
+            <Pagination
+              page={codesPagination.page}
+              pageSize={codesPagination.pageSize}
+              totalItems={codesPagination.totalItems}
+              onPageChange={codesPagination.goToPage}
+              onPageSizeChange={codesPagination.changePageSize}
+              itemLabel="kode"
+            />
           </div>
         </div>
       )}
@@ -886,9 +923,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             <h2 className="text-sm font-bold text-slate-900">Riwayat Transaksi</h2>
             <p className="text-[11px] text-slate-400">Pembayaran paket baru dan perpanjangan.</p>
           </div>
-          <div className="max-h-[560px] overflow-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+              <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Transaksi</th>
                   <th className="px-4 py-2.5">Pengguna</th>
@@ -899,7 +936,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.transactions.map((tx) => (
+                {transactionsPagination.pageItems.map((tx) => (
                   <tr key={tx.id}>
                     <td className="px-4 py-2.5 font-mono text-[10px] text-slate-600">{tx.transaction_id}</td>
                     <td className="px-4 py-2.5 text-slate-600">{emailById.get(tx.user_id) || '-'}</td>
@@ -913,6 +950,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={transactionsPagination.page}
+            pageSize={transactionsPagination.pageSize}
+            totalItems={transactionsPagination.totalItems}
+            onPageChange={transactionsPagination.goToPage}
+            onPageSizeChange={transactionsPagination.changePageSize}
+            itemLabel="transaksi"
+          />
         </div>
       )}
 
@@ -922,9 +967,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             <h2 className="text-sm font-bold text-slate-900">Riwayat Admin</h2>
             <p className="text-[11px] text-slate-400">Catatan tindakan admin pada akun, langganan, dan pengaturan.</p>
           </div>
-          <div className="max-h-[560px] overflow-auto">
+          <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
+              <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Waktu</th>
                   <th className="px-4 py-2.5">Admin</th>
@@ -933,7 +978,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {stats.auditLogs.map((log) => (
+                {auditPagination.pageItems.map((log) => (
                   <tr key={log.id}>
                     <td className="px-4 py-2.5 text-slate-400">{formatDateTime(log.created_at)}</td>
                     <td className="px-4 py-2.5 text-slate-600">{emailById.get(log.admin_id) || '-'}</td>
@@ -945,6 +990,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={auditPagination.page}
+            pageSize={auditPagination.pageSize}
+            totalItems={auditPagination.totalItems}
+            onPageChange={auditPagination.goToPage}
+            onPageSizeChange={auditPagination.changePageSize}
+            itemLabel="catatan"
+          />
         </div>
       )}
 

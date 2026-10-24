@@ -29,6 +29,8 @@ import { EditPostModal } from './EditPostModal.tsx';
 import { WorkflowSettingsModal } from './WorkflowSettingsModal.tsx';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
 import { getBrandPlatforms } from '../../config/platforms.ts';
+import { Pagination } from '../common/Pagination.tsx';
+import { usePagination } from '../../hooks/usePagination.ts';
 
 interface ContentDatabaseViewProps {
   brand: Brand | null;
@@ -70,6 +72,15 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
   const [customPillars, setCustomPillars] = useState<string[]>([]);
   const [customStatuses, setCustomStatuses] = useState<WorkflowStatusConfig[]>([]);
   const availablePlatforms = getBrandPlatforms(brand);
+  const filterResetKey = `${filters.search}|${filters.channel}|${filters.pillar}|${filters.status}|${filters.format}`;
+  const {
+    page,
+    pageSize,
+    totalItems,
+    pageItems,
+    goToPage,
+    changePageSize,
+  } = usePagination(posts, { initialPageSize: 10, resetKey: filterResetKey });
 
   const loadBrandWorkflow = useCallback(() => {
     if (brand) {
@@ -170,7 +181,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
 
     const groupsMap: Record<string, { label: string; posts: ContentPost[]; sortDate: number }> = {};
 
-    posts.forEach((post) => {
+    pageItems.forEach((post) => {
       const targetDateStr =
         monthGroupByField === 'production'
           ? (post.production_date || post.scheduled_at)
@@ -228,7 +239,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
       count: groupsMap[key].posts.length,
       posts: groupsMap[key].posts,
     }));
-  }, [posts, groupByMonth, monthGroupByField]);
+  }, [pageItems, groupByMonth, monthGroupByField]);
 
   // Helper render tabel konten
   const renderTable = (items: ContentPost[]) => (
@@ -755,8 +766,17 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
         </div>
       ) : (
         /* TAMPILAN DATAR (NON-GROUPED) */
-        viewMode === 'table' ? renderTable(posts) : renderGrid(posts)
+        viewMode === 'table' ? renderTable(pageItems) : renderGrid(pageItems)
       )}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={goToPage}
+        onPageSizeChange={changePageSize}
+        itemLabel="konten"
+      />
 
       {/* Edit Post Modal */}
       <EditPostModal

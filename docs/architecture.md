@@ -1,6 +1,6 @@
 ﻿# NaraSosial - Arsitektur Sistem, Keamanan & Skema Database
 
-Dokumen ini merangkum fondasi teknis platform SaaS Social Media Marketing **ZaFlow** untuk pasar Indonesia (langganan bulanan dengan promo berjangka, trial 3 hari, dan kuota AI terukur).
+Dokumen ini merangkum fondasi teknis platform SaaS Social Media Marketing **ZaFlow** untuk pasar Indonesia (langganan bulanan dengan promo berjangka, trial 3 hari melalui permintaan ke customer service, dan kuota AI terukur).
 
 ---
 
@@ -74,10 +74,10 @@ Aplikasi memisahkan layer secara tegas antara Presentation (Frontend React), Dat
 
 | Paket | Harga | Kredit AI | Brand | Anggota tim | Dapat dibeli |
 |---|---:|---:|---:|---:|---|
-| Trial | Rp 0 | 50 | 1 | 1 | Tidak (otomatis) |
-| Starter | Rp 60.000 | 150 | 1 | 2 | Ya |
-| Pro | Rp 99.000 | 350 | 3 | 5 | Ya |
-| Ultra | Rp 150.000 | 2.000 | 999 | 999 | Ya |
+| Trial | Rp 0 | 20 | 1 | 1 | Tidak (kode dari customer service) |
+| Starter | Rp 29.000 | 100 | 1 | 2 | Ya |
+| Pro | Rp 59.000 | 300 | 3 | 5 | Ya |
+| Ultra | Rp 119.000 | 1.000 | 10 | 15 | Ya |
 
 Harga dan kuota tidak pernah diambil dari request body browser. Server selalu membaca katalog ini dan pengaturan harga di `app_settings`. Pembelian paket baru memakai harga promo bila sedang berlaku; perpanjangan selalu memakai harga normal. Setiap aktivasi/perpanjangan memulai siklus kuota AI baru.
 

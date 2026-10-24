@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { History, Search, Filter, RefreshCw, ShieldAlert, CheckCircle2 } from 'lucide-react';
+import { History, Search, Filter, RefreshCw } from 'lucide-react';
 import { Brand, ActivityLog } from '../../types/database.ts';
 import { activityService } from '../../services/database/activityService.ts';
+import { Pagination } from '../common/Pagination.tsx';
 
 interface ActivityLogsViewProps {
   brand: Brand | null;
@@ -59,30 +60,77 @@ function formatLogDetails(details: Record<string, unknown> | null | undefined): 
 
 export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => {
   const [logs, setLogs] = useState<ActivityLog[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filterAction, setFilterAction] = useState<string>('all');
+  const [actionOptions, setActionOptions] = useState<string[]>([]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, filterAction]);
+
+  useEffect(() => {
+    if (!brand) {
+      setActionOptions([]);
+      return;
+    }
+    let active = true;
+    activityService.getActionOptions(brand.id)
+      .then((actions) => {
+        if (active) setActionOptions(actions);
+      })
+      .catch(() => {
+        if (active) setActionOptions([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [brand]);
 
   const fetchLogs = useCallback(async () => {
     if (!brand) {
       setLogs([]);
+      setTotal(0);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const data = await activityService.getRecentActivities(brand.id, 50);
-      setLogs(data);
+      const result = await activityService.getActivities(brand.id, {
+        page,
+        pageSize,
+        search: debouncedSearch,
+        action: filterAction,
+      });
+      setLogs(result.items);
+      setTotal(result.total);
     } catch {
       setLogs([]);
+      setTotal(0);
     } finally {
       setLoading(false);
     }
-  }, [brand]);
+  }, [brand, page, pageSize, debouncedSearch, filterAction]);
 
   useEffect(() => {
     fetchLogs();
   }, [fetchLogs]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(total / pageSize));
+    if (page > maxPage) setPage(maxPage);
+  }, [total, pageSize, page]);
 
   if (!brand) {
     return (
@@ -93,18 +141,6 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
       </div>
     );
   }
-
-  const filteredLogs = logs.filter((log) => {
-    const matchesSearch =
-      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.entity_type.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      JSON.stringify(log.details).toLowerCase().includes(searchQuery.toLowerCase());
-
-    const matchesAction = filterAction === 'all' || log.action === filterAction;
-    return matchesSearch && matchesAction;
-  });
-
-  const uniqueActions = Array.from(new Set(logs.map((l) => l.action)));
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto p-4 sm:p-6">
@@ -134,7 +170,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
           <Search className="absolute left-3.5 top-3 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="Cari aktivitas atau tindakan..."
+            placeholder="Cari tindakan atau bagian aktivitas..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-blue-600"
@@ -149,7 +185,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
             className="w-full sm:w-48 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-blue-600 cursor-pointer"
           >
             <option value="all">Semua Tindakan</option>
-            {uniqueActions.map((action) => (
+            {actionOptions.map((action) => (
               <option key={action} value={action}>
                 {action}
               </option>
@@ -161,13 +197,13 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
       {/* Logs Table / Timeline */}
       <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-xs">
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
-          <h3 className="font-bold text-sm text-slate-800">Riwayat Peristiwa ({filteredLogs.length})</h3>
+          <h3 className="font-bold text-sm text-slate-800">Riwayat Peristiwa ({total})</h3>
           <span className="text-[11px] text-slate-400">Waktu Tercatat</span>
         </div>
 
         {loading ? (
           <div className="p-12 text-center text-slate-400 text-xs">Memuat riwayat aktivitas...</div>
-        ) : filteredLogs.length === 0 ? (
+        ) : logs.length === 0 ? (
           <div className="p-12 text-center text-slate-500 text-xs">Belum ada catatan aktivitas untuk kriteria ini.</div>
         ) : (
           <div className="overflow-x-auto">
@@ -182,7 +218,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
-                {filteredLogs.map((log) => {
+                {logs.map((log) => {
                   const profile = (log as any).profiles;
                   return (
                     <tr key={log.id} className="hover:bg-slate-50/60 transition-colors text-[11px]">
@@ -212,6 +248,20 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
               </tbody>
             </table>
           </div>
+        )}
+
+        {!loading && total > 0 && (
+          <Pagination
+            page={page}
+            pageSize={pageSize}
+            totalItems={total}
+            onPageChange={setPage}
+            onPageSizeChange={(size) => {
+              setPageSize(size);
+              setPage(1);
+            }}
+            itemLabel="log"
+          />
         )}
       </div>
     </div>

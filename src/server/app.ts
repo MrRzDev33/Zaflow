@@ -1298,7 +1298,7 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
     else if (workspaceOwner) trialReason = 'workspace';
     else if (ownLicense) trialReason = 'active';
 
-    const canStartTrial = trialReason === 'available';
+    const trialEligible = trialReason === 'available';
     const plans = buildPlanPayload(pricing, { isRenewal: priorPaid });
 
     res.json({
@@ -1308,7 +1308,10 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
       isSuperAdmin,
       license: normalized,
       trial: {
-        available: canStartTrial,
+        // Trial tidak lagi diaktifkan sendiri dari aplikasi. Kode trial
+        // diberikan customer service melalui permintaan manual.
+        available: trialEligible,
+        requestOnly: true,
         reason: trialReason,
         days: TRIAL_DAYS,
         credits: TRIAL_PLAN.aiQuota,
@@ -1332,42 +1335,12 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
   }
 });
 
-app.post('/api/trial/start', authenticateUser, async (req: Request, res: Response) => {
-  const user = (req as any).user;
-  if (!supabaseAdmin) {
-    res.status(503).json({ error: 'Layanan akun belum siap. Silakan coba lagi.' });
-    return;
-  }
-
-  try {
-    // Jangan biarkan trial otomatis lama menghalangi pengguna memilih trial
-    // dari halaman paket. Lisensi lama tetap disimpan sebagai riwayat.
-    await markLegacyAutoTrials(user.id);
-
-    const workspaceOwner = await getWorkspaceAccessOwner(user.id);
-    if (workspaceOwner) {
-      res.status(400).json({ error: 'Akun Anda sudah terhubung ke workspace yang aktif.' });
-      return;
-    }
-    if (await hasPriorPaidAccess(user.id)) {
-      res.status(400).json({ error: 'Trial hanya untuk akun yang belum pernah berlangganan.' });
-      return;
-    }
-
-    const { data, error } = await supabaseAdmin.rpc('start_trial', { p_user_id: user.id });
-    if (error) {
-      res.status(400).json({ error: friendlyLicenseError(error.message) });
-      return;
-    }
-    const license = Array.isArray(data) ? data[0] : data;
-    res.json({
-      success: true,
-      message: 'Trial 3 hari berhasil dimulai.',
-      license: normalizeLicense(license),
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: friendlyLicenseError(error?.message) });
-  }
+app.post('/api/trial/start', authenticateUser, async (_req: Request, res: Response) => {
+  res.status(403).json({
+    error:
+      'Trial kini diberikan melalui customer service. Ajukan trial ke customer service untuk menerima kode aktivasi trial.',
+    requestOnly: true,
+  });
 });
 
 app.post('/api/activation/redeem', authenticateUser, async (req: Request, res: Response) => {

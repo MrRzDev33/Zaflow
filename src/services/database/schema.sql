@@ -13,6 +13,7 @@
 --   5. migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql
 --   6. migrations/20261024_01_activation_code_hardening.sql
 --   7. migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql
+--   8. migrations/20261024_03_trial_request_only.sql
 --
 -- Tanpa migrasi di atas, kebijakan RLS pada berkas ini masih rentan
 -- (termasuk eskalasi role dan pelanggaran batas paket).

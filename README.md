@@ -8,9 +8,10 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Database konten, kalender, dan kanban workflow.
 - Ekstraksi metrik dari screenshot/video dengan AI dan laporan analitik.
 - AI Strategy Assistant berbasis data historis brand.
-- Langganan bulanan dengan kuota kredit AI, batas brand/anggota, promo berjangka, dan trial 3 hari.
+- Langganan bulanan dengan kuota kredit AI, batas brand/anggota, promo berjangka, dan trial 3 hari yang diajukan ke customer service.
 - Pembayaran Midtrans (Snap) dengan webhook terverifikasi, harga promo hanya untuk pembelian baru, serta kode aktivasi sekali pakai.
 - Log aktivitas tim dan panel admin lengkap (akun, langganan, kode aktivasi, transaksi, audit, harga, dan customer service WhatsApp).
+- Daftar data besar (konten, log aktivitas, metrik, transaksi, kode aktivasi, audit) memakai pagination dengan pilihan jumlah baris dan nomor halaman.
 - Kompresi gambar otomatis di browser dengan batas unggah 1 MB.
 
 ## Prasyarat
@@ -63,8 +64,9 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 6. `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql`
 7. `src/services/database/migrations/20261024_01_activation_code_hardening.sql`
 8. `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql`
+9. `src/services/database/migrations/20261024_03_trial_request_only.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, audit admin, dan batas bucket 1 MB.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/promo, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, audit admin, dan batas bucket 1 MB.
 
 Setelah migrasi, cek cepat:
 
@@ -124,7 +126,8 @@ Alur pembayaran: pengguna masuk → status akses diperiksa → klien memilih pak
 
 - Paket bulanan: Starter Rp 29.000, Pro Rp 59.000, Ultra Rp 119.000.
 - Promo awal: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000; hanya untuk pembelian baru dan berakhir sesuai tanggal yang diatur admin.
-- Trial 3 hari (20 kredit AI, 1 brand, 1 anggota) hanya dimulai setelah pengguna memilihnya, sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar.
+- Trial 3 hari (20 kredit AI, 1 brand, 1 anggota) bersifat **by request**: pengguna mengajukan trial ke customer service, lalu customer service memberikan kode aktivasi trial. Trial tidak diaktifkan sendiri dari aplikasi, hanya sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar.
+- Akun baru tanpa paket tidak dapat masuk ke Workspace. Setelah login, pengguna diarahkan ke halaman paket untuk membeli paket, menukarkan kode aktivasi, atau mengajukan trial ke customer service.
 - Masa tenggang 3 hari hanya untuk perpanjangan paket berbayar. Anggota tim mengikuti paket dan kuota pemilik workspace.
 - Panel Admin: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harga & Promo, Customer Service, Transaksi, Audit Log, dan Pengaturan Aplikasi.
 - Penghapusan akun lunak selama 7 hari, lalu dibersihkan permanen otomatis saat panel admin dibuka atau lewat tombol pembersihan.

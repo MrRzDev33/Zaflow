@@ -24,10 +24,11 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 6 | `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql` | Langganan bulanan, promo berjangka, trial 3 hari, kode aktivasi, status akun, audit admin, dan pengaturan aplikasi |
 | 7 | `src/services/database/migrations/20261024_01_activation_code_hardening.sql` | Mengunci kode aktivasi agar benar-benar sekali pakai dan tidak bisa diaktifkan kembali setelah dipakai |
 | 8 | `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql` | Platform brand dipilih saat brand dibuat, membersihkan trial otomatis lama, dan memastikan akun baru tanpa paket otomatis |
+| 9 | `src/services/database/migrations/20261024_03_trial_request_only.sql` | Trial hanya lewat permintaan ke customer service; kode trial tetap bisa ditukar setelah pembersihan trial otomatis lama |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 8 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 9 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -130,6 +131,10 @@ SELECT plan_id, count(*) AS jumlah
 FROM public.licenses
 WHERE plan_id IN ('trial', 'legacy_auto_trial')
 GROUP BY plan_id;
+
+-- Penukaran kode trial tidak memblokir akun dengan trial otomatis lama
+SELECT pg_get_functiondef('public.redeem_activation_code(uuid,text,text)'::regprocedure)
+       LIKE '%legacy_auto_trial%' AS migrasi_9_aktif;
 ```
 
 ## 4. Auth Settings
@@ -154,9 +159,11 @@ Di **Authentication → Providers → Email**:
 - Harga promo awal: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000. Promo **hanya untuk pembelian paket baru**, tidak berlaku untuk perpanjangan.
 - Promo diatur per paket di **Panel Admin → Harga & Promo**: harga normal, harga promo, tanggal mulai/berakhir, dan sakelar aktif. Server selalu menghitung harga akhir; harga dari browser tidak dipercaya.
 - Setelah tanggal promo berakhir, harga otomatis kembali ke harga normal.
-- Trial **tidak dibuat otomatis** saat pendaftaran. Pengguna harus memilih mulai trial di halaman paket. Migrasi 8 membersihkan trial otomatis lama yang dibuat versi sebelumnya agar tidak lagi tampil sebagai paket aktif.
+- Trial **tidak dibuat otomatis** saat pendaftaran dan tidak lagi bisa dimulai sendiri dari aplikasi. Trial bersifat **by request**: pengguna mengajukan trial ke customer service, lalu customer service membuat dan mengirimkan kode aktivasi trial. Migrasi 8 membersihkan trial otomatis lama yang dibuat versi sebelumnya agar tidak lagi tampil sebagai paket aktif.
 - Platform sosial dipilih saat brand dibuat. Hanya platform terpilih yang muncul di formulir konten, filter, kalender, kanban, dan kolom username brand.
 - Trial berlangsung 3 hari, 20 kredit AI, 1 brand, 1 anggota, tanpa kartu, hanya sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar. Kode aktivasi trial juga selalu 3 hari.
+- Migrasi 9 memastikan akun yang pernah memiliki trial otomatis lama tetap dapat menukarkan kode trial dari customer service, tanpa menghapus riwayat trial lama yang sudah memakai kredit.
+- Akun baru tanpa paket tidak dapat masuk ke Workspace. Halaman paket wajib dilewati dengan membeli paket, menukarkan kode aktivasi, atau menerima kode trial dari customer service.
 - Masa tenggang 3 hari hanya berlaku untuk perpanjangan paket berbayar. Trial tidak memiliki masa tenggang.
 - Anggota tim mengikuti paket dan kuota AI pemilik workspace; mereka tidak membayar atau memakai trial terpisah.
 
@@ -201,14 +208,14 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 8. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 9. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
 | Pembayaran berhasil tetapi lisensi belum aktif | Webhook belum terdaftar / `MIDTRANS_SERVER_KEY` salah | Cek **Midtrans → Settings → Configuration**, lalu lihat log server |
 | `Signature Midtrans tidak valid` | Server key berbeda (sandbox vs production) | Samakan `MIDTRANS_IS_PRODUCTION` dan server key |
-| Trial tidak muncul setelah daftar | Trial memang tidak dibuat otomatis | Masuk ke halaman paket, lalu pilih **Mulai Trial 3 Hari**; pastikan `profiles.trial_used_at` masih kosong |
-| Lisensi tidak muncul setelah login | User belum punya lisensi dan belum memilih trial/membeli paket | Mulai trial, gunakan kode aktivasi, atau selesaikan pembayaran |
+| Trial tidak muncul setelah daftar | Trial memang tidak dibuat otomatis dan tidak bisa dimulai sendiri | Minta kode trial ke customer service, lalu masukkan kodenya di halaman paket |
+| Lisensi tidak muncul setelah login | User belum punya lisensi dan belum menukarkan kode/membeli paket | Gunakan kode aktivasi dari customer service atau selesaikan pembayaran |
 | Promo tidak berlaku saat perpanjangan | Perilaku yang benar | Promo hanya untuk pembelian paket baru; perpanjangan memakai harga normal |
 | Pembayaran berhasil tetapi paket belum aktif | Webhook belum terdaftar / `MIDTRANS_SERVER_KEY` salah | Cek **Midtrans → Settings → Configuration**, lalu cocokkan server key dan `MIDTRANS_IS_PRODUCTION` |
 | Tombol WhatsApp tidak muncul | Kontak belum diaktifkan di Panel Admin | Buka **Panel Admin → Customer Service**, isi nomor, lalu aktifkan |
@@ -220,6 +227,7 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | `column profiles.status does not exist` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | `Could not find the function public.start_trial` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | Kode aktivasi bekas masih bisa dipakai | Migrasi 7 belum dijalankan | Jalankan `20261024_01_activation_code_hardening.sql` |
+| Kode trial ditolak untuk akun yang pernah punya trial otomatis lama | Migrasi 9 belum dijalankan | Jalankan `20261024_03_trial_request_only.sql` |
 | Akun baru langsung menampilkan “Paket aktif” dan bisa masuk Workspace | Trial otomatis lama dari trigger pendaftaran versi sebelumnya | Jalankan migrasi 8 (`20261024_02_...sql`) lalu login ulang. Server juga membersihkan trial lama ini saat status akses dimuat. |
 | Promo kembali ke harga normal setelah disimpan | Tanggal akhir promo kosong atau sudah lewat sehingga promo tidak berlaku | Saat mengaktifkan promo, tanggal akhir otomatis diisi 30 hari. Jika diubah manual, pastikan tanggal akhir masih di masa depan. |
 | Semua platform muncul di formulir konten | Migrasi 8 belum dijalankan atau brand belum diatur ulang | Jalankan migrasi 8, lalu pilih platform di **Pengaturan Brand**. |

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { History, Eye, Edit, Trash2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { History, Eye, Edit, Trash2 } from 'lucide-react';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { MetricDetailModal } from './MetricDetailModal.tsx';
+import { Pagination } from '../common/Pagination.tsx';
+import { usePagination } from '../../hooks/usePagination.ts';
 
 interface MetricHistoryTableProps {
   snapshots: (ContentMetric & { post?: ContentPost | null })[];
@@ -17,7 +19,14 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
   const [selectedMetricForView, setSelectedMetricForView] = useState<
     (ContentMetric & { post?: ContentPost | null }) | null
   >(null);
-  const [showAll, setShowAll] = useState(false);
+  const {
+    page,
+    pageSize,
+    totalItems,
+    pageItems,
+    goToPage,
+    changePageSize,
+  } = usePagination(snapshots, { initialPageSize: 10 });
 
   const formatDate = (isoString: string) => {
     try {
@@ -47,8 +56,6 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
     }
   };
 
-  const visibleSnapshots = showAll ? snapshots : snapshots.slice(0, 15);
-
   return (
     <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
@@ -56,20 +63,9 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
           <History className="w-4 h-4 text-slate-500" />
           <h2 className="text-sm font-bold text-slate-900">Riwayat Snapshot Metrik (Data Historis)</h2>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 font-medium">
-            {snapshots.length} Snapshot Tercatat
-          </span>
-          {snapshots.length > 15 && (
-            <button
-              onClick={() => setShowAll(!showAll)}
-              className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-0.5 cursor-pointer"
-            >
-              <span>{showAll ? 'Tampilkan 15' : 'Lihat Semua'}</span>
-              {showAll ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            </button>
-          )}
-        </div>
+        <span className="text-xs text-slate-500 font-medium">
+          {snapshots.length} Snapshot Tercatat
+        </span>
       </div>
 
       {snapshots.length === 0 ? (
@@ -95,7 +91,7 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {visibleSnapshots.map((item) => (
+              {pageItems.map((item) => (
                 <tr key={item.id} className="hover:bg-slate-50/70 transition-colors">
                   <td className="py-2.5 px-3 whitespace-nowrap text-slate-500">
                     <span className="font-mono text-[11px]">{formatDate(item.recorded_at)}</span>
@@ -185,6 +181,15 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
           </table>
         </div>
       )}
+
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        totalItems={totalItems}
+        onPageChange={goToPage}
+        onPageSizeChange={changePageSize}
+        itemLabel="snapshot"
+      />
 
       {/* Modal Detail Melihat Semua Data Snapshot */}
       <MetricDetailModal

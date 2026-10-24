@@ -36,7 +36,6 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
 }) => {
   const { logoUrl } = useAppBranding();
   const [processingPlan, setProcessingPlan] = useState<string | null>(null);
-  const [startingTrial, setStartingTrial] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -89,22 +88,6 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
       await onRefresh();
     } finally {
       setRefreshing(false);
-    }
-  };
-
-  const handleStartTrial = async () => {
-    setStartingTrial(true);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    try {
-      const res = await accessService.startTrial();
-      setSuccessMsg(res.message || 'Trial berhasil dimulai.');
-      const next = await onRefresh();
-      if (next?.hasAccess) onContinue?.();
-    } catch (err) {
-      setErrorMsg(getApiErrorMessage(err, 'Trial belum dapat dimulai.'));
-    } finally {
-      setStartingTrial(false);
     }
   };
 
@@ -208,7 +191,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                   : 'Akun admin dapat langsung masuk ke Workspace.'
                 : isWorkspaceMember
                   ? 'Akses Anda mengikuti paket pemilik workspace. Hubungi pemilik workspace jika paket belum aktif.'
-                  : 'Mulai dengan trial 3 hari, pilih paket bulanan, atau gunakan kode aktivasi yang Anda miliki.'}
+                  : 'Mulai dengan trial yang diajukan ke customer service, pilih paket bulanan, atau gunakan kode aktivasi yang Anda miliki.'}
           </p>
         </div>
 
@@ -279,29 +262,40 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
           </div>
         ) : (
           <>
-            {status.trial.available && !isWorkspaceMember && (
+            {!isWorkspaceMember && !canContinue && status.trial.available && (
               <div className="mx-auto mt-8 max-w-4xl overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white shadow-[0_20px_60px_rgba(37,99,235,0.25)] sm:p-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold">
                       <Zap className="h-3.5 w-3.5" />
-                      Coba tanpa kartu
+                      Trial by request
                     </div>
                     <h2 className="mt-3 text-2xl font-extrabold">Trial {status.trial.days} hari</h2>
                     <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                      Rasakan alur kerja ZaFlow dengan {status.trial.credits} kredit AI, {status.trial.maxBrands} brand,
-                      dan {status.trial.maxTeamMembers} anggota. Tanpa biaya dan tanpa kartu.
+                      Ingin mencoba ZaFlow lebih dulu? Ajukan trial ke customer service. Tim kami akan
+                      mengirimkan kode aktivasi trial berisi {status.trial.credits} kredit AI,{' '}
+                      {status.trial.maxBrands} brand, dan {status.trial.maxTeamMembers} anggota.
+                    </p>
+                    <p className="mt-2 max-w-md text-[11px] leading-relaxed text-blue-200">
+                      Trial tidak aktif otomatis. Kode trial diberikan setelah permintaan Anda dikonfirmasi
+                      oleh customer service.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleStartTrial}
-                    disabled={startingTrial}
-                    className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-blue-700 shadow-sm transition-transform hover:scale-[1.02] disabled:opacity-60"
-                  >
-                    {startingTrial ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
-                    Mulai Trial
-                  </button>
+                  {whatsappUrl ? (
+                    <a
+                      href={whatsappUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-blue-700 shadow-sm transition-transform hover:scale-[1.02]"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Minta Kode Trial
+                    </a>
+                  ) : (
+                    <div className="shrink-0 rounded-2xl bg-white/10 px-4 py-3 text-xs font-semibold text-blue-50">
+                      Hubungi customer service ZaFlow untuk mengajukan trial.
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -401,7 +395,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-bold text-slate-900">Punya kode aktivasi?</h3>
                     <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      Masukkan kode dari tim ZaFlow untuk mengaktifkan paket atau trial tanpa pembayaran.
+                      Masukkan kode dari tim ZaFlow untuk mengaktifkan paket. Kode trial juga dikirim oleh
+                      customer service setelah permintaan trial Anda disetujui.
                     </p>
                     <form onSubmit={handleRedeem} className="mt-3 flex flex-col gap-2 sm:flex-row">
                       <input
@@ -424,16 +419,12 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
               </div>
             )}
 
-            {!status.trial.available && !canContinue && (
+            {!canContinue && (status.trial.reason === 'used' || status.trial.reason === 'paid') && (
               <div className="mx-auto mt-4 flex max-w-3xl items-center justify-center gap-2 text-center text-[11px] text-slate-400">
                 <CalendarDays className="h-3.5 w-3.5 shrink-0" />
-                {status.trial.reason === 'workspace'
-                  ? 'Paket workspace belum aktif. Hubungi pemilik workspace atau admin.'
-                  : status.trial.reason === 'paid'
-                    ? 'Trial hanya tersedia untuk akun yang belum pernah berlangganan.'
-                    : status.trial.reason === 'used'
-                      ? 'Trial hanya dapat digunakan satu kali per akun.'
-                      : 'Trial belum tersedia untuk akun ini.'}
+                {status.trial.reason === 'paid'
+                  ? 'Trial hanya tersedia untuk akun yang belum pernah berlangganan.'
+                  : 'Trial hanya dapat digunakan satu kali per akun.'}
               </div>
             )}
 

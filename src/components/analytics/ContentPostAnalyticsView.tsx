@@ -28,6 +28,8 @@ import { StatusBadge } from '../common/Badges.tsx';
 import { MetricInputModal } from './MetricInputModal.tsx';
 import { ContentPostPerformanceModal } from './ContentPostPerformanceModal.tsx';
 import { getBrandPlatforms } from '../../config/platforms.ts';
+import { Pagination } from '../common/Pagination.tsx';
+import { usePagination } from '../../hooks/usePagination.ts';
 
 interface ContentPostAnalyticsViewProps {
   brand: Brand | null;
@@ -189,6 +191,18 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
       })
       .sort((a, b) => getPostTimestamp(b) - getPostTimestamp(a));
   }, [posts, resolvedRange, channel, search]);
+
+  const {
+    page: postsPage,
+    pageSize: postsPageSize,
+    totalItems: totalFilteredPosts,
+    pageItems: paginatedPosts,
+    goToPage: goToPostsPage,
+    changePageSize: changePostsPageSize,
+  } = usePagination(filteredPosts, {
+    initialPageSize: 10,
+    resetKey: `${rangeMode}|${month}|${startDate}|${endDate}|${channel}|${search}`,
+  });
 
   const postIdsKey = useMemo(
     () => filteredPosts.map((post) => post.id).sort().join(','),
@@ -525,7 +539,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredPosts.map((post) => {
+                {paginatedPosts.map((post) => {
                   const postMetrics = metricsByPost.get(post.id) || [];
                   const latest = getLatestPerChannel(postMetrics)[0] || null;
                   const engagements = latest
@@ -673,6 +687,17 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
               </tbody>
             </table>
           </div>
+        )}
+
+        {!loadingMetrics && totalFilteredPosts > 0 && (
+          <Pagination
+            page={postsPage}
+            pageSize={postsPageSize}
+            totalItems={totalFilteredPosts}
+            onPageChange={goToPostsPage}
+            onPageSizeChange={changePostsPageSize}
+            itemLabel="konten"
+          />
         )}
       </div>
 

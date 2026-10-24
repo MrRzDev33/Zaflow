@@ -1,7 +1,109 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
 import { ActivityLog } from '../../types/database.ts';
 
+interface ActivityPageOptions {
+  page: number;
+  pageSize: number;
+  search?: string;
+  action?: string;
+}
+
+interface ActivityPageResult {
+  items: ActivityLog[];
+  total: number;
+}
+
+function sanitizeSearch(value: string): string {
+  return value.replace(/[%,()]/g, ' ').trim();
+}
+
 export const activityService = {
+  /**
+   * Mengambil riwayat log aktivitas dengan pagination server-side.
+   */
+  async getActivities(brandId: string, options: ActivityPageOptions): Promise<ActivityPageResult> {
+    if (!isConfigured || !brandId) return { items: [], total: 0 };
+
+    const page = Math.max(1, options.page);
+    const pageSize = Math.max(1, options.pageSize);
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+    const search = sanitizeSearch(options.search || '');
+
+    const applyFilters = (query: any) => {
+      let next = query.eq('brand_id', brandId);
+      if (options.action && options.action !== 'all') {
+        next = next.eq('action', options.action);
+      }
+      if (search) {
+        next = next.or(`action.ilike.%${search}%,entity_type.ilike.%${search}%`);
+      }
+      return next;
+    };
+
+    const { data, error, count } = await applyFilters(
+      supabase
+        .from('activity_logs')
+        .select(`
+          id,
+          brand_id,
+          user_id,
+          action,
+          entity_type,
+          entity_id,
+          details,
+          created_at,
+          profiles (
+            id,
+            full_name,
+            avatar_url
+          )
+        `, { count: 'exact' })
+    )
+      .order('created_at', { ascending: false })
+      .range(from, to);
+
+    if (error || !data) {
+      const fallback = await applyFilters(
+        supabase
+          .from('activity_logs')
+          .select('*', { count: 'exact' })
+      )
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (fallback.error) {
+        console.warn('Gagal memuat log aktivitas:', fallback.error.message);
+        return { items: [], total: 0 };
+      }
+      return {
+        items: (fallback.data || []) as ActivityLog[],
+        total: fallback.count || 0,
+      };
+    }
+
+    return {
+      items: data as unknown as ActivityLog[],
+      total: count || 0,
+    };
+  },
+
+  /**
+   * Daftar nama tindakan untuk pilihan filter.
+   */
+  async getActionOptions(brandId: string): Promise<string[]> {
+    if (!isConfigured || !brandId) return [];
+    const { data, error } = await supabase
+      .from('activity_logs')
+      .select('action')
+      .eq('brand_id', brandId)
+      .order('action', { ascending: true })
+      .limit(1000);
+
+    if (error || !data) return [];
+    return Array.from(new Set(data.map((row: { action: string }) => row.action).filter(Boolean)));
+  },
+
   /**
    * Mengambil riwayat log aktivitas untuk brand aktif
    */

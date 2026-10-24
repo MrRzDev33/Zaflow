@@ -60,6 +60,7 @@ export interface AccessStatus {
   license: AccessLicense | null;
   trial: {
     available: boolean;
+    requestOnly: boolean;
     reason: 'available' | 'admin' | 'account' | 'used' | 'paid' | 'workspace' | 'active';
     days: number;
     credits: number;
@@ -89,15 +90,6 @@ export const accessService = {
     }
     const headers = await authHeaders();
     return apiFetchJson<AccessStatus>('/api/access/status', { headers });
-  },
-
-  async startTrial(): Promise<{ success: boolean; message: string }> {
-    const headers = await authHeaders();
-    return apiFetchJson<{ success: boolean; message: string }>('/api/trial/start', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({}),
-    });
   },
 
   async redeemCode(code: string): Promise<{ success: boolean; message: string }> {
