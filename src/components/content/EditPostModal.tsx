@@ -6,10 +6,16 @@ import { workflowSettingsService } from '../../services/database/workflowSetting
 import { mediaService } from '../../services/storage/mediaService.ts';
 import { formatFileSize } from '../../services/storage/imageCompression.ts';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
+import {
+  PLATFORM_CATALOG,
+  getBrandPlatforms,
+  type PlatformId,
+} from '../../config/platforms.ts';
 
 interface EditPostModalProps {
   isOpen: boolean;
   post: ContentPost | null;
+  brand: Brand | null;
   onClose: () => void;
   onUpdated: () => void;
   onDeleted?: () => void;
@@ -19,11 +25,13 @@ interface EditPostModalProps {
 export const EditPostModal: React.FC<EditPostModalProps> = ({
   isOpen,
   post,
+  brand,
   onClose,
   onUpdated,
   onDeleted,
   onDuplicated,
 }) => {
+  const availablePlatforms = getBrandPlatforms(brand);
   const [title, setTitle] = useState('');
   const [caption, setCaption] = useState('');
   const [brief, setBrief] = useState('');
@@ -48,9 +56,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
 
   useEffect(() => {
     if (post) {
-      const mockBrand = { id: post.brand_id } as Brand;
-      setAvailablePillars(workflowSettingsService.getPillars(mockBrand));
-      setAvailableStatuses(workflowSettingsService.getWorkflowStatuses(mockBrand));
+      const platforms = getBrandPlatforms(brand);
+      setAvailablePillars(workflowSettingsService.getPillars(brand));
+      setAvailableStatuses(workflowSettingsService.getWorkflowStatuses(brand));
 
       setTitle(post.title || '');
       setCaption(post.caption || '');
@@ -61,7 +69,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
       setPillar(post.pillar || 'Edukatif');
       setFormat(post.format || 'single_image');
       setStatus(post.status || 'draft');
-      setChannels(post.channels && post.channels.length > 0 ? post.channels : ['instagram']);
+      const selectedChannels = (post.channels || []).filter((channel) => platforms.includes(channel as PlatformId));
+      setChannels(selectedChannels.length > 0 ? selectedChannels : [platforms[0] || 'instagram']);
 
       if (post.scheduled_at) {
         try {
@@ -105,9 +114,25 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
       setUploadNotice(null);
       setError(null);
     }
-  }, [post]);
+  }, [post, brand]);
 
   if (!isOpen || !post) return null;
+
+  const pillarOptions = availablePillars.includes(pillar)
+    ? availablePillars
+    : [pillar, ...availablePillars].filter(Boolean);
+
+  const statusOptions: WorkflowStatusConfig[] = availableStatuses.some((statusConfig) => statusConfig.id === status)
+    ? availableStatuses
+    : [
+        {
+          id: status,
+          title: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '),
+          dotColor: 'bg-slate-400',
+          headerBg: 'bg-slate-100',
+        },
+        ...availableStatuses,
+      ];
 
   const handleChannelToggle = (channel: string) => {
     if (channels.includes(channel)) {
@@ -177,7 +202,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         caption: caption.trim() || null,
         brief: brief.trim() || null,
         hashtags,
-        channels,
+        channels: channels.filter((channel): channel is PlatformId => availablePlatforms.includes(channel as PlatformId)),
         format,
         pillar,
         status,
@@ -284,7 +309,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
                 onChange={(e) => setPillar(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
               >
-                {availablePillars.map((p) => (
+                {pillarOptions.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
@@ -314,26 +339,23 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
               Saluran Publikasi
             </label>
             <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'instagram', label: 'Instagram' },
-                { id: 'tiktok', label: 'TikTok' },
-                { id: 'linkedin', label: 'LinkedIn' },
-                { id: 'youtube', label: 'YouTube' },
-                { id: 'facebook', label: 'Facebook' },
-              ].map((ch) => (
-                <button
-                  key={ch.id}
-                  type="button"
-                  onClick={() => handleChannelToggle(ch.id)}
-                  className={`px-3 py-1 text-xs rounded-md font-medium border transition-colors cursor-pointer ${
-                    channels.includes(ch.id)
-                      ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {ch.label}
-                </button>
-              ))}
+              {availablePlatforms.map((platformId) => {
+                const platform = PLATFORM_CATALOG[platformId];
+                return (
+                  <button
+                    key={platformId}
+                    type="button"
+                    onClick={() => handleChannelToggle(platformId)}
+                    className={`px-3 py-1 text-xs rounded-md font-medium border transition-colors cursor-pointer ${
+                      channels.includes(platformId)
+                        ? 'bg-blue-50 border-blue-300 text-blue-700 font-semibold'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {platform.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -461,7 +483,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
               onChange={(e) => setStatus(e.target.value as ContentStatus)}
               className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
             >
-              {availableStatuses.map((s) => (
+              {statusOptions.map((s) => (
                 <option key={s.id} value={s.id}>{s.title}</option>
               ))}
             </select>

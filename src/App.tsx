@@ -697,9 +697,9 @@ export default function App() {
       {activeBrand && (
         <NewPostModal
           isOpen={isNewPostOpen}
-          brandId={activeBrand.id}
+          brand={activeBrand}
           initialTitle={prefillPost?.title || ''}
-          initialPillar={prefillPost?.pillar || 'Edukatif'}
+          initialPillar={prefillPost?.pillar || ''}
           initialFormat={prefillPost?.format || 'carousel'}
           initialCaption={prefillPost?.caption || ''}
           onClose={() => {

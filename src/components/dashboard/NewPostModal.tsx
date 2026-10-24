@@ -6,28 +6,37 @@ import { workflowSettingsService } from '../../services/database/workflowSetting
 import { mediaService } from '../../services/storage/mediaService.ts';
 import { formatFileSize } from '../../services/storage/imageCompression.ts';
 import { ContentThumbnail } from '../content/ContentThumbnail.tsx';
+import {
+  PLATFORM_CATALOG,
+  getBrandPlatforms,
+  type PlatformId,
+} from '../../config/platforms.ts';
 
 interface NewPostModalProps {
   isOpen: boolean;
-  brandId: string;
+  brand: Brand;
   initialTitle?: string;
   initialPillar?: string;
   initialFormat?: ContentFormat;
   initialCaption?: string;
+  initialStatus?: ContentStatus;
   onClose: () => void;
   onSubmit: (input: CreatePostInput) => Promise<unknown>;
 }
 
 export const NewPostModal: React.FC<NewPostModalProps> = ({
   isOpen,
-  brandId,
+  brand,
   initialTitle = '',
   initialPillar = '',
   initialFormat = 'carousel',
   initialCaption = '',
+  initialStatus,
   onClose,
   onSubmit,
 }) => {
+  const brandId = brand.id;
+  const availablePlatforms = getBrandPlatforms(brand);
   const [title, setTitle] = useState(initialTitle);
   const [caption, setCaption] = useState(initialCaption);
   const [brief, setBrief] = useState('');
@@ -48,9 +57,9 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      const mockBrand = { id: brandId } as Brand;
-      const loadedPillars = workflowSettingsService.getPillars(mockBrand);
-      const loadedStatuses = workflowSettingsService.getWorkflowStatuses(mockBrand);
+      const loadedPillars = workflowSettingsService.getPillars(brand);
+      const loadedStatuses = workflowSettingsService.getWorkflowStatuses(brand);
+      const platforms = getBrandPlatforms(brand);
       setAvailablePillars(loadedPillars);
       setAvailableStatuses(loadedStatuses);
 
@@ -63,14 +72,31 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
       setMediaUrls([]);
       setUploadingMedia(false);
       setUploadNotice(null);
-      setStatus(loadedStatuses[0]?.id || 'idea');
+      setStatus(initialStatus || loadedStatuses[0]?.id || 'idea');
+      setChannels([platforms[0] || 'instagram']);
       setScheduledAt('');
       setProductionDate('');
       setError(null);
     }
-  }, [isOpen, initialTitle, initialPillar, initialFormat, initialCaption, brandId]);
+  }, [isOpen, initialTitle, initialPillar, initialFormat, initialCaption, initialStatus, brand]);
 
   if (!isOpen) return null;
+
+  const pillarOptions = availablePillars.includes(pillar)
+    ? availablePillars
+    : [pillar, ...availablePillars].filter(Boolean);
+
+  const statusOptions: WorkflowStatusConfig[] = availableStatuses.some((statusConfig) => statusConfig.id === status)
+    ? availableStatuses
+    : [
+        {
+          id: status,
+          title: status.charAt(0).toUpperCase() + status.slice(1).replace(/_/g, ' '),
+          dotColor: 'bg-slate-400',
+          headerBg: 'bg-slate-100',
+        },
+        ...availableStatuses,
+      ];
 
   const handleChannelToggle = (channel: string) => {
     if (channels.includes(channel)) {
@@ -134,7 +160,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
         pillar: pillar || availablePillars[0] || 'Edukatif',
         format,
         status,
-        channels,
+        channels: channels.filter((channel): channel is PlatformId => availablePlatforms.includes(channel as PlatformId)),
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         production_date: productionDate ? new Date(productionDate).toISOString() : null,
         post_url: postUrl.trim() || undefined,
@@ -200,7 +226,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
                 onChange={(e) => setPillar(e.target.value)}
                 className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
               >
-                {availablePillars.map((p) => (
+                {pillarOptions.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
@@ -230,25 +256,23 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
               Saluran Publikasi
             </label>
             <div className="flex flex-wrap gap-2">
-              {[
-                { id: 'instagram', label: 'Instagram' },
-                { id: 'tiktok', label: 'TikTok' },
-                { id: 'linkedin', label: 'LinkedIn' },
-                { id: 'youtube', label: 'YouTube' },
-              ].map((ch) => (
-                <button
-                  key={ch.id}
-                  type="button"
-                  onClick={() => handleChannelToggle(ch.id)}
-                  className={`px-3 py-1 text-xs rounded-md font-medium border transition-colors ${
-                    channels.includes(ch.id)
-                      ? 'bg-blue-50 border-blue-300 text-blue-700'
-                      : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
-                  }`}
-                >
-                  {ch.label}
-                </button>
-              ))}
+              {availablePlatforms.map((platformId) => {
+                const platform = PLATFORM_CATALOG[platformId];
+                return (
+                  <button
+                    key={platformId}
+                    type="button"
+                    onClick={() => handleChannelToggle(platformId)}
+                    className={`px-3 py-1 text-xs rounded-md font-medium border transition-colors ${
+                      channels.includes(platformId)
+                        ? 'bg-blue-50 border-blue-300 text-blue-700'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {platform.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -363,7 +387,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
               onChange={(e) => setStatus(e.target.value as ContentStatus)}
               className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
             >
-              {availableStatuses.map((s) => (
+              {statusOptions.map((s) => (
                 <option key={s.id} value={s.id}>{s.title}</option>
               ))}
             </select>

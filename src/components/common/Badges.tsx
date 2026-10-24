@@ -3,20 +3,40 @@ import { ContentStatus, ContentFormat, BrandMemberRole } from '../../types/datab
 
 interface StatusBadgeProps {
   status: ContentStatus;
+  label?: string | null;
+  dotColor?: string | null;
   className?: string;
 }
 
-export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className = '' }) => {
+function humanizeStatus(status: string): string {
+  if (!status) return 'Tanpa status';
+  return status
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+export const StatusBadge: React.FC<StatusBadgeProps> = ({
+  status,
+  label,
+  dotColor,
+  className = '',
+}) => {
   const configs: Record<ContentStatus, { label: string; dot: string; text: string }> = {
     idea: { label: 'Ide', dot: 'bg-[#8E8E93]', text: 'text-slate-600' },
     draft: { label: 'Draft', dot: 'bg-[#FF9500]', text: 'text-amber-700' },
+    production: { label: 'Produksi', dot: 'bg-indigo-500', text: 'text-indigo-700' },
     in_review: { label: 'Review', dot: 'bg-[#FF3B30]', text: 'text-rose-700' },
     approved: { label: 'Disetujui', dot: 'bg-[#007AFF]', text: 'text-[#007AFF]' },
     scheduled: { label: 'Terjadwal', dot: 'bg-[#5856D6]', text: 'text-[#5856D6]' },
     published: { label: 'Tayang', dot: 'bg-[#34C759]', text: 'text-[#34C759]' },
   };
 
-  const current = configs[status] || configs.idea;
+  const known = configs[status];
+  const current = {
+    label: label || known?.label || humanizeStatus(status),
+    dot: dotColor || known?.dot || 'bg-slate-400',
+    text: known?.text || 'text-slate-600',
+  };
 
   return (
     <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${current.text} ${className}`}>

@@ -25,6 +25,7 @@ import { MetricHistoryTable } from './MetricHistoryTable.tsx';
 import { FormulaExplanationCard } from './FormulaExplanationCard.tsx';
 import { MetricInputModal } from './MetricInputModal.tsx';
 import { InstagramInsightsCard } from './InstagramInsightsCard.tsx';
+import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
 
 interface AnalyticsViewProps {
   brand: Brand | null;
@@ -346,13 +347,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
             </div>
           )}
 
-          {/* Channel Filter Pills (Utama: Semua, Instagram, TikTok, YouTube) */}
+          {/* Channel Filter Pills mengikuti platform yang dipilih brand */}
           <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs">
             {[
               { id: 'all', label: 'Semua' },
-              { id: 'instagram', label: 'Instagram' },
-              { id: 'tiktok', label: 'TikTok' },
-              { id: 'youtube', label: 'YouTube' },
+              ...getBrandPlatforms(brand).map((platformId) => ({
+                id: platformId,
+                label: getPlatformName(platformId),
+              })),
             ].map((ch) => (
               <button
                 key={ch.id}
@@ -534,6 +536,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         isOpen={isInputModalOpen}
         brandId={brand.id}
         posts={posts}
+        platforms={getBrandPlatforms(brand)}
         initialMetric={selectedMetricForEdit}
         onClose={() => {
           setIsInputModalOpen(false);

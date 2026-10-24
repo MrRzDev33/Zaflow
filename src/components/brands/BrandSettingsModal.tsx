@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Trash2, Loader2, Building2, AlertCircle, Check } from 'lucide-react';
 import { Brand } from '../../types/database.ts';
 import { brandsService, UpdateBrandInput } from '../../services/database/brandsService.ts';
+import {
+  PLATFORM_CATALOG,
+  PLATFORM_ORDER,
+  getBrandPlatforms,
+  type PlatformId,
+} from '../../config/platforms.ts';
 
 interface BrandSettingsModalProps {
   isOpen: boolean;
@@ -26,10 +32,8 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
   const [industry, setIndustry] = useState('F&B');
   const [description, setDescription] = useState('');
   const [colorHex, setColorHex] = useState('#2563EB');
-  const [instagram, setInstagram] = useState('');
-  const [tiktok, setTiktok] = useState('');
-  const [linkedin, setLinkedin] = useState('');
-  const [youtube, setYoutube] = useState('');
+  const [platforms, setPlatforms] = useState<PlatformId[]>(['instagram']);
+  const [socialHandles, setSocialHandles] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,10 +44,8 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
       setIndustry(brand.industry || 'F&B');
       setDescription(brand.description || '');
       setColorHex(brand.color_hex || '#2563EB');
-      setInstagram(brand.social_accounts?.instagram || '');
-      setTiktok(brand.social_accounts?.tiktok || '');
-      setLinkedin(brand.social_accounts?.linkedin || '');
-      setYoutube(brand.social_accounts?.youtube || '');
+      setPlatforms(getBrandPlatforms(brand));
+      setSocialHandles({ ...(brand.social_accounts || {}) });
       setError(null);
     }
   }, [brand]);
@@ -51,6 +53,15 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
   if (!isOpen || !brand) return null;
 
   const presetColors = ['#2563EB', '#7C3AED', '#DB2777', '#059669', '#D97706', '#DC2626'];
+
+  const togglePlatform = (platformId: PlatformId) => {
+    setError(null);
+    setPlatforms((prev) => (
+      prev.includes(platformId)
+        ? prev.filter((id) => id !== platformId)
+        : [...prev, platformId]
+    ));
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,22 +73,29 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
       setError('Nama brand tidak boleh kosong.');
       return;
     }
+    if (platforms.length === 0) {
+      setError('Pilih minimal satu platform yang digunakan brand ini.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
 
     try {
+      const socialAccounts: Record<string, string> = {};
+      for (const platformId of PLATFORM_ORDER) {
+        if (!platforms.includes(platformId)) continue;
+        const value = socialHandles[platformId]?.trim();
+        if (value) socialAccounts[platformId] = value;
+      }
+
       const updates: UpdateBrandInput = {
         name: name.trim(),
         industry,
         description: description.trim() || undefined,
         color_hex: colorHex,
-        social_accounts: {
-          instagram: instagram.trim() || undefined,
-          tiktok: tiktok.trim() || undefined,
-          linkedin: linkedin.trim() || undefined,
-          youtube: youtube.trim() || undefined,
-        },
+        platforms,
+        social_accounts: socialAccounts,
       };
 
       await brandsService.updateBrand(brand.id, updates);
@@ -123,7 +141,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">Pengaturan Workspace Brand</h2>
-              <p className="text-xs text-slate-500">Kelola identitas, warna, dan akun media sosial brand</p>
+              <p className="text-xs text-slate-500">Kelola identitas, warna, platform, dan akun brand</p>
             </div>
           </div>
           <button
@@ -209,32 +227,63 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Instagram Handle
-              </label>
-              <input
-                type="text"
-                value={instagram}
-                onChange={(e) => setInstagram(e.target.value)}
-                placeholder="@username"
-                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                TikTok Handle
-              </label>
-              <input
-                type="text"
-                value={tiktok}
-                onChange={(e) => setTiktok(e.target.value)}
-                placeholder="@username"
-                className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
-              />
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 mb-1">
+              Platform yang Digunakan *
+            </label>
+            <p className="text-[10px] text-slate-400 mb-2">
+              Hanya platform terpilih yang akan muncul di formulir konten, kalender, kanban, dan filter.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {PLATFORM_ORDER.map((platformId) => {
+                const platform = PLATFORM_CATALOG[platformId];
+                const selected = platforms.includes(platformId);
+                return (
+                  <button
+                    key={platformId}
+                    type="button"
+                    onClick={() => togglePlatform(platformId)}
+                    aria-pressed={selected}
+                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                      selected
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {selected && <Check className="h-3.5 w-3.5" />}
+                    {platform.name}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {platforms.length > 0 && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Akun Brand per Platform
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {PLATFORM_ORDER.filter((platformId) => platforms.includes(platformId)).map((platformId) => {
+                  const platform = PLATFORM_CATALOG[platformId];
+                  return (
+                    <div key={platformId}>
+                      <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                        {platform.handleLabel}
+                      </label>
+                      <input
+                        type="text"
+                        value={socialHandles[platformId] || ''}
+                        onChange={(e) => setSocialHandles((prev) => ({ ...prev, [platformId]: e.target.value }))}
+                        placeholder={platform.placeholder}
+                        className="w-full px-3.5 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600"
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
             {canDeleteBrand ? (

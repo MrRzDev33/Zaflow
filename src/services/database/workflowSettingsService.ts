@@ -33,57 +33,97 @@ export const AVAILABLE_STATUS_COLORS = [
   { dot: 'bg-teal-500', bg: 'bg-teal-50', label: 'Teal' },
 ];
 
+interface StoredWorkflowValue<T> {
+  savedAt: string;
+  values: T;
+}
+
+function readStoredWorkflowValue<T>(key: string): { values: T; savedAt: number | null } | null {
+  try {
+    const stored = localStorage.getItem(key);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored);
+
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      // Format lama: array tanpa penanda waktu. Tetap dipakai sebagai fallback
+      // setelah data brand dari database.
+      return { values: parsed as T, savedAt: null };
+    }
+
+    if (parsed && Array.isArray(parsed.values) && parsed.values.length > 0) {
+      const savedAt = new Date(parsed.savedAt).getTime();
+      return {
+        values: parsed.values as T,
+        savedAt: Number.isFinite(savedAt) ? savedAt : null,
+      };
+    }
+  } catch {
+    // Abaikan error parse
+  }
+  return null;
+}
+
+function isStoredValueNewerThanBrand(
+  storedAt: number | null,
+  brandUpdatedAt?: string | null,
+): boolean {
+  if (storedAt === null) return false;
+  const brandTime = brandUpdatedAt ? new Date(brandUpdatedAt).getTime() : NaN;
+  return !Number.isFinite(brandTime) || storedAt >= brandTime;
+}
+
+function writeStoredWorkflowValue<T>(key: string, values: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify({
+      savedAt: new Date().toISOString(),
+      values,
+    } satisfies StoredWorkflowValue<T>));
+  } catch {
+    // Abaikan
+  }
+}
+
 export const workflowSettingsService = {
   /**
-   * Mengambil daftar pilar konten aktif untuk brand
+   * Mengambil daftar pilar konten aktif untuk brand.
+   *
+   * Perubahan yang baru disimpan di perangkat ini diprioritaskan selama data
+   * brand di memori belum dimuat ulang. Setelah refresh, data terbaru dari
+   * database kembali menjadi acuan.
    */
   getPillars(brand: Brand | null): string[] {
     if (!brand) return DEFAULT_CONTENT_PILLARS;
 
-    // 1. Cek dari property brand (jika sudah disimpan di Supabase)
-    if (brand.content_pillars && Array.isArray(brand.content_pillars) && brand.content_pillars.length > 0) {
-      return brand.content_pillars;
-    }
+    const stored = readStoredWorkflowValue<string[]>(`zaflow_pillars_${brand.id}`);
+    const brandPillars = brand.content_pillars && Array.isArray(brand.content_pillars) && brand.content_pillars.length > 0
+      ? brand.content_pillars
+      : null;
 
-    // 2. Cek dari LocalStorage fallback per brand
-    try {
-      const stored = localStorage.getItem(`zaflow_pillars_${brand.id}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // Abaikan error parse
+    if (stored && isStoredValueNewerThanBrand(stored.savedAt, brand.updated_at)) {
+      return stored.values;
     }
+    if (brandPillars) return brandPillars;
+    if (stored) return stored.values;
 
     return DEFAULT_CONTENT_PILLARS;
   },
 
   /**
-   * Mengambil status alur kerja kanban aktif untuk brand
+   * Mengambil status alur kerja kanban aktif untuk brand.
    */
   getWorkflowStatuses(brand: Brand | null): WorkflowStatusConfig[] {
     if (!brand) return DEFAULT_WORKFLOW_STATUSES;
 
-    // 1. Cek dari property brand (jika sudah tersimpan di Supabase)
-    if (brand.workflow_statuses && Array.isArray(brand.workflow_statuses) && brand.workflow_statuses.length > 0) {
-      return brand.workflow_statuses;
-    }
+    const stored = readStoredWorkflowValue<WorkflowStatusConfig[]>(`zaflow_workflow_${brand.id}`);
+    const brandStatuses = brand.workflow_statuses && Array.isArray(brand.workflow_statuses) && brand.workflow_statuses.length > 0
+      ? brand.workflow_statuses
+      : null;
 
-    // 2. Cek dari LocalStorage fallback per brand
-    try {
-      const stored = localStorage.getItem(`zaflow_workflow_${brand.id}`);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
-        }
-      }
-    } catch {
-      // Abaikan error parse
+    if (stored && isStoredValueNewerThanBrand(stored.savedAt, brand.updated_at)) {
+      return stored.values;
     }
+    if (brandStatuses) return brandStatuses;
+    if (stored) return stored.values;
 
     return DEFAULT_WORKFLOW_STATUSES;
   },
@@ -96,11 +136,7 @@ export const workflowSettingsService = {
     const finalPillars = cleaned.length > 0 ? cleaned : DEFAULT_CONTENT_PILLARS;
 
     // Simpan ke local storage agar instan & offline-safe
-    try {
-      localStorage.setItem(`zaflow_pillars_${brandId}`, JSON.stringify(finalPillars));
-    } catch {
-      // Abaikan
-    }
+    writeStoredWorkflowValue(`zaflow_pillars_${brandId}`, finalPillars);
 
     // Simpan ke Supabase jika terkonfigurasi
     if (isConfigured) {
@@ -128,11 +164,7 @@ export const workflowSettingsService = {
     const finalStatuses = cleaned.length > 0 ? cleaned : DEFAULT_WORKFLOW_STATUSES;
 
     // Simpan ke local storage
-    try {
-      localStorage.setItem(`zaflow_workflow_${brandId}`, JSON.stringify(finalStatuses));
-    } catch {
-      // Abaikan
-    }
+    writeStoredWorkflowValue(`zaflow_workflow_${brandId}`, finalStatuses);
 
     // Simpan ke Supabase jika terkonfigurasi
     if (isConfigured) {

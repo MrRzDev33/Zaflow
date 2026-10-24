@@ -16,6 +16,7 @@ import {
 import { Brand, ContentPost } from '../../types/database.ts';
 import { aiClientService, ExtractedMetricsData } from '../../services/ai/aiClientService.ts';
 import { metricsService, metricFormulas } from '../../services/database/metricsService.ts';
+import { getBrandPlatforms, getPlatformName, type PlatformId } from '../../config/platforms.ts';
 
 interface AiMetricsExtractorViewProps {
   brand: Brand | null;
@@ -34,7 +35,8 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
   onRefreshLicense,
   onSavedMetrics,
 }) => {
-  const [selectedChannel, setSelectedChannel] = useState<string>('instagram');
+  const availablePlatforms = getBrandPlatforms(brand);
+  const [selectedChannel, setSelectedChannel] = useState<string>(availablePlatforms[0] || 'instagram');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
@@ -315,11 +317,11 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                 onChange={(e) => setSelectedChannel(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white capitalize font-medium"
               >
-                <option value="instagram">Instagram (Feed / Reel / Story)</option>
-                <option value="tiktok">TikTok (Video / Analytics)</option>
-                <option value="linkedin">LinkedIn (Post / Article)</option>
-                <option value="youtube">YouTube (Video / Shorts)</option>
-                <option value="facebook">Facebook (Post / Page)</option>
+                {availablePlatforms.map((platformId) => (
+                  <option key={platformId} value={platformId}>
+                    {getPlatformName(platformId)}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -493,11 +495,14 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                       onChange={(e) => setExtractedData({ ...extractedData, channel: e.target.value })}
                       className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500 bg-white capitalize"
                     >
-                      <option value="instagram">Instagram</option>
-                      <option value="tiktok">TikTok</option>
-                      <option value="linkedin">LinkedIn</option>
-                      <option value="youtube">YouTube</option>
-                      <option value="facebook">Facebook</option>
+                      {(availablePlatforms.includes(extractedData.channel as PlatformId)
+                        ? availablePlatforms
+                        : [extractedData.channel, ...availablePlatforms]
+                      ).map((platformId) => (
+                        <option key={platformId} value={platformId}>
+                          {getPlatformName(platformId)}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>

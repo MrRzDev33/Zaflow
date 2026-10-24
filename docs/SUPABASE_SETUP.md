@@ -23,10 +23,11 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 5 | `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql` | Kolom `brief`, `post_url`, `posted_at`, index histori, dan policy Storage `content-media` |
 | 6 | `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql` | Langganan bulanan, promo berjangka, trial 3 hari, kode aktivasi, status akun, audit admin, dan pengaturan aplikasi |
 | 7 | `src/services/database/migrations/20261024_01_activation_code_hardening.sql` | Mengunci kode aktivasi agar benar-benar sekali pakai dan tidak bisa diaktifkan kembali setelah dipakai |
+| 8 | `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql` | Platform brand dipilih saat brand dibuat, membersihkan trial otomatis lama, dan memastikan akun baru tanpa paket otomatis |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 7 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 8 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -112,6 +113,23 @@ WHERE schemaname = 'storage'
 SELECT id, file_size_limit
 FROM storage.buckets
 WHERE id = 'content-media';
+
+-- Platform brand dan constraint platform yang valid
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'brands'
+  AND column_name = 'platforms';
+
+SELECT conname FROM pg_constraint
+WHERE conrelid = 'public.brands'::regclass
+  AND conname = 'brands_platforms_check';
+
+-- Trial otomatis lama sudah dipisahkan dari trial manual
+SELECT plan_id, count(*) AS jumlah
+FROM public.licenses
+WHERE plan_id IN ('trial', 'legacy_auto_trial')
+GROUP BY plan_id;
 ```
 
 ## 4. Auth Settings
@@ -136,7 +154,8 @@ Di **Authentication → Providers → Email**:
 - Harga promo awal: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000. Promo **hanya untuk pembelian paket baru**, tidak berlaku untuk perpanjangan.
 - Promo diatur per paket di **Panel Admin → Harga & Promo**: harga normal, harga promo, tanggal mulai/berakhir, dan sakelar aktif. Server selalu menghitung harga akhir; harga dari browser tidak dipercaya.
 - Setelah tanggal promo berakhir, harga otomatis kembali ke harga normal.
-- Trial **tidak dibuat otomatis** saat pendaftaran. Pengguna harus memilih mulai trial di halaman paket.
+- Trial **tidak dibuat otomatis** saat pendaftaran. Pengguna harus memilih mulai trial di halaman paket. Migrasi 8 membersihkan trial otomatis lama yang dibuat versi sebelumnya agar tidak lagi tampil sebagai paket aktif.
+- Platform sosial dipilih saat brand dibuat. Hanya platform terpilih yang muncul di formulir konten, filter, kalender, kanban, dan kolom username brand.
 - Trial berlangsung 3 hari, 20 kredit AI, 1 brand, 1 anggota, tanpa kartu, hanya sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar. Kode aktivasi trial juga selalu 3 hari.
 - Masa tenggang 3 hari hanya berlaku untuk perpanjangan paket berbayar. Trial tidak memiliki masa tenggang.
 - Anggota tim mengikuti paket dan kuota AI pemilik workspace; mereka tidak membayar atau memakai trial terpisah.
@@ -182,7 +201,7 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 7. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 8. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -201,6 +220,9 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | `column profiles.status does not exist` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | `Could not find the function public.start_trial` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | Kode aktivasi bekas masih bisa dipakai | Migrasi 7 belum dijalankan | Jalankan `20261024_01_activation_code_hardening.sql` |
+| Akun baru langsung menampilkan “Paket aktif” dan bisa masuk Workspace | Trial otomatis lama dari trigger pendaftaran versi sebelumnya | Jalankan migrasi 8 (`20261024_02_...sql`) lalu login ulang. Server juga membersihkan trial lama ini saat status akses dimuat. |
+| Promo kembali ke harga normal setelah disimpan | Tanggal akhir promo kosong atau sudah lewat sehingga promo tidak berlaku | Saat mengaktifkan promo, tanggal akhir otomatis diisi 30 hari. Jika diubah manual, pastikan tanggal akhir masih di masa depan. |
+| Semua platform muncul di formulir konten | Migrasi 8 belum dijalankan atau brand belum diatur ulang | Jalankan migrasi 8, lalu pilih platform di **Pengaturan Brand**. |
 | Akun diaktifkan kembali langsung punya akses | Akun masih memiliki paket yang aktif | Akses mengikuti sisa paket. Cabut paketnya di bagian **Langganan** jika akses tidak boleh dipulihkan. |
 | Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke backend; `/api/admin/overview` mengembalikan HTML | Lokal: jalankan `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ter-deploy dan redeploy setelah mengubah env. |
 | Panel admin: akses ditolak | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |

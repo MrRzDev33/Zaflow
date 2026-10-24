@@ -20,6 +20,7 @@ import { EditPostModal } from './EditPostModal.tsx';
 import { NewPostModal } from '../dashboard/NewPostModal.tsx';
 import { WorkflowSettingsModal } from './WorkflowSettingsModal.tsx';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
+import { PLATFORM_CATALOG, getBrandPlatforms } from '../../config/platforms.ts';
 
 interface ContentKanbanViewProps {
   brand: Brand | null;
@@ -46,6 +47,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
   const [newPostStatus, setNewPostStatus] = useState<ContentStatus>('idea');
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [kanbanColumns, setKanbanColumns] = useState<WorkflowStatusConfig[]>([]);
+  const availablePlatforms = getBrandPlatforms(brand);
 
   const loadWorkflow = useCallback(() => {
     if (brand) {
@@ -98,23 +100,40 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
     });
   }, [posts, channelFilter, search]);
 
+  // Kolom yang ditampilkan. Status lama yang tidak lagi ada di pengaturan
+  // alur kerja tetap mendapat kolom sendiri agar tidak salah masuk ke kolom
+  // Ide/Draft/Produksi.
+  const displayColumns = useMemo(() => {
+    const known = new Set(kanbanColumns.map((column) => column.id));
+    const extra: WorkflowStatusConfig[] = [];
+    for (const post of filteredPosts) {
+      if (!post.status || known.has(post.status)) continue;
+      known.add(post.status);
+      extra.push({
+        id: post.status,
+        title: post.status.replace(/[_-]+/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase()),
+        dotColor: 'bg-slate-400',
+        headerBg: 'bg-slate-100',
+      });
+    }
+    return [...kanbanColumns, ...extra];
+  }, [kanbanColumns, filteredPosts]);
+
   // Posts grouped by status
   const postsByStatus = useMemo(() => {
     const map: Record<string, ContentPost[]> = {};
-    for (const col of kanbanColumns) {
+    for (const col of displayColumns) {
       map[col.id] = [];
     }
-    const defaultColId = kanbanColumns[0]?.id || 'idea';
     for (const post of filteredPosts) {
       if (map[post.status]) {
         map[post.status].push(post);
-      } else {
-        if (!map[defaultColId]) map[defaultColId] = [];
-        map[defaultColId].push(post);
+      } else if (post.status) {
+        map[post.status] = [post];
       }
     }
     return map;
-  }, [filteredPosts, kanbanColumns]);
+  }, [filteredPosts, displayColumns]);
 
   // Drag and drop handlers
   const handleDragStart = (e: React.DragEvent, post: ContentPost) => {
@@ -242,7 +261,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
 
           {/* Platform filter tabs */}
           <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50">
-            {['all', 'instagram', 'tiktok', 'linkedin'].map((ch) => (
+            {['all', ...availablePlatforms].map((ch) => (
               <button
                 key={ch}
                 onClick={() => setChannelFilter(ch)}
@@ -252,7 +271,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {ch === 'all' ? 'Semua' : ch}
+                {ch === 'all' ? 'Semua' : PLATFORM_CATALOG[ch as keyof typeof PLATFORM_CATALOG]?.name || ch}
               </button>
             ))}
           </div>
@@ -270,7 +289,10 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
 
               <button
                 onClick={() => {
-                  setNewPostStatus(kanbanColumns[0]?.id || 'idea');
+                  const ideaColumn = kanbanColumns.find((column) => column.id === 'idea')
+                    || kanbanColumns.find((column) => /ide/i.test(column.title))
+                    || kanbanColumns[0];
+                  setNewPostStatus(ideaColumn?.id || 'idea');
                   setIsNewPostModalOpen(true);
                 }}
                 className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1 transition cursor-pointer"
@@ -311,7 +333,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3.5 items-start overflow-x-auto pb-4">
-          {kanbanColumns.map((col) => {
+          {displayColumns.map((col) => {
             const colPosts = postsByStatus[col.id] || [];
             const isTarget = dragOverColumn === col.id;
 
@@ -481,6 +503,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
       <EditPostModal
         isOpen={isEditModalOpen}
         post={selectedPost}
+        brand={brand}
         onClose={() => {
           setIsEditModalOpen(false);
           setSelectedPost(null);
@@ -494,13 +517,11 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
       {isNewPostModalOpen && (
         <NewPostModal
           isOpen={isNewPostModalOpen}
-          brandId={brand.id}
+          brand={brand}
+          initialStatus={newPostStatus}
           onClose={() => setIsNewPostModalOpen(false)}
           onSubmit={async (input) => {
-            await contentService.createPost({
-              ...input,
-              status: newPostStatus,
-            });
+            await contentService.createPost(input);
             fetchPosts();
           }}
         />

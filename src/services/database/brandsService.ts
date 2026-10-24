@@ -1,18 +1,21 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
 import { Brand, BrandMember, BrandMemberRole } from '../../types/database.ts';
 
+export type BrandSocialAccounts = {
+  instagram?: string;
+  tiktok?: string;
+  youtube?: string;
+  linkedin?: string;
+  facebook?: string;
+};
+
 export interface CreateBrandInput {
   name: string;
   industry?: string;
   description?: string;
   color_hex?: string;
-  social_accounts?: {
-    instagram?: string;
-    tiktok?: string;
-    youtube?: string;
-    linkedin?: string;
-    facebook?: string;
-  };
+  platforms?: string[];
+  social_accounts?: BrandSocialAccounts;
 }
 
 export interface UpdateBrandInput {
@@ -20,13 +23,8 @@ export interface UpdateBrandInput {
   industry?: string;
   description?: string;
   color_hex?: string;
-  social_accounts?: {
-    instagram?: string;
-    tiktok?: string;
-    youtube?: string;
-    linkedin?: string;
-    facebook?: string;
-  };
+  platforms?: string[];
+  social_accounts?: BrandSocialAccounts;
 }
 
 export const brandsService = {
@@ -100,18 +98,28 @@ export const brandsService = {
 
     // 1. Insert ke tabel brands tanpa .select()
     // Ini memastikan INSERT policy terpenuhi tanpa terhalang SELECT policy sebelum membership terbuat
-    const { error: brandError } = await supabase
+    const brandPayload: Record<string, unknown> = {
+      id: brandId,
+      name: trimmedName,
+      slug,
+      industry: input.industry || 'Lainnya',
+      description: input.description?.trim() || null,
+      color_hex: input.color_hex || '#2563EB',
+      platforms: input.platforms && input.platforms.length > 0 ? input.platforms : ['instagram'],
+      social_accounts: input.social_accounts || {},
+      created_by: user.id,
+    };
+
+    let { error: brandError } = await supabase
       .from('brands')
-      .insert({
-        id: brandId,
-        name: trimmedName,
-        slug,
-        industry: input.industry || 'Lainnya',
-        description: input.description?.trim() || null,
-        color_hex: input.color_hex || '#2563EB',
-        social_accounts: input.social_accounts || {},
-        created_by: user.id,
-      });
+      .insert(brandPayload);
+
+    // Tetap bisa membuat brand jika migrasi kolom platforms belum dijalankan.
+    if (brandError && /platforms/i.test(brandError.message)) {
+      delete brandPayload.platforms;
+      const retry = await supabase.from('brands').insert(brandPayload);
+      brandError = retry.error;
+    }
 
     if (brandError) {
       console.error('Gagal membuat brand di tabel brands:', brandError);
@@ -153,6 +161,7 @@ export const brandsService = {
         industry: input.industry || 'Lainnya',
         description: input.description?.trim() || null,
         color_hex: input.color_hex || '#2563EB',
+        platforms: input.platforms && input.platforms.length > 0 ? input.platforms : ['instagram'],
         social_accounts: input.social_accounts || {},
         created_by: user.id,
         created_at: new Date().toISOString(),
@@ -182,14 +191,34 @@ export const brandsService = {
     if (input.industry !== undefined) payload.industry = input.industry;
     if (input.description !== undefined) payload.description = input.description.trim() || null;
     if (input.color_hex !== undefined) payload.color_hex = input.color_hex;
+    if (input.platforms !== undefined) {
+      if (input.platforms.length === 0) {
+        throw new Error('Pilih minimal satu platform untuk brand ini.');
+      }
+      payload.platforms = input.platforms;
+    }
     if (input.social_accounts !== undefined) payload.social_accounts = input.social_accounts;
 
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('brands')
       .update(payload)
       .eq('id', brandId)
       .select()
       .single();
+
+    // Tetap bisa menyimpan pengaturan lain jika migrasi kolom platforms
+    // belum dijalankan. Platform akan diturunkan dari akun sosial yang terisi.
+    if (error && /platforms/i.test(error.message)) {
+      delete payload.platforms;
+      const retry = await supabase
+        .from('brands')
+        .update(payload)
+        .eq('id', brandId)
+        .select()
+        .single();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       console.error('Gagal memperbarui brand:', error);

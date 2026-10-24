@@ -139,6 +139,9 @@ function formatDateTime(value?: string | null): string {
 
 function toLocalInput(value?: string | null): string {
   if (!value) return '';
+  // Nilai dari input datetime-local sudah berupa waktu lokal. Jangan
+  // menggesernya lagi agar tanggal promo tidak terlihat berubah sendiri.
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value.slice(0, 16);
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '';
   const offset = date.getTimezoneOffset() * 60000;
@@ -149,6 +152,19 @@ function fromLocalInput(value: string): string | null {
   if (!value) return null;
   const date = new Date(value);
   return Number.isFinite(date.getTime()) ? date.toISOString() : null;
+}
+
+function localDateTimeAfterDays(days: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+}
+
+function isFutureDateTime(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time > Date.now();
 }
 
 export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
@@ -323,6 +339,28 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
       () => request('/api/admin/users/cleanup', { method: 'POST' }),
       'Pembersihan akun selesai.'
     );
+  };
+
+  const handleTogglePromo = (planId: 'starter' | 'pro' | 'ultra', active: boolean) => {
+    if (!pricingDraft?.plans?.[planId]) return;
+    const plan = pricingDraft.plans[planId];
+    const nextPlan = active
+      ? {
+          ...plan,
+          promoActive: true,
+          promoStartsAt: plan.promoStartsAt || localDateTimeAfterDays(0),
+          // Promo wajib punya batas waktu. Isi otomatis 30 hari agar promo
+          // tidak tampak aktif tetapi langsung dianggap berakhir.
+          promoEndsAt: isFutureDateTime(plan.promoEndsAt)
+            ? plan.promoEndsAt
+            : localDateTimeAfterDays(30),
+        }
+      : { ...plan, promoActive: false };
+
+    setPricingDraft({
+      ...pricingDraft,
+      plans: { ...pricingDraft.plans, [planId]: nextPlan },
+    });
   };
 
   const handleSavePricing = async (event: React.FormEvent) => {
@@ -777,7 +815,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-slate-900">{planId.charAt(0).toUpperCase() + planId.slice(1)}</h3>
                     <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
-                      <input type="checkbox" checked={Boolean(plan.promoActive)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoActive: event.target.checked } } })} />
+                      <input type="checkbox" checked={Boolean(plan.promoActive)} onChange={(event) => handleTogglePromo(planId, event.target.checked)} />
                       Promo aktif
                     </label>
                   </div>
@@ -799,6 +837,11 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                   <p className="rounded-xl bg-slate-50 p-2 text-[10px] text-slate-500">
                     Harga berlaku: <strong>{formatIDR(isPromoWindowActive(plan) ? plan.promoPrice : plan.normalPrice)}</strong> / bulan
                   </p>
+                  {plan.promoActive && !isPromoWindowActive(plan) && (
+                    <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-medium text-amber-700">
+                      Promo aktif, tetapi jadwalnya belum berjalan atau sudah berakhir. Periksa tanggal mulai dan akhir promo.
+                    </p>
+                  )}
                 </div>
               );
             })}

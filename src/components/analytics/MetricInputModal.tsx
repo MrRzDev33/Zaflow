@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, BarChart2, Calculator, AlertCircle, Calendar } from 'lucide-react';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { metricsService, metricFormulas, CreateMetricInput, UpdateMetricInput } from '../../services/database/metricsService.ts';
+import { PLATFORM_ORDER, getPlatformName } from '../../config/platforms.ts';
 
 interface MetricInputModalProps {
   isOpen: boolean;
   brandId: string;
   posts: ContentPost[];
+  platforms?: string[];
   initialMetric?: ContentMetric | null;
   initialPostId?: string | null;
   onClose: () => void;
@@ -17,13 +19,15 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
   isOpen,
   brandId,
   posts,
+  platforms,
   initialMetric,
   initialPostId = null,
   onClose,
   onSaved,
 }) => {
+  const defaultChannel = platforms?.[0] || PLATFORM_ORDER[0];
   const [postId, setPostId] = useState<string>('');
-  const [channel, setChannel] = useState<string>('instagram');
+  const [channel, setChannel] = useState<string>(defaultChannel);
   const [impressions, setImpressions] = useState<number>(0);
   const [reach, setReach] = useState<number>(0);
   const [likes, setLikes] = useState<number>(0);
@@ -88,7 +92,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
           ? initialPostId
           : posts[0]?.id || '';
       setPostId(preferredPostId);
-      setChannel('instagram');
+      setChannel(defaultChannel);
       setImpressions(0);
       setReach(0);
       setLikes(0);
@@ -108,9 +112,14 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
       setRecordedAt(new Date().toISOString().slice(0, 16));
     }
     setError(null);
-  }, [initialMetric, initialPostId, posts]);
+  }, [initialMetric, initialPostId, posts, defaultChannel]);
 
   if (!isOpen) return null;
+
+  const activePlatforms = platforms && platforms.length > 0 ? platforms : PLATFORM_ORDER;
+  const channelOptions = activePlatforms.includes(channel)
+    ? activePlatforms
+    : [channel, ...activePlatforms];
 
   // Real-time formula preview calculation
   const totalEng = metricFormulas.totalEngagements(likes, comments, shares, saves);
@@ -249,11 +258,11 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
                 onChange={(e) => setChannel(e.target.value)}
                 className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white capitalize"
               >
-                <option value="instagram">Instagram</option>
-                <option value="tiktok">TikTok</option>
-                <option value="linkedin">LinkedIn</option>
-                <option value="youtube">YouTube</option>
-                <option value="facebook">Facebook</option>
+                {channelOptions.map((platformId) => (
+                  <option key={platformId} value={platformId}>
+                    {getPlatformName(platformId)}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

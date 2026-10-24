@@ -475,6 +475,72 @@ async function getAuthEmailMap(): Promise<Map<string, string>> {
   return map;
 }
 
+/**
+ * Trial lama yang dibuat otomatis oleh trigger pendaftaran versi sebelumnya
+ * memakai kuota 50. Trial yang dipilih manual dari halaman paket memakai 20.
+ * Lisensi lama ini tidak boleh memberi akses dan tidak boleh menghalangi
+ * pengguna memulai trial secara manual.
+ */
+function isLegacyAutoTrialLicense(license: any): boolean {
+  if (!license || license.is_legacy_lifetime) return false;
+  const isTrial = license.plan_id === 'trial' || /^trial$/i.test(String(license.plan_name || '').trim());
+  return isTrial && Number(license.ai_quota_total) === 50;
+}
+
+async function markLegacyAutoTrials(userId: string): Promise<boolean> {
+  if (!supabaseAdmin) return false;
+  try {
+    const { data: userLicenses } = await supabaseAdmin
+      .from('licenses')
+      .select('id, plan_id, plan_name, ai_quota_total, ai_quota_used, is_legacy_lifetime')
+      .eq('owner_user_id', userId);
+
+    const autoTrialLicenses = (userLicenses || [])
+      .filter((license: any) => isLegacyAutoTrialLicense(license));
+    const autoTrialIds = autoTrialLicenses.map((license: any) => license.id);
+    const autoTrialWasUsed = autoTrialLicenses.some((license: any) => Number(license.ai_quota_used) > 0);
+
+    if (autoTrialIds.length === 0) return false;
+
+    const now = new Date().toISOString();
+    const { error } = await supabaseAdmin
+      .from('licenses')
+      .update({
+        plan_id: 'legacy_auto_trial',
+        plan_name: 'Trial lama',
+        status: 'expired',
+        billing_cycle: 'legacy',
+        current_period_end: now,
+        auto_renew: false,
+        cancel_at_period_end: true,
+        is_legacy_lifetime: false,
+        updated_at: now,
+      })
+      .in('id', autoTrialIds);
+
+    if (error) return false;
+
+    const { data: realTrialRows, error: realTrialError } = await supabaseAdmin
+      .from('licenses')
+      .select('id')
+      .eq('owner_user_id', userId)
+      .eq('plan_id', 'trial')
+      .limit(1);
+
+    if (!realTrialError && (!realTrialRows || realTrialRows.length === 0) && !autoTrialWasUsed) {
+      await supabaseAdmin
+        .from('profiles')
+        .update({ trial_used_at: null, updated_at: now })
+        .eq('id', userId);
+    }
+
+    return true;
+  } catch (error) {
+    console.warn('Gagal membersihkan trial otomatis lama:', error);
+    return false;
+  }
+}
+
 async function hasPriorPaidAccess(userId: string): Promise<boolean> {
   if (!supabaseAdmin) return false;
   const { data: licenses } = await supabaseAdmin
@@ -482,7 +548,11 @@ async function hasPriorPaidAccess(userId: string): Promise<boolean> {
     .select('id, plan_id')
     .eq('owner_user_id', userId)
     .limit(30);
-  if ((licenses || []).some((license: any) => license.plan_id !== 'trial')) return true;
+  if ((licenses || []).some((license: any) => (
+    license.plan_id
+    && license.plan_id !== 'trial'
+    && license.plan_id !== 'legacy_auto_trial'
+  ))) return true;
 
   const { data: paidTx } = await supabaseAdmin
     .from('transactions')
@@ -574,8 +644,13 @@ async function getActiveLicenseRow(userId: string): Promise<any | null> {
   const graceMs = GRACE_PERIOD_DAYS * 24 * 60 * 60 * 1000;
   return (rows || []).find((license: any) => {
     if (license.is_legacy_lifetime) return true;
-    // Skema lama belum memiliki perioda langganan; perlakukan sebagai akses lama.
-    if (!('current_period_end' in license)) return true;
+    // Skema lama belum memiliki perioda langganan. Paket berbayar lama tetap
+    // dianggap sebagai akses lama, tetapi trial lama tanpa perioda tidak boleh
+    // memberi akses otomatis.
+    if (!('current_period_end' in license)) {
+      const isTrial = license.plan_id === 'trial' || /^trial$/i.test(String(license.plan_name || '').trim());
+      return !isTrial;
+    }
     if (!license.current_period_end) return false;
     const end = new Date(license.current_period_end).getTime();
     if (!Number.isFinite(end)) return false;
@@ -1175,6 +1250,11 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
   }
 
   try {
+    // Akun lama mungkin masih membawa trial otomatis dari trigger pendaftaran
+    // versi sebelumnya. Bersihkan lebih dulu agar tidak tampil sebagai paket
+    // aktif dan agar pengguna bisa memilih trial secara manual.
+    await markLegacyAutoTrials(user.id);
+
     const [profile, pricing, customerService] = await Promise.all([
       getProfileRow(user.id),
       getPricingSettings(),
@@ -1183,9 +1263,11 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
 
     const isSuperAdmin = profile?.system_role === 'super_admin';
     const accountStatus = profile?.status || 'active';
-    const ownLicense = await getActiveLicenseRow(user.id);
+    const rawOwnLicense = await getActiveLicenseRow(user.id);
+    const ownLicense = isLegacyAutoTrialLicense(rawOwnLicense) ? null : rawOwnLicense;
     const workspaceOwner = ownLicense ? null : await getWorkspaceAccessOwner(user.id);
-    const workspaceLicense = workspaceOwner ? await getActiveLicenseRow(workspaceOwner.ownerId) : null;
+    const rawWorkspaceLicense = workspaceOwner ? await getActiveLicenseRow(workspaceOwner.ownerId) : null;
+    const workspaceLicense = isLegacyAutoTrialLicense(rawWorkspaceLicense) ? null : rawWorkspaceLicense;
     const license = ownLicense || workspaceLicense;
     const normalized = normalizeLicense(license);
 
@@ -1207,7 +1289,7 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
     }
 
     const priorPaid = await hasPriorPaidAccess(user.id);
-    const trialUsed = Boolean(profile?.trial_used_at);
+    const trialUsed = Boolean(profile?.trial_used_at) && !isLegacyAutoTrialLicense(rawOwnLicense);
     let trialReason = 'available';
     if (isSuperAdmin) trialReason = 'admin';
     else if (accountStatus !== 'active') trialReason = 'account';
@@ -1258,6 +1340,10 @@ app.post('/api/trial/start', authenticateUser, async (req: Request, res: Respons
   }
 
   try {
+    // Jangan biarkan trial otomatis lama menghalangi pengguna memilih trial
+    // dari halaman paket. Lisensi lama tetap disimpan sebagai riwayat.
+    await markLegacyAutoTrials(user.id);
+
     const workspaceOwner = await getWorkspaceAccessOwner(user.id);
     if (workspaceOwner) {
       res.status(400).json({ error: 'Akun Anda sudah terhubung ke workspace yang aktif.' });
@@ -2851,6 +2937,9 @@ app.put('/api/admin/pricing', authenticateUser, async (req: Request, res: Respon
       }
       if (promoStartsAt && promoEndsAt && new Date(promoStartsAt).getTime() >= new Date(promoEndsAt).getTime()) {
         throw new Error('Tanggal akhir promo harus setelah tanggal mulai.');
+      }
+      if (promoActive && (!promoEndsAt || !Number.isFinite(new Date(promoEndsAt).getTime()) || new Date(promoEndsAt).getTime() <= Date.now())) {
+        throw new Error('Tanggal akhir promo harus di masa depan agar promo benar-benar berlaku.');
       }
       return {
         normalPrice,

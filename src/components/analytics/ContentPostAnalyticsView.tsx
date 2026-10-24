@@ -27,6 +27,7 @@ import { EditPostModal } from '../content/EditPostModal.tsx';
 import { StatusBadge } from '../common/Badges.tsx';
 import { MetricInputModal } from './MetricInputModal.tsx';
 import { ContentPostPerformanceModal } from './ContentPostPerformanceModal.tsx';
+import { getBrandPlatforms } from '../../config/platforms.ts';
 
 interface ContentPostAnalyticsViewProps {
   brand: Brand | null;
@@ -697,6 +698,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
       <EditPostModal
         isOpen={Boolean(editingPost)}
         post={editingPost}
+        brand={brand}
         onClose={() => setEditingPost(null)}
         onUpdated={() => {
           setEditingPost(null);
@@ -720,6 +722,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
           isOpen={metricModalOpen}
           brandId={brand.id}
           posts={filteredPosts}
+          platforms={getBrandPlatforms(brand)}
           initialMetric={metricToEdit}
           initialPostId={metricPostId}
           onClose={() => {

@@ -69,6 +69,7 @@ export interface Brand {
   logo_url?: string | null;
   color_hex: string;
   social_accounts: SocialAccounts;
+  platforms?: string[];
   content_pillars?: string[];
   workflow_statuses?: WorkflowStatusConfig[];
   created_by?: string | null;

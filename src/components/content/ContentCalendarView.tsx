@@ -14,6 +14,7 @@ import { contentService } from '../../services/database/contentService.ts';
 import { EditPostModal } from './EditPostModal.tsx';
 import { NewPostModal } from '../dashboard/NewPostModal.tsx';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
+import { PLATFORM_CATALOG, getBrandPlatforms } from '../../config/platforms.ts';
 
 interface ContentCalendarViewProps {
   brand: Brand | null;
@@ -34,6 +35,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [draggedPostId, setDraggedPostId] = useState<string | null>(null);
   const [dragOverDateKey, setDragOverDateKey] = useState<string | null>(null);
+  const availablePlatforms = getBrandPlatforms(brand);
 
   const fetchMonthPosts = useCallback(async () => {
     if (!brand) {
@@ -272,17 +274,17 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
 
           {/* Platform filter tabs */}
           <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50">
-            {['all', 'instagram', 'tiktok', 'linkedin'].map((pf) => (
+            {['all', ...availablePlatforms].map((pf) => (
               <button
                 key={pf}
                 onClick={() => setPlatformFilter(pf)}
-                className={`px-2.5 py-1 text-xs rounded-md font-medium transition cursor-pointer capitalize ${
+                className={`px-2.5 py-1 text-xs rounded-md font-medium transition cursor-pointer ${
                   platformFilter === pf
                     ? 'bg-blue-600 text-white font-semibold'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                {pf === 'all' ? 'Semua' : pf}
+                {pf === 'all' ? 'Semua' : PLATFORM_CATALOG[pf as keyof typeof PLATFORM_CATALOG]?.name || pf}
               </button>
             ))}
           </div>
@@ -490,6 +492,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
       <EditPostModal
         isOpen={isEditModalOpen}
         post={selectedPost}
+        brand={brand}
         onClose={() => {
           setIsEditModalOpen(false);
           setSelectedPost(null);
@@ -587,7 +590,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
       {isNewPostModalOpen && (
         <NewPostModal
           isOpen={isNewPostModalOpen}
-          brandId={brand.id}
+          brand={brand}
           onClose={() => {
             setIsNewPostModalOpen(false);
             setPrefilledDate('');

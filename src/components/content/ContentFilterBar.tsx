@@ -1,6 +1,7 @@
 import React from 'react';
 import { Search, Filter, X, RotateCcw } from 'lucide-react';
 import { ContentFormat, ContentStatus } from '../../types/database.ts';
+import { getPlatformName } from '../../config/platforms.ts';
 
 export interface FilterState {
   search: string;
@@ -17,6 +18,7 @@ interface ContentFilterBarProps {
   showStatusFilter?: boolean;
   customPillars?: string[];
   customStatuses?: { id: string; title: string }[];
+  platforms?: string[];
 }
 
 export const ContentFilterBar: React.FC<ContentFilterBarProps> = ({
@@ -26,14 +28,13 @@ export const ContentFilterBar: React.FC<ContentFilterBarProps> = ({
   showStatusFilter = true,
   customPillars,
   customStatuses,
+  platforms,
 }) => {
   const channels = [
     { id: 'all', label: 'Semua Saluran' },
-    { id: 'instagram', label: 'Instagram' },
-    { id: 'tiktok', label: 'TikTok' },
-    { id: 'linkedin', label: 'LinkedIn' },
-    { id: 'youtube', label: 'YouTube' },
-    { id: 'facebook', label: 'Facebook' },
+    ...(platforms && platforms.length > 0
+      ? platforms.map((platformId) => ({ id: platformId, label: getPlatformName(platformId) }))
+      : []),
   ];
 
   const defaultPillars = [

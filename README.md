@@ -62,8 +62,9 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 5. `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql`
 6. `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql`
 7. `src/services/database/migrations/20261024_01_activation_code_hardening.sql`
+8. `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, mengunci kode aktivasi sekali pakai, audit admin, dan batas bucket 1 MB.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, audit admin, dan batas bucket 1 MB.
 
 Setelah migrasi, cek cepat:
 
@@ -87,6 +88,17 @@ SELECT id, file_size_limit FROM storage.buckets WHERE id = 'content-media';
 SELECT conname FROM pg_constraint
 WHERE conrelid = 'public.activation_codes'::regclass
   AND conname IN ('activation_codes_single_use_check', 'activation_codes_use_state_check');
+
+-- Platform brand
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'brands'
+  AND column_name = 'platforms';
+
+SELECT conname FROM pg_constraint
+WHERE conrelid = 'public.brands'::regclass
+  AND conname = 'brands_platforms_check';
 ```
 
 ## Penyiapan Midtrans

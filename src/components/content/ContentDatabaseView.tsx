@@ -28,6 +28,7 @@ import { StatusBadge, FormatBadge } from '../common/Badges.tsx';
 import { EditPostModal } from './EditPostModal.tsx';
 import { WorkflowSettingsModal } from './WorkflowSettingsModal.tsx';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
+import { getBrandPlatforms } from '../../config/platforms.ts';
 
 interface ContentDatabaseViewProps {
   brand: Brand | null;
@@ -68,6 +69,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
   // Pilar & Status Kustom Brand
   const [customPillars, setCustomPillars] = useState<string[]>([]);
   const [customStatuses, setCustomStatuses] = useState<WorkflowStatusConfig[]>([]);
+  const availablePlatforms = getBrandPlatforms(brand);
 
   const loadBrandWorkflow = useCallback(() => {
     if (brand) {
@@ -328,7 +330,11 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
                 </td>
 
                 <td className="py-3 px-3 whitespace-nowrap">
-                  <StatusBadge status={post.status} />
+                  <StatusBadge
+                    status={post.status}
+                    label={customStatuses.find((statusConfig) => statusConfig.id === post.status)?.title}
+                    dotColor={customStatuses.find((statusConfig) => statusConfig.id === post.status)?.dotColor}
+                  />
                 </td>
 
                 {/* Kolom Tanggal Produksi */}
@@ -425,7 +431,11 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
                   </span>
                 ))}
               </div>
-              <StatusBadge status={post.status} />
+              <StatusBadge
+                status={post.status}
+                label={customStatuses.find((statusConfig) => statusConfig.id === post.status)?.title}
+                dotColor={customStatuses.find((statusConfig) => statusConfig.id === post.status)?.dotColor}
+              />
             </div>
 
             <ContentThumbnail
@@ -661,6 +671,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
         onReset={() => setFilters(initialFilters)}
         customPillars={customPillars}
         customStatuses={customStatuses}
+        platforms={availablePlatforms}
       />
 
       {/* Content Area */}
@@ -751,6 +762,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
       <EditPostModal
         isOpen={isEditModalOpen}
         post={selectedPost}
+        brand={brand}
         onClose={() => {
           setIsEditModalOpen(false);
           setSelectedPost(null);

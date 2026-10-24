@@ -11,6 +11,8 @@
 --   3. migrations/20261020_01_licensing_payments_limits_and_rpc.sql
 --   4. migrations/20261020_02_content_brief_post_links_and_storage.sql
 --   5. migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql
+--   6. migrations/20261024_01_activation_code_hardening.sql
+--   7. migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql
 --
 -- Tanpa migrasi di atas, kebijakan RLS pada berkas ini masih rentan
 -- (termasuk eskalasi role dan pelanggaran batas paket).
@@ -54,6 +56,7 @@ CREATE TABLE IF NOT EXISTS public.brands (
     logo_url TEXT,
     color_hex TEXT NOT NULL DEFAULT '#2563EB',
     social_accounts JSONB NOT NULL DEFAULT '{}'::jsonb, -- { "instagram": "@brand", "tiktok": "@brand", ... }
+    platforms TEXT[] NOT NULL DEFAULT ARRAY['instagram']::TEXT[], -- Platform yang dipilih saat brand dibuat
     content_pillars JSONB DEFAULT '["Edukatif", "Promosi", "Interaktif", "Inspiratif", "Behind The Scenes", "Hiburan"]'::jsonb,
     workflow_statuses JSONB DEFAULT '[{"id":"idea","title":"Ide (Backlog)","dotColor":"bg-slate-400","headerBg":"bg-slate-100"},{"id":"draft","title":"Draf Penulisan","dotColor":"bg-amber-500","headerBg":"bg-amber-50"},{"id":"production","title":"Produksi / Shooting","dotColor":"bg-indigo-500","headerBg":"bg-indigo-50"},{"id":"in_review","title":"Perlu Review","dotColor":"bg-orange-500","headerBg":"bg-orange-50"},{"id":"approved","title":"Disetujui","dotColor":"bg-blue-500","headerBg":"bg-blue-50"},{"id":"scheduled","title":"Terjadwal","dotColor":"bg-purple-500","headerBg":"bg-purple-50"},{"id":"published","title":"Dipublikasikan","dotColor":"bg-emerald-500","headerBg":"bg-emerald-50"}]'::jsonb,
     created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
