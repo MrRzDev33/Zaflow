@@ -61,8 +61,9 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 4. `src/services/database/migrations/20261020_01_licensing_payments_limits_and_rpc.sql`
 5. `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql`
 6. `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql`
+7. `src/services/database/migrations/20261024_01_activation_code_hardening.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, kode aktivasi, audit admin, dan batas bucket 1 MB.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/trial/promo, mengunci kode aktivasi sekali pakai, audit admin, dan batas bucket 1 MB.
 
 Setelah migrasi, cek cepat:
 
@@ -81,6 +82,11 @@ WHERE proname IN (
 );
 
 SELECT id, file_size_limit FROM storage.buckets WHERE id = 'content-media';
+
+-- Kode aktivasi sekali pakai
+SELECT conname FROM pg_constraint
+WHERE conrelid = 'public.activation_codes'::regclass
+  AND conname IN ('activation_codes_single_use_check', 'activation_codes_use_state_check');
 ```
 
 ## Penyiapan Midtrans

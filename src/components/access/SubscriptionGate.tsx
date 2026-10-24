@@ -23,12 +23,14 @@ import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 
 interface SubscriptionGateProps {
   status: AccessStatus;
+  onContinue?: () => void;
   onRefresh: () => Promise<AccessStatus | null | void>;
   onSignOut: () => void;
 }
 
 export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
   status,
+  onContinue,
   onRefresh,
   onSignOut,
 }) => {
@@ -44,6 +46,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
   refreshRef.current = onRefresh;
 
   const blocked = status.accountStatus === 'suspended' || status.accountStatus === 'pending_deletion';
+  const canContinue = Boolean(status.hasAccess && onContinue);
+  const isWorkspaceMember = Boolean(status.workspace) || status.reason === 'workspace';
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -95,7 +99,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
     try {
       const res = await accessService.startTrial();
       setSuccessMsg(res.message || 'Trial berhasil dimulai.');
-      await onRefresh();
+      const next = await onRefresh();
+      if (next?.hasAccess) onContinue?.();
     } catch (err) {
       setErrorMsg(getApiErrorMessage(err, 'Trial belum dapat dimulai.'));
     } finally {
@@ -113,7 +118,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
       const res = await accessService.redeemCode(code.trim());
       setCode('');
       setSuccessMsg(res.message || 'Kode aktivasi berhasil digunakan.');
-      await onRefresh();
+      const next = await onRefresh();
+      if (next?.hasAccess) onContinue?.();
     } catch (err) {
       setErrorMsg(getApiErrorMessage(err, 'Kode aktivasi belum dapat digunakan.'));
     } finally {
@@ -129,7 +135,8 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
       const res = await accessService.createPayment(plan.id);
       if (res.sandbox) {
         setSuccessMsg(res.message || `Paket ${plan.name} berhasil diaktifkan.`);
-        await onRefresh();
+        const next = await onRefresh();
+        if (next?.hasAccess) onContinue?.();
         return;
       }
       if (!res.redirectUrl) {
@@ -179,19 +186,29 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto mb-4 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
             <Sparkles className="h-3.5 w-3.5" />
-            {blocked ? 'Akun perlu perhatian' : 'Satu langkah lagi'}
+            {blocked ? 'Akun perlu perhatian' : canContinue ? 'Paket aktif' : 'Satu langkah lagi'}
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             {blocked
               ? 'Akun Anda sedang tidak aktif'
-              : isExpired
-                ? 'Masa aktif akun telah berakhir'
-                : 'Pilih cara mulai menggunakan ZaFlow'}
+              : canContinue
+                ? status.license
+                  ? `Paket ${status.license.plan_name} aktif`
+                  : 'Akun admin aktif'
+                : isExpired
+                  ? 'Masa aktif akun telah berakhir'
+                  : 'Pilih cara mulai menggunakan ZaFlow'}
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-500">
             {blocked
               ? 'Hubungi customer service agar kami dapat membantu memulihkan akses akun Anda.'
-              : 'Mulai dengan trial 3 hari, pilih paket bulanan, atau gunakan kode aktivasi yang Anda miliki.'}
+              : canContinue
+                ? status.license
+                  ? 'Paket Anda sudah siap. Lanjutkan ke Workspace, atau perpanjang paket dan gunakan kode aktivasi di bawah.'
+                  : 'Akun admin dapat langsung masuk ke Workspace.'
+                : isWorkspaceMember
+                  ? 'Akses Anda mengikuti paket pemilik workspace. Hubungi pemilik workspace jika paket belum aktif.'
+                  : 'Mulai dengan trial 3 hari, pilih paket bulanan, atau gunakan kode aktivasi yang Anda miliki.'}
           </p>
         </div>
 
@@ -205,6 +222,22 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
           <div className="mx-auto mt-6 flex max-w-3xl items-start gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-medium text-emerald-700">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             <span>{successMsg}</span>
+          </div>
+        )}
+
+        {canContinue && (
+          <div className="mx-auto mt-6 flex max-w-3xl flex-col items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row">
+            <p className="text-xs font-medium text-emerald-800">
+              Paket aktif. Anda dapat langsung masuk ke Workspace.
+            </p>
+            <button
+              type="button"
+              onClick={onContinue}
+              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-5 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700"
+            >
+              Lanjut ke Workspace
+              <ArrowRight className="h-4 w-4" />
+            </button>
           </div>
         )}
 
@@ -246,7 +279,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
           </div>
         ) : (
           <>
-            {status.trial.available && (
+            {status.trial.available && !isWorkspaceMember && (
               <div className="mx-auto mt-8 max-w-4xl overflow-hidden rounded-3xl border border-blue-200 bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white shadow-[0_20px_60px_rgba(37,99,235,0.25)] sm:p-8">
                 <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -273,25 +306,27 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
               </div>
             )}
 
-            <div className="mt-10 flex items-end justify-between gap-4">
-              <div>
-                <h2 className="text-lg font-extrabold tracking-tight text-slate-900">Paket bulanan</h2>
-                <p className="mt-1 text-xs text-slate-500">
-                  Harga jelas, bisa berhenti kapan saja. Tidak ada biaya tersembunyi.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
-              >
-                <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                Segarkan
-              </button>
-            </div>
+            {!isWorkspaceMember && (
+              <>
+                <div className="mt-10 flex items-end justify-between gap-4">
+                  <div>
+                    <h2 className="text-lg font-extrabold tracking-tight text-slate-900">Paket bulanan</h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Harga jelas, bisa berhenti kapan saja. Tidak ada biaya tersembunyi.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+                    Segarkan
+                  </button>
+                </div>
 
-            <div className="mt-4 grid gap-4 md:grid-cols-3">
+                <div className="mt-4 grid gap-4 md:grid-cols-3">
               {status.plans.map((plan) => (
                 <div
                   key={plan.id}
@@ -347,39 +382,49 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                   </button>
                 </div>
               ))}
-            </div>
-
-            <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_10px_40px_rgba(15,23,42,0.04)] sm:p-6">
-              <div className="flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
-                  <Ticket className="h-5 w-5" />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-bold text-slate-900">Punya kode aktivasi?</h3>
-                  <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                    Masukkan kode dari tim ZaFlow untuk mengaktifkan paket atau trial tanpa pembayaran.
-                  </p>
-                  <form onSubmit={handleRedeem} className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <input
-                      value={code}
-                      onChange={(event) => setCode(event.target.value.toUpperCase())}
-                      placeholder="ZF-PRO-XXXXXX-XXXXXX"
-                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                    />
-                    <button
-                      type="submit"
-                      disabled={redeeming || !code.trim()}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                    >
-                      {redeeming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
-                      Gunakan Kode
-                    </button>
-                  </form>
+              </>
+            )}
+
+            {isWorkspaceMember && (
+              <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-blue-200 bg-blue-50 p-5 text-xs leading-relaxed text-blue-800">
+                Paket dan kredit AI Anda mengikuti workspace yang mengundang Anda. Anda tidak perlu membayar langganan terpisah.
+              </div>
+            )}
+
+            {!isWorkspaceMember && (
+              <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_10px_40px_rgba(15,23,42,0.04)] sm:p-6">
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
+                    <Ticket className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-bold text-slate-900">Punya kode aktivasi?</h3>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                      Masukkan kode dari tim ZaFlow untuk mengaktifkan paket atau trial tanpa pembayaran.
+                    </p>
+                    <form onSubmit={handleRedeem} className="mt-3 flex flex-col gap-2 sm:flex-row">
+                      <input
+                        value={code}
+                        onChange={(event) => setCode(event.target.value.toUpperCase())}
+                        placeholder="ZF-PRO-XXXXXX-XXXXXX"
+                        className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                      />
+                      <button
+                        type="submit"
+                        disabled={redeeming || !code.trim()}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {redeeming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
+                        Gunakan Kode
+                      </button>
+                    </form>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {!status.trial.available && (
+            {!status.trial.available && !canContinue && (
               <div className="mx-auto mt-4 flex max-w-3xl items-center justify-center gap-2 text-center text-[11px] text-slate-400">
                 <CalendarDays className="h-3.5 w-3.5 shrink-0" />
                 {status.trial.reason === 'workspace'

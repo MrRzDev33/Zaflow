@@ -715,7 +715,28 @@ async function authenticateUser(req: Request, res: Response, next: () => void) {
       res.status(401).json({ error: 'Sesi kedaluwarsa atau token tidak valid.' });
       return;
     }
+
+    const profile = await getProfileRow(user.id);
     (req as any).user = user;
+    (req as any).profile = profile;
+
+    // Halaman status akses tetap boleh dibuka agar akun nonaktif dapat melihat
+    // alasan dan menghubungi customer service. Endpoint lain wajib akun aktif.
+    const requestPath = req.originalUrl.split('?')[0].replace(/\/+$/, '');
+    const isAccessStatus = requestPath === '/api/access/status';
+    if (!isAccessStatus) {
+      if (!profile) {
+        res.status(403).json({ error: 'Akun belum siap. Silakan masuk kembali.' });
+        return;
+      }
+      if (profile.status && profile.status !== 'active') {
+        res.status(403).json({
+          error: 'Akun ini sedang tidak aktif. Hubungi customer service untuk bantuan.',
+        });
+        return;
+      }
+    }
+
     next();
   } catch (err: unknown) {
     res.status(500).json({ error: 'Gagal memverifikasi token pengguna.' });
@@ -1128,6 +1149,23 @@ function paymentRateLimiter(req: Request, res: Response, next: () => void) {
 // -------------------------------------------------------------
 // API ROUTES
 // -------------------------------------------------------------
+
+// Informasi bantuan publik. Dipakai halaman login/akun nonaktif agar pengguna
+// tetap bisa menghubungi customer service meskipun sesinya sudah dibatasi.
+app.get('/api/public/customer-service', async (_req: Request, res: Response) => {
+  try {
+    const customerService = await getCustomerServiceSettings();
+    const whatsappUrl = buildWhatsAppUrl(customerService);
+    res.setHeader('Cache-Control', 'public, max-age=60');
+    res.json({
+      active: Boolean(whatsappUrl),
+      whatsappUrl,
+      label: customerService.label || 'Bantuan ZaFlow',
+    });
+  } catch {
+    res.status(200).json({ active: false, whatsappUrl: null, label: 'Bantuan ZaFlow' });
+  }
+});
 
 app.get('/api/access/status', authenticateUser, async (req: Request, res: Response) => {
   const user = (req as any).user;
@@ -2618,7 +2656,10 @@ app.post('/api/admin/users/:id/reactivate', authenticateUser, async (req: Reques
   try {
     await setAccountStatus(targetId, 'active');
     await writeAdminAudit({ adminId: admin.id, action: 'reactivate_user', targetType: 'user', targetId });
-    res.json({ success: true, message: 'Akun berhasil diaktifkan kembali.' });
+    res.json({
+      success: true,
+      message: 'Akun berhasil diaktifkan kembali. Akses mengikuti paket yang masih tersisa.',
+    });
   } catch {
     res.status(500).json({ error: 'Akun belum dapat diaktifkan.' });
   }

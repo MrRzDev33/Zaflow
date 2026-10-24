@@ -46,6 +46,12 @@ export interface CustomerServiceInfo {
   whatsappUrl: string | null;
 }
 
+export interface PublicCustomerServiceInfo {
+  active: boolean;
+  whatsappUrl: string | null;
+  label: string;
+}
+
 export interface AccessStatus {
   hasAccess: boolean;
   reason: 'owner' | 'subscription' | 'trial' | 'workspace' | 'none' | 'suspended' | 'pending_deletion' | string;
@@ -114,5 +120,9 @@ export const accessService = {
       headers,
       body: JSON.stringify({ planId }),
     });
+  },
+
+  async getPublicCustomerService(): Promise<PublicCustomerServiceInfo> {
+    return apiFetchJson<PublicCustomerServiceInfo>('/api/public/customer-service');
   },
 };

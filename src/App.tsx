@@ -3,13 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Sparkles, BarChart3, ScanEye, BrainCircuit, Users, History, Key, ShieldAlert } from 'lucide-react';
 import { useAuth } from './hooks/useAuth.ts';
 import { useBrands } from './hooks/useBrands.ts';
 import { useLicense } from './hooks/useLicense.ts';
 import { useAccess } from './hooks/useAccess.ts';
 import { SubscriptionGate } from './components/access/SubscriptionGate.tsx';
+import { SupportContact } from './components/common/SupportContact.tsx';
 import { AuthPage } from './components/auth/AuthPage.tsx';
 import { ResetPasswordForm } from './components/auth/ResetPasswordForm.tsx';
 import { AppLayout } from './components/layout/AppLayout.tsx';
@@ -69,6 +70,16 @@ export default function App() {
   const [isNewBrandOpen, setIsNewBrandOpen] = useState(false);
   const [isNewPostOpen, setIsNewPostOpen] = useState(false);
   const [isBrandSettingsOpen, setIsBrandSettingsOpen] = useState(false);
+  const [entryGateDismissed, setEntryGateDismissed] = useState(() => {
+    const id = user?.id;
+    if (!id) return false;
+    try {
+      return sessionStorage.getItem(`zaflow_plan_gate_${id}`) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const previousUserIdRef = useRef<string | null>(user?.id || null);
   const [brandPosts, setBrandPosts] = useState<ContentPost[]>([]);
   const [aiTargetPostId, setAiTargetPostId] = useState<string | null>(null);
 
@@ -116,6 +127,77 @@ export default function App() {
     }
     setIsNewBrandOpen(true);
   }, [atBrandLimit]);
+
+  useEffect(() => {
+    const previousId = previousUserIdRef.current;
+
+    if (!user?.id) {
+      if (previousId) {
+        try {
+          sessionStorage.removeItem(`zaflow_plan_gate_${previousId}`);
+        } catch {
+          // Abaikan jika penyimpanan sesi tidak tersedia.
+        }
+      }
+      previousUserIdRef.current = null;
+      setEntryGateDismissed(false);
+      return;
+    }
+
+    if (previousId && previousId !== user.id) {
+      try {
+        sessionStorage.removeItem(`zaflow_plan_gate_${previousId}`);
+      } catch {
+        // Abaikan jika penyimpanan sesi tidak tersedia.
+      }
+    }
+
+    previousUserIdRef.current = user.id;
+    try {
+      setEntryGateDismissed(sessionStorage.getItem(`zaflow_plan_gate_${user.id}`) === '1');
+    } catch {
+      setEntryGateDismissed(false);
+    }
+  }, [user?.id]);
+
+  const markEntryGateDismissed = useCallback(() => {
+    if (user?.id) {
+      try {
+        sessionStorage.setItem(`zaflow_plan_gate_${user.id}`, '1');
+      } catch {
+        // Abaikan jika penyimpanan sesi tidak tersedia.
+      }
+    }
+    setEntryGateDismissed(true);
+  }, [user?.id]);
+
+  const handleSignOut = useCallback(async () => {
+    if (user?.id) {
+      try {
+        sessionStorage.removeItem(`zaflow_plan_gate_${user.id}`);
+      } catch {
+        // Abaikan jika penyimpanan sesi tidak tersedia.
+      }
+    }
+    setEntryGateDismissed(false);
+    await signOut();
+  }, [user?.id, signOut]);
+
+  // Jika akun kehilangan akses (misalnya dinonaktifkan atau paket berakhir),
+  // paksa layar paket/kode tampil lagi saat akses dipulihkan.
+  useEffect(() => {
+    if (!user?.id) return;
+    // Saat status masih dimuat, jangan hapus penanda sesi.
+    if (!accessStatus && !accessError) return;
+    if (accessStatus?.hasAccess && accessStatus.accountStatus === 'active') return;
+
+    try {
+      sessionStorage.removeItem(`zaflow_plan_gate_${user.id}`);
+    } catch {
+      // Abaikan jika penyimpanan sesi tidak tersedia.
+    }
+    setEntryGateDismissed(false);
+  }, [user?.id, accessStatus, accessError]);
 
   useEffect(() => {
     if (currentTab === 'admin' && !isSuperAdmin) {
@@ -200,8 +282,11 @@ export default function App() {
       setInviteFeedback({ success: true, message: res.message });
       localStorage.removeItem('zaflow_pending_invite_token');
       await refreshBrands();
-      await refreshAccess();
+      const nextAccess = await refreshAccess();
       await refreshLicense();
+      if (nextAccess?.hasAccess) {
+        markEntryGateDismissed();
+      }
       if (res.brand_id) {
         setActiveBrandId(res.brand_id);
       }
@@ -293,14 +378,24 @@ export default function App() {
           <p className="text-xs text-slate-500 leading-relaxed">
             {accessError || 'Status akun belum dapat dimuat. Silakan coba lagi.'}
           </p>
-          <button
-            type="button"
-            onClick={() => refreshAccess()}
-            className="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
-          >
-            <Loader2 className="w-4 h-4" />
-            Coba Lagi
-          </button>
+          <div className="flex flex-col items-center justify-center gap-2 sm:flex-row">
+            <button
+              type="button"
+              onClick={() => refreshAccess()}
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl transition-colors"
+            >
+              <Loader2 className="w-4 h-4" />
+              Coba Lagi
+            </button>
+            <SupportContact label="Hubungi Customer Service" />
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+            >
+              Keluar
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -320,8 +415,8 @@ export default function App() {
         ? 'Anggota'
         : null;
 
-  if (accessStatus && !accessStatus.hasAccess) {
-    if (hasValidInvite) {
+  if (!accessStatus.hasAccess || !entryGateDismissed) {
+    if (!accessStatus.hasAccess && hasValidInvite) {
       return (
         <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eff6ff,transparent_38%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)] flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-3xl border border-black/[0.06] bg-white p-6 text-center shadow-[0_20px_60px_rgba(15,23,42,0.10)] sm:p-8">
@@ -373,7 +468,7 @@ export default function App() {
 
             <button
               type="button"
-              onClick={signOut}
+              onClick={handleSignOut}
               className="mt-5 text-[11px] font-semibold text-slate-400 hover:text-slate-600"
             >
               Keluar dari akun
@@ -386,6 +481,7 @@ export default function App() {
     return (
       <SubscriptionGate
         status={accessStatus}
+        onContinue={accessStatus.hasAccess ? markEntryGateDismissed : undefined}
         onRefresh={async () => {
           const next = await refreshAccess();
           if (next?.hasAccess) {
@@ -393,7 +489,7 @@ export default function App() {
           }
           return next;
         }}
-        onSignOut={signOut}
+        onSignOut={handleSignOut}
       />
     );
   }
@@ -434,7 +530,7 @@ export default function App() {
           setPrefillPost(null);
           setIsNewPostOpen(true);
         }}
-        onSignOut={signOut}
+        onSignOut={handleSignOut}
         customerService={accessStatus ? {
           whatsappUrl: accessStatus.customerService.whatsappUrl,
           label: accessStatus.customerService.label,

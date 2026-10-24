@@ -22,10 +22,11 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 4 | `src/services/database/migrations/20261020_01_licensing_payments_limits_and_rpc.sql` | Lisensi, pembayaran, RPC kuota atomik, batas paket |
 | 5 | `src/services/database/migrations/20261020_02_content_brief_post_links_and_storage.sql` | Kolom `brief`, `post_url`, `posted_at`, index histori, dan policy Storage `content-media` |
 | 6 | `src/services/database/migrations/20261023_01_subscriptions_promo_trial_admin_and_support.sql` | Langganan bulanan, promo berjangka, trial 3 hari, kode aktivasi, status akun, audit admin, dan pengaturan aplikasi |
+| 7 | `src/services/database/migrations/20261024_01_activation_code_hardening.sql` | Mengunci kode aktivasi agar benar-benar sekali pakai dan tidak bisa diaktifkan kembali setelah dipakai |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 6 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 7 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -91,6 +92,15 @@ WHERE table_schema = 'public'
 SELECT to_regclass('public.activation_codes') AS activation_codes,
        to_regclass('public.admin_audit_logs') AS admin_audit_logs,
        to_regclass('public.app_settings') AS app_settings;
+
+-- Kode aktivasi sekali pakai (constraint + trigger)
+SELECT conname FROM pg_constraint
+WHERE conrelid = 'public.activation_codes'::regclass
+  AND conname IN ('activation_codes_single_use_check', 'activation_codes_use_state_check');
+
+SELECT tgname FROM pg_trigger
+WHERE tgrelid = 'public.activation_codes'::regclass
+  AND tgname = 'trg_guard_activation_code_single_use';
 
 -- Policy Storage untuk bucket content-media
 SELECT policyname FROM pg_policies
@@ -172,7 +182,7 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 6. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 7. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -190,6 +200,8 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | `column content_posts.brief does not exist` | Migrasi `20261020_02_...sql` belum dijalankan | Jalankan migrasi tersebut di SQL Editor |
 | `column profiles.status does not exist` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | `Could not find the function public.start_trial` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
+| Kode aktivasi bekas masih bisa dipakai | Migrasi 7 belum dijalankan | Jalankan `20261024_01_activation_code_hardening.sql` |
+| Akun diaktifkan kembali langsung punya akses | Akun masih memiliki paket yang aktif | Akses mengikuti sisa paket. Cabut paketnya di bagian **Langganan** jika akses tidak boleh dipulihkan. |
 | Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke backend; `/api/admin/overview` mengembalikan HTML | Lokal: jalankan `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ter-deploy dan redeploy setelah mengubah env. |
 | Panel admin: akses ditolak | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |
 

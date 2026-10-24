@@ -251,6 +251,28 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
     });
   };
 
+  const handleReactivateUser = (user: AdminUser) => {
+    const license = user.license;
+    const hasUsableLicense = Boolean(
+      license
+      && !license.is_expired
+      && (license.status === 'active' || license.status === 'trialing')
+    );
+
+    if (hasUsableLicense) {
+      const confirmed = window.confirm(
+        `Akun ini masih memiliki paket ${license.plan_name || 'aktif'}. Mengaktifkan akun akan memulihkan akses ke paket tersebut. Jika akses tidak boleh dipulihkan, cabut paketnya terlebih dahulu di bagian Langganan. Lanjutkan?`
+      );
+      if (!confirmed) return;
+    }
+
+    run(
+      `activate-${user.id}`,
+      () => request(`/api/admin/users/${user.id}/reactivate`, { method: 'POST' }),
+      'Akun berhasil diaktifkan. Akses mengikuti paket yang masih tersisa.'
+    );
+  };
+
   const handleSaveUser = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!editingUser) return;
@@ -552,7 +574,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                             <button title="Hapus permanen" onClick={() => handlePermanentDelete(user)} className="rounded-lg border border-red-200 bg-red-50 p-1.5 text-red-600 hover:bg-red-100"><Trash2 className="h-3.5 w-3.5" /></button>
                           </>
                         ) : user.status === 'suspended' ? (
-                          <button title="Aktifkan akun" onClick={() => run(`activate-${user.id}`, () => request(`/api/admin/users/${user.id}/reactivate`, { method: 'POST' }), 'Akun berhasil diaktifkan.')} className="rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-600 hover:bg-emerald-100"><RotateCcw className="h-3.5 w-3.5" /></button>
+                          <button title="Aktifkan akun (akses mengikuti paket tersisa)" onClick={() => handleReactivateUser(user)} className="rounded-lg border border-emerald-200 bg-emerald-50 p-1.5 text-emerald-600 hover:bg-emerald-100"><RotateCcw className="h-3.5 w-3.5" /></button>
                         ) : (
                           <button title="Nonaktifkan akun" onClick={() => run(`suspend-${user.id}`, () => request(`/api/admin/users/${user.id}/suspend`, { method: 'POST' }), 'Akun berhasil dinonaktifkan.')} className="rounded-lg border border-amber-200 bg-amber-50 p-1.5 text-amber-600 hover:bg-amber-100"><Ban className="h-3.5 w-3.5" /></button>
                         )}
@@ -663,6 +685,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             </label>
             <label className="block text-[11px] font-semibold text-slate-600">Kedaluwarsa kode (hari)
               <input type="number" min={0} max={3650} value={codeForm.expiresInDays} onChange={(event) => setCodeForm({ ...codeForm, expiresInDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              <span className="mt-1 block text-[10px] font-normal text-slate-400">Isi 0 jika kode tidak perlu kedaluwarsa.</span>
             </label>
             <button type="submit" disabled={busy === 'create-codes'} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
               {busy === 'create-codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
@@ -695,7 +718,13 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                     return (
                       <tr key={code.id}>
                         <td className="px-4 py-2.5">
-                          <button onClick={() => copyText(code.code)} className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-800 hover:text-blue-600">
+                          <button
+                            type="button"
+                            onClick={() => copyText(code.code)}
+                            disabled={effectiveStatus !== 'active'}
+                            title={effectiveStatus === 'active' ? 'Salin kode' : 'Kode sudah tidak berlaku'}
+                            className="inline-flex items-center gap-1 font-mono text-[11px] font-semibold text-slate-800 hover:text-blue-600 disabled:cursor-not-allowed disabled:text-slate-400 disabled:hover:text-slate-400"
+                          >
                             {code.code}
                             <Copy className="h-3 w-3" />
                           </button>

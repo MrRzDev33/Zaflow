@@ -118,6 +118,9 @@ SET status = 'trialing',
     billing_cycle = 'trial',
     current_period_start = NOW(),
     current_period_end = NOW() + INTERVAL '3 days',
+    auto_renew = FALSE,
+    cancel_at_period_end = FALSE,
+    is_legacy_lifetime = FALSE,
     updated_at = NOW()
 WHERE plan_id = 'trial'
   AND status = 'active';
@@ -342,7 +345,13 @@ BEGIN
         RAISE EXCEPTION 'Akun ini sedang tidak aktif';
     END IF;
 
-    IF v_profile.trial_used_at IS NOT NULL THEN
+    IF v_profile.trial_used_at IS NOT NULL
+       OR EXISTS (
+           SELECT 1
+           FROM public.licenses
+           WHERE owner_user_id = p_user_id
+             AND (plan_id = 'trial' OR status = 'trialing')
+       ) THEN
         RAISE EXCEPTION 'Trial sudah pernah digunakan oleh akun ini';
     END IF;
 
@@ -572,7 +581,11 @@ BEGIN
         RAISE EXCEPTION 'Kode aktivasi sudah dicabut';
     END IF;
 
-    IF v_code.status = 'used' OR v_code.used_count >= v_code.max_uses THEN
+    IF v_code.status = 'used'
+       OR v_code.used_count >= v_code.max_uses
+       OR v_code.used_count > 0
+       OR v_code.redeemed_at IS NOT NULL
+       OR v_code.redeemed_by IS NOT NULL THEN
         RAISE EXCEPTION 'Kode aktivasi sudah pernah digunakan';
     END IF;
 

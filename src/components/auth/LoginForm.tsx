@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { LogIn, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/auth/authService.ts';
+import { SupportContact } from '../common/SupportContact.tsx';
 
 interface LoginFormProps {
   onSwitchToRegister: () => void;
@@ -13,6 +14,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onSucc
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showSupport, setShowSupport] = useState(false);
   const [resetMode, setResetMode] = useState(false);
   const [resetSent, setResetSent] = useState(false);
 
@@ -37,6 +39,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onSucc
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
+    setShowSupport(false);
     setLoading(true);
 
     try {
@@ -44,7 +47,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onSucc
       if (onSuccess) onSuccess();
     } catch (err: unknown) {
       if (err instanceof Error) {
-        if (err.message.toLowerCase().includes('invalid login credentials')) {
+        const message = err.message.toLowerCase();
+        if (message.includes('banned') || message.includes('akun ini sedang tidak aktif')) {
+          setErrorMessage(
+            'Akun ini sedang dinonaktifkan. Hubungi customer service agar aksesnya dapat diperiksa kembali.'
+          );
+          setShowSupport(true);
+        } else if (message.includes('invalid login credentials')) {
           setErrorMessage(
             'Email atau kata sandi tidak cocok. Jika belum memiliki akun, silakan pilih tab "Daftar Baru".'
           );
@@ -67,6 +76,15 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onSwitchToRegister, onSucc
           <div>
             <p className="font-semibold">{errorMessage}</p>
           </div>
+        </div>
+      )}
+
+      {showSupport && (
+        <div className="flex justify-center">
+          <SupportContact
+            label="Hubungi Customer Service"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700"
+          />
         </div>
       )}
 
