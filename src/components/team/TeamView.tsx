@@ -63,10 +63,14 @@ export const TeamView: React.FC<TeamViewProps> = ({
     loadMembers();
   }, [loadMembers]);
 
+  // `members` bisa saja gagal dimuat (misalnya RLS menolak). Dalam kondisi itu
+  // role dari prop `canManage`/`canManageAdmins` di App tetap dipakai supaya
+  // tombol undang tidak hilang begitu saja.
   const myRole = members.find((m) => m.user_id === currentUserId)?.role || null;
   const isOwner = myRole === 'owner';
-  const effectiveCanManage = canManage && (isOwner || myRole === 'admin');
-  const effectiveCanManageAdmins = canManageAdmins && (isOwner || myRole === 'admin');
+  const isAdmin = myRole === 'admin';
+  const effectiveCanManage = canManage && (myRole === null || isOwner || isAdmin);
+  const effectiveCanManageAdmins = canManageAdmins && (myRole === null || isOwner || isAdmin);
 
   const copyToClipboard = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -204,7 +208,11 @@ export const TeamView: React.FC<TeamViewProps> = ({
         {loading ? (
           <div className="p-12 text-center text-slate-400 text-xs">Memuat daftar anggota...</div>
         ​) : members.length === 0 ? (
-          <div className="p-12 text-center text-slate-500 text-xs">Belum ada anggota terdaftar di brand ini.</div>
+          <div className="p-12 text-center text-slate-500 text-xs">
+            {errorMsg
+              ? 'Daftar anggota gagal dimuat. Gunakan tombol muat ulang di kanan atas.'
+              : 'Belum ada anggota terdaftar di brand ini.'}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">

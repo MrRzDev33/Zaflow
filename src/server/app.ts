@@ -487,6 +487,53 @@ function isLegacyAutoTrialLicense(license: any): boolean {
   return isTrial && Number(license.ai_quota_total) === 50;
 }
 
+function isTrialLicenseRow(license: any): boolean {
+  if (!license) return false;
+  return (
+    license.plan_id === 'trial' ||
+    license.status === 'trialing' ||
+    /^trial$/i.test(String(license.plan_name || '').trim())
+  );
+}
+
+/**
+ * Trial hanya boleh diberikan lewat kode aktivasi dari customer service.
+ * Lisensi trial yang tidak berasal dari penukaran kode (misalnya sisa trial
+ * otomatis dari trigger pendaftaran versi lama) tidak boleh membuka Workspace.
+ */
+async function isTrialFromActivationCode(userId: string): Promise<boolean> {
+  if (!supabaseAdmin || !userId) return false;
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('activation_codes')
+      .select('id')
+      .eq('plan_id', 'trial')
+      .eq('redeemed_by', userId)
+      .limit(1);
+    if (error) {
+      console.warn('Gagal memeriksa kode trial:', error.message);
+      return false;
+    }
+    return Boolean(data && data.length);
+  } catch (error) {
+    console.warn('Gagal memeriksa kode trial:', error);
+    return false;
+  }
+}
+
+/**
+ * Menentukan lisensi yang benar-benar boleh memberi akses. Trial otomatis lama
+ * dan trial yang tidak berasal dari kode aktivasi selalu ditolak.
+ */
+async function resolveGrantedLicense(userId: string, license: any): Promise<any | null> {
+  if (!license) return null;
+  if (isLegacyAutoTrialLicense(license)) return null;
+  if (isTrialLicenseRow(license) && !(await isTrialFromActivationCode(userId))) {
+    return null;
+  }
+  return license;
+}
+
 async function markLegacyAutoTrials(userId: string): Promise<boolean> {
   if (!supabaseAdmin) return false;
   try {
@@ -610,7 +657,7 @@ async function getWorkspaceAccessOwner(userId: string): Promise<{ ownerId: strin
       if (!brand.created_by || brand.created_by === userId) continue;
       const ownerProfile = await getProfileRow(brand.created_by);
       if (ownerProfile?.status && ownerProfile.status !== 'active') continue;
-      const license = await getActiveLicenseRow(brand.created_by);
+      const license = await resolveGrantedLicense(brand.created_by, await getActiveLicenseRow(brand.created_by));
       if (license) return { ownerId: brand.created_by, brandId: brand.id };
     }
   } catch {
@@ -1264,10 +1311,12 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
     const isSuperAdmin = profile?.system_role === 'super_admin';
     const accountStatus = profile?.status || 'active';
     const rawOwnLicense = await getActiveLicenseRow(user.id);
-    const ownLicense = isLegacyAutoTrialLicense(rawOwnLicense) ? null : rawOwnLicense;
+    const ownLicense = await resolveGrantedLicense(user.id, rawOwnLicense);
     const workspaceOwner = ownLicense ? null : await getWorkspaceAccessOwner(user.id);
     const rawWorkspaceLicense = workspaceOwner ? await getActiveLicenseRow(workspaceOwner.ownerId) : null;
-    const workspaceLicense = isLegacyAutoTrialLicense(rawWorkspaceLicense) ? null : rawWorkspaceLicense;
+    const workspaceLicense = workspaceOwner
+      ? await resolveGrantedLicense(workspaceOwner.ownerId, rawWorkspaceLicense)
+      : null;
     const license = ownLicense || workspaceLicense;
     const normalized = normalizeLicense(license);
 
@@ -1978,7 +2027,7 @@ app.post('/api/team/invitations/accept', authenticateUser, async (req: Request, 
     res.status(403).json({ error: 'Workspace pemilik sedang tidak aktif.' });
     return;
   }
-  if (!(await getActiveLicenseRow(ownerId))) {
+  if (!(await resolveGrantedLicense(ownerId, await getActiveLicenseRow(ownerId)))) {
     res.status(403).json({ error: 'Paket pemilik workspace belum aktif.' });
     return;
   }
@@ -3206,7 +3255,7 @@ app.get('/api/ai/quota', authenticateUser, async (req: Request, res: Response) =
   }
 
   try {
-    const license = await getActiveLicenseRow(user.id);
+    const license = await resolveGrantedLicense(user.id, await getActiveLicenseRow(user.id));
 
     if (!license) {
       res.json({

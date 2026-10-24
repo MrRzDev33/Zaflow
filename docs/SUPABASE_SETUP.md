@@ -164,6 +164,7 @@ Di **Authentication → Providers → Email**:
 - Trial berlangsung 3 hari, 20 kredit AI, 1 brand, 1 anggota, tanpa kartu, hanya sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar. Kode aktivasi trial juga selalu 3 hari.
 - Migrasi 9 memastikan akun yang pernah memiliki trial otomatis lama tetap dapat menukarkan kode trial dari customer service, tanpa menghapus riwayat trial lama yang sudah memakai kredit.
 - Akun baru tanpa paket tidak dapat masuk ke Workspace. Halaman paket wajib dilewati dengan membeli paket, menukarkan kode aktivasi, atau menerima kode trial dari customer service.
+- Server hanya menganggap trial sebagai akses sah jika pengguna benar-benar menukarkan kode trial. Lisensi trial tanpa penukaran kode (misalnya sisa trigger pendaftaran lama) diabaikan meskipun masih berstatus aktif di tabel `licenses`.
 - Masa tenggang 3 hari hanya berlaku untuk perpanjangan paket berbayar. Trial tidak memiliki masa tenggang.
 - Anggota tim mengikuti paket dan kuota AI pemilik workspace; mereka tidak membayar atau memakai trial terpisah.
 
@@ -228,7 +229,8 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | `Could not find the function public.start_trial` | Migrasi 6 belum dijalankan | Jalankan `20261023_01_...sql` |
 | Kode aktivasi bekas masih bisa dipakai | Migrasi 7 belum dijalankan | Jalankan `20261024_01_activation_code_hardening.sql` |
 | Kode trial ditolak untuk akun yang pernah punya trial otomatis lama | Migrasi 9 belum dijalankan | Jalankan `20261024_03_trial_request_only.sql` |
-| Akun baru langsung menampilkan “Paket aktif” dan bisa masuk Workspace | Trial otomatis lama dari trigger pendaftaran versi sebelumnya | Jalankan migrasi 8 (`20261024_02_...sql`) lalu login ulang. Server juga membersihkan trial lama ini saat status akses dimuat. |
+| Akun baru langsung menampilkan “Paket Trial aktif” sebelum memasukkan kode | Trial otomatis lama dari trigger pendaftaran versi sebelumnya | Jalankan migrasi 8 (`20261024_02_...sql`) lalu login ulang. Server versi terbaru juga mengabaikan trial yang tidak berasal dari penukaran kode. |
+| Anggota & Tim kosong dan tombol undang tidak muncul | Kode lama meng-embed `profiles` dari `brand_members` yang tidak punya foreign key ke `profiles`, sehingga PostgREST gagal dan daftar dikosongkan | Perbarui aplikasi ke versi terbaru (query profil dipisah dan role diambil dari brand). Tidak perlu mengubah database. |
 | Promo kembali ke harga normal setelah disimpan | Tanggal akhir promo kosong atau sudah lewat sehingga promo tidak berlaku | Saat mengaktifkan promo, tanggal akhir otomatis diisi 30 hari. Jika diubah manual, pastikan tanggal akhir masih di masa depan. |
 | Semua platform muncul di formulir konten | Migrasi 8 belum dijalankan atau brand belum diatur ulang | Jalankan migrasi 8, lalu pilih platform di **Pengaturan Brand**. |
 | Akun diaktifkan kembali langsung punya akses | Akun masih memiliki paket yang aktif | Akses mengikuti sisa paket. Cabut paketnya di bagian **Langganan** jika akses tidak boleh dipulihkan. |

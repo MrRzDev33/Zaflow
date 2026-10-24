@@ -1,6 +1,6 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
 import { apiFetchJson } from '../http/apiClient.ts';
-import { BrandMember } from '../../types/database.ts';
+import { BrandMember, Profile } from '../../types/database.ts';
 
 export interface BrandInvitation {
   id: string;
@@ -17,30 +17,46 @@ export const teamService = {
   async getBrandMembers(brandId: string): Promise<BrandMember[]> {
     if (!isConfigured || !brandId) return [];
 
+    // brand_members.user_id hanya memiliki foreign key ke auth.users, bukan ke
+    // public.profiles. Embed `profiles (...)` karena itu selalu gagal di
+    // PostgREST (PGRST200), jadi profil diambil terpisah lalu digabungkan.
     const { data, error } = await supabase
       .from('brand_members')
-      .select(`
-        id,
-        brand_id,
-        user_id,
-        role,
-        created_at,
-        profile:profiles (
-          id,
-          full_name,
-          avatar_url,
-          system_role
-        )
-      `)
+      .select('id, brand_id, user_id, role, created_at')
       .eq('brand_id', brandId)
       .order('created_at', { ascending: true });
 
     if (error) {
-      console.warn('Gagal memuat anggota brand:', error.message);
-      return [];
+      console.error('Gagal memuat anggota brand:', error);
+      throw new Error('Daftar anggota belum dapat dimuat. Silakan muat ulang halaman.');
     }
 
-    return (data || []) as unknown as BrandMember[];
+    const rows = (data || []) as Array<Omit<BrandMember, 'profile'>>;
+    if (rows.length === 0) return [];
+
+    const userIds = Array.from(new Set(rows.map((row) => row.user_id).filter(Boolean)));
+    const profilesById = new Map<string, Profile>();
+
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, system_role, created_at, updated_at')
+        .in('id', userIds);
+
+      if (profileError) {
+        // Data anggota tetap ditampilkan meskipun nama profil gagal dimuat.
+        console.error('Gagal memuat profil anggota brand:', profileError);
+      } else {
+        for (const profile of (profiles || []) as unknown as Profile[]) {
+          if (profile?.id) profilesById.set(profile.id, profile);
+        }
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      profile: profilesById.get(row.user_id),
+    })) as BrandMember[];
   },
 
   async inviteMember(

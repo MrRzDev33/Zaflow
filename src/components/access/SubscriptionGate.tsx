@@ -135,6 +135,9 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
 
   const whatsappUrl = status.customerService.whatsappUrl;
   const isExpired = Boolean(status.license?.is_expired);
+  const isTrialLicense = Boolean(
+    status.license && (status.license.plan_id === 'trial' || status.license.status === 'trialing')
+  );
 
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,#eff6ff,transparent_38%),linear-gradient(180deg,#f8fafc_0%,#f1f5f9_100%)]">
@@ -169,29 +172,35 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
         <div className="mx-auto max-w-2xl text-center">
           <div className="mx-auto mb-4 inline-flex items-center gap-1.5 rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
             <Sparkles className="h-3.5 w-3.5" />
-            {blocked ? 'Akun perlu perhatian' : canContinue ? 'Paket aktif' : 'Satu langkah lagi'}
+            {blocked ? 'Akun perlu perhatian' : canContinue ? (isTrialLicense ? 'Trial aktif' : 'Paket aktif') : 'Satu langkah lagi'}
           </div>
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900 sm:text-4xl">
             {blocked
               ? 'Akun Anda sedang tidak aktif'
               : canContinue
                 ? status.license
-                  ? `Paket ${status.license.plan_name} aktif`
+                  ? isTrialLicense
+                    ? 'Trial Anda sudah aktif'
+                    : `Paket ${status.license.plan_name} aktif`
                   : 'Akun admin aktif'
                 : isExpired
                   ? 'Masa aktif akun telah berakhir'
-                  : 'Pilih cara mulai menggunakan ZaFlow'}
+                  : isWorkspaceMember
+                    ? 'Akses workspace belum aktif'
+                    : 'Silakan pilih paket yang mau kamu beli'}
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-500">
             {blocked
               ? 'Hubungi customer service agar kami dapat membantu memulihkan akses akun Anda.'
               : canContinue
                 ? status.license
-                  ? 'Paket Anda sudah siap. Lanjutkan ke Workspace, atau perpanjang paket dan gunakan kode aktivasi di bawah.'
+                  ? isTrialLicense
+                    ? 'Kode trial berhasil digunakan. Lanjutkan ke Workspace sebelum masa trial berakhir.'
+                    : 'Paket Anda sudah siap. Lanjutkan ke Workspace, atau perpanjang paket dan gunakan kode aktivasi di bawah.'
                   : 'Akun admin dapat langsung masuk ke Workspace.'
                 : isWorkspaceMember
                   ? 'Akses Anda mengikuti paket pemilik workspace. Hubungi pemilik workspace jika paket belum aktif.'
-                  : 'Mulai dengan trial yang diajukan ke customer service, pilih paket bulanan, atau gunakan kode aktivasi yang Anda miliki.'}
+                  : 'Pilih salah satu paket bulanan di bawah. Mau coba trial dulu? Minta kode trial ke admin melalui tombol customer service.'}
           </p>
         </div>
 
@@ -211,7 +220,9 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
         {canContinue && (
           <div className="mx-auto mt-6 flex max-w-3xl flex-col items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 sm:flex-row">
             <p className="text-xs font-medium text-emerald-800">
-              Paket aktif. Anda dapat langsung masuk ke Workspace.
+              {isTrialLicense
+                ? 'Trial aktif. Anda dapat langsung masuk ke Workspace sebelum masa trial berakhir.'
+                : 'Paket aktif. Anda dapat langsung masuk ke Workspace.'}
             </p>
             <button
               type="button"
@@ -270,9 +281,9 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                       <Zap className="h-3.5 w-3.5" />
                       Trial by request
                     </div>
-                    <h2 className="mt-3 text-2xl font-extrabold">Trial {status.trial.days} hari</h2>
+                    <h2 className="mt-3 text-2xl font-extrabold">Mau coba trial? Minta ke admin</h2>
                     <p className="mt-2 max-w-md text-sm leading-relaxed text-blue-100">
-                      Ingin mencoba ZaFlow lebih dulu? Ajukan trial ke customer service. Tim kami akan
+                      Ajukan trial {status.trial.days} hari ke admin atau customer service. Tim kami akan
                       mengirimkan kode aktivasi trial berisi {status.trial.credits} kredit AI,{' '}
                       {status.trial.maxBrands} brand, dan {status.trial.maxTeamMembers} anggota.
                     </p>

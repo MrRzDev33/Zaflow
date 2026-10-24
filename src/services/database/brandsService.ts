@@ -1,5 +1,5 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
-import { Brand, BrandMember, BrandMemberRole } from '../../types/database.ts';
+import { Brand, BrandMember, BrandMemberRole, Profile } from '../../types/database.ts';
 
 export type BrandSocialAccounts = {
   instagram?: string;
@@ -271,24 +271,41 @@ export const brandsService = {
   async getBrandMembers(brandId: string): Promise<BrandMember[]> {
     if (!isConfigured || !brandId) return [];
 
+    // Sama seperti teamService.getBrandMembers: tidak ada FK dari
+    // brand_members.user_id ke public.profiles, sehingga embed PostgREST tidak
+    // valid. Ambil profil secara terpisah.
     const { data, error } = await supabase
       .from('brand_members')
-      .select(`
-        id,
-        brand_id,
-        user_id,
-        role,
-        created_at,
-        profiles (
-          id,
-          full_name,
-          avatar_url,
-          system_role
-        )
-      `)
-      .eq('brand_id', brandId);
+      .select('id, brand_id, user_id, role, created_at')
+      .eq('brand_id', brandId)
+      .order('created_at', { ascending: true });
 
     if (error) throw error;
-    return (data || []) as unknown as BrandMember[];
+
+    const rows = (data || []) as Array<Omit<BrandMember, 'profile'>>;
+    if (rows.length === 0) return [];
+
+    const userIds = Array.from(new Set(rows.map((row) => row.user_id).filter(Boolean)));
+    const profilesById = new Map<string, Profile>();
+
+    if (userIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, full_name, avatar_url, system_role, created_at, updated_at')
+        .in('id', userIds);
+
+      if (profileError) {
+        console.error('Gagal memuat profil anggota brand:', profileError);
+      } else {
+        for (const profile of (profiles || []) as unknown as Profile[]) {
+          if (profile?.id) profilesById.set(profile.id, profile);
+        }
+      }
+    }
+
+    return rows.map((row) => ({
+      ...row,
+      profile: profilesById.get(row.user_id),
+    })) as BrandMember[];
   },
 };
