@@ -311,7 +311,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Period Selector Tabs */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs">
+          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs max-w-full overflow-x-auto">
             {[7, 30, 90, 'custom'].map((d) => (
               <button
                 key={String(d)}
@@ -329,7 +329,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
 
           {/* Custom Date Range Inputs */}
           {periodDays === 'custom' && (
-            <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs">
+            <div className="flex flex-wrap items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg p-1 text-xs">
               <span className="text-slate-500 font-medium">Dari:</span>
               <input
                 type="date"
@@ -348,7 +348,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
           )}
 
           {/* Channel Filter Pills mengikuti platform yang dipilih brand */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs">
+          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs max-w-full overflow-x-auto">
             {[
               { id: 'all', label: 'Semua' },
               ...getBrandPlatforms(brand).map((platformId) => ({

@@ -248,19 +248,19 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2">
           {/* Search box */}
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Cari konten..."
-              className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 focus:bg-white w-44"
+              className="pl-8 pr-3 py-1.5 text-xs border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-50 focus:bg-white w-full sm:w-44"
             />
           </div>
 
           {/* Platform filter tabs */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50">
+          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 max-w-full overflow-x-auto">
             {['all', ...availablePlatforms].map((ch) => (
               <button
                 key={ch}

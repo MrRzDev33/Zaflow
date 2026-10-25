@@ -54,14 +54,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ notice }) => {
       {/* Banner konfigurasi Supabase jika belum terisi */}
       <ConfigNotice />
 
-      <div className="flex-1 flex items-center justify-center py-10 px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-14 items-center">
+      <div className="flex-1 flex items-center justify-center py-6 sm:py-10 px-3 sm:px-6 lg:px-8 relative z-10">
+        <div className="max-w-5xl mx-auto w-full grid grid-cols-1 lg:grid-cols-12 gap-6 sm:gap-8 lg:gap-14 items-center">
           {/* Kolom Kiri: Brand Identity & Fitur ZaFlow */}
-          <div className="lg:col-span-7 space-y-6">
+          <div className="lg:col-span-7 space-y-6 order-2 lg:order-1">
             <div className="space-y-4">
               <ZaFlowLogo size="xl" showText={true} theme="light" />
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 leading-tight">
+                <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight text-slate-900 leading-tight">
                   Manajemen Konten & Kalender Media Sosial Terpadu
                 </h1>
                 <p className="text-sm text-slate-600 mt-2 leading-relaxed max-w-lg">
@@ -70,8 +70,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ notice }) => {
               </div>
             </div>
 
-            {/* Feature Highlights Grid: iOS Frosted Glass Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+            {/* Feature Highlights Grid: iOS Frosted Glass Cards (disembunyikan di HP agar form langsung terlihat) */}
+            <div className="hidden lg:grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
               <div className="p-4 bg-white/70 backdrop-blur-xl border border-black/[0.06] rounded-2xl space-y-1.5 shadow-[0_4px_16px_rgba(0,0,0,0.02)] hover:bg-white/90 transition-all ios-button">
                 <div className="flex items-center gap-2.5 text-slate-900 font-semibold text-xs">
                   <div className="w-7 h-7 rounded-xl bg-[#007AFF]/10 text-[#007AFF] border border-[#007AFF]/15 flex items-center justify-center shrink-0">
@@ -125,8 +125,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ notice }) => {
           </div>
 
           {/* Kolom Kanan: Card Form Login / Register - iOS Frosted Glass Sheet */}
-          <div className="lg:col-span-5">
-            <div className="bg-white/85 backdrop-blur-2xl border border-black/[0.08] rounded-3xl p-6 sm:p-7 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-white/50">
+          <div className="lg:col-span-5 order-1 lg:order-2">
+            <div className="bg-white/85 backdrop-blur-2xl border border-black/[0.08] rounded-3xl p-4 sm:p-7 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-white/50">
               {notice && (
                 <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-[#007AFF]/20 bg-[#007AFF]/10 p-3.5 text-xs leading-relaxed text-slate-700">
                   <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#007AFF]" />

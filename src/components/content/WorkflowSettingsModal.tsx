@@ -242,7 +242,7 @@ export const WorkflowSettingsModal: React.FC<WorkflowSettingsModalProps> = ({
         )}
 
         {/* Konten Tab Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
           {activeTab === 'pillars' && (
             <div className="space-y-5">
               <div>

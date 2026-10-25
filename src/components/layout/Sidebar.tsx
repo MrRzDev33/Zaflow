@@ -14,8 +14,10 @@ import {
   ShieldCheck,
   Zap,
   MessageCircle,
+  X,
 } from 'lucide-react';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
+import { useMediaQuery } from '../../hooks/useMediaQuery.ts';
 
 interface SidebarProps {
   currentTab: string;
@@ -26,6 +28,9 @@ interface SidebarProps {
   isSuperAdmin?: boolean;
   whatsappUrl?: string | null;
   whatsappLabel?: string;
+  /** Drawer navigasi terbuka di HP/tablet. */
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 interface NavItem {
@@ -48,7 +53,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isSuperAdmin = false,
   whatsappUrl,
   whatsappLabel = 'Bantuan',
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+  // Di HP/tablet drawer selalu tampil penuh, tombol ciutkan hanya berlaku di desktop.
+  const collapsed = isDesktop && isCollapsed;
+  const handleSelectTab = (tabId: string) => {
+    onSelectTab(tabId);
+    onCloseMobile?.();
+  };
+
   const navSections: NavSection[] = [
     {
       title: 'Perencanaan',
@@ -83,24 +98,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className={`bg-white/20 backdrop-blur-md flex flex-col shrink-0 border-r border-white/60 select-none transition-all duration-200 ${
-        isCollapsed ? 'w-16' : 'w-56 lg:w-60'
-      }`}
+      aria-label="Navigasi utama"
+      className={`fixed inset-y-0 left-0 z-50 h-full lg:static lg:z-auto lg:h-auto bg-white/95 lg:bg-white/20 backdrop-blur-md flex flex-col shrink-0 border-r border-white/60 select-none shadow-2xl lg:shadow-none transition-all duration-200 ${
+        isMobileOpen ? 'translate-x-0' : '-translate-x-full'
+      } lg:translate-x-0 ${collapsed ? 'w-72 lg:w-16' : 'w-72 lg:w-56 xl:w-60'}`}
     >
       {/* Brand logo & workspace branding */}
       <div
-        className={`h-16 flex items-center px-4.5 border-b border-white/40 ${
-          isCollapsed ? 'justify-center' : 'justify-start'
+        className={`h-16 flex items-center border-b border-white/40 ${
+          collapsed ? 'justify-center px-4.5' : 'justify-between gap-2 px-4.5'
         }`}
       >
-        <ZaFlowLogo size={isCollapsed ? 'sm' : 'md'} showText={!isCollapsed} />
+        <ZaFlowLogo size={collapsed ? 'sm' : 'md'} showText={!collapsed} />
+        <button
+          type="button"
+          onClick={onCloseMobile}
+          aria-label="Tutup menu navigasi"
+          className="lg:hidden p-2 -mr-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white/70 transition"
+        >
+          <X className="w-5 h-5" strokeWidth={1.8} />
+        </button>
       </div>
 
       {/* Navigation menu */}
-      <div className="flex-1 overflow-y-auto px-3 py-4 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-4">
         {navSections.map((section) => (
           <div key={section.title} className="space-y-1">
-            {!isCollapsed && (
+            {!collapsed && (
               <p className="px-3 text-[10px] uppercase font-bold tracking-wider text-slate-400">
                 {section.title}
               </p>
@@ -113,10 +137,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 return (
                   <button
                     key={item.id}
-                    onClick={() => onSelectTab(item.id)}
-                    title={isCollapsed ? item.label : undefined}
+                    onClick={() => handleSelectTab(item.id)}
+                    title={collapsed ? item.label : undefined}
                     className={`w-full flex items-center ${
-                      isCollapsed ? 'justify-center px-2' : 'justify-start px-3.5'
+                      collapsed ? 'justify-center px-2' : 'justify-start px-3.5'
                     } py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
                       isActive
                         ? 'astra-pill-active font-semibold shadow-[0_4px_14px_rgba(0,0,0,0.05)] border border-white/90 text-slate-800'
@@ -126,10 +150,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <Icon
                       className={`w-4 h-4 shrink-0 ${
                         isActive ? 'text-[#2563EB]' : 'text-slate-500'
-                      } ${!isCollapsed ? 'mr-3' : ''}`}
+                      } ${!collapsed ? 'mr-3' : ''}`}
                       strokeWidth={isActive ? 2 : 1.75}
                     />
-                    {!isCollapsed && <span className="truncate">{item.label}</span>}
+                    {!collapsed && <span className="truncate">{item.label}</span>}
                   </button>
                 );
               })}
@@ -140,25 +164,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Bantuan pelanggan */}
       {whatsappUrl && (
-        <div className={`px-3 pb-2 ${isCollapsed ? 'flex justify-center' : ''}`}>
+        <div className={`shrink-0 px-3 pb-2 ${collapsed ? 'flex justify-center' : ''}`}>
           <a
             href={whatsappUrl}
             target="_blank"
             rel="noopener noreferrer"
-            title={isCollapsed ? whatsappLabel : undefined}
+            title={collapsed ? whatsappLabel : undefined}
             className={`inline-flex items-center rounded-xl border border-emerald-200/70 bg-emerald-50/80 text-emerald-700 hover:bg-emerald-100 transition ${
-              isCollapsed ? 'justify-center p-2' : 'w-full justify-start gap-2 px-3 py-2 text-xs font-semibold'
+              collapsed ? 'justify-center p-2' : 'w-full justify-start gap-2 px-3 py-2 text-xs font-semibold'
             }`}
           >
             <MessageCircle className="h-4 w-4 shrink-0" />
-            {!isCollapsed && <span className="truncate">{whatsappLabel}</span>}
+            {!collapsed && <span className="truncate">{whatsappLabel}</span>}
           </a>
         </div>
       )}
 
       {/* Quota box: Astra frosted glass widget */}
-      {!isCollapsed ? (
-        <div className="p-3.5 border-t border-white/40">
+      {!collapsed ? (
+        <div className="shrink-0 p-3.5 border-t border-white/40">
           <div className="p-3 rounded-2xl bg-white/50 backdrop-blur-md border border-white/80 shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
               <span className="text-[11px] text-slate-500 font-medium">Kredit AI</span>
@@ -179,7 +203,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div
-          className="p-3 border-t border-white/40 flex justify-center"
+          className="shrink-0 p-3 border-t border-white/40 flex justify-center"
           title={`Kredit AI: ${aiCreditsRemaining}/${aiCreditsTotal}`}
         >
           <div className="p-2 rounded-xl bg-white/60 text-[#2563EB] shadow-2xs">

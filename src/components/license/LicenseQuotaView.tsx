@@ -181,8 +181,8 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
   const isWorkspaceMember = status?.reason === 'workspace';
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+    <div className="space-y-6 max-w-6xl mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <Key className="w-6 h-6 text-blue-600" />

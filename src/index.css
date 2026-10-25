@@ -25,6 +25,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
 
   code, kbd, samp, pre {
@@ -181,4 +182,25 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(148, 163, 184, 0.55);
+}
+
+/* Sembunyikan scrollbar pada baris filter yang digeser horizontal */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/*
+ * Di iPhone/Safari, kolom input dengan font di bawah 16px memicu zoom otomatis.
+ * Khusus layar HP, samakan ukuran font kontrol form agar halaman tidak "melompat".
+ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
 }

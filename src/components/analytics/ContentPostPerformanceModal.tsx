@@ -178,7 +178,7 @@ export const ContentPostPerformanceModal: React.FC<ContentPostPerformanceModalPr
           </button>
         </div>
 
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
+        <div className="flex-1 space-y-4 overflow-y-auto p-4 sm:p-5">
           {/* Brief & caption */}
           <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
             <div className="rounded-xl border border-slate-200 bg-white p-4">

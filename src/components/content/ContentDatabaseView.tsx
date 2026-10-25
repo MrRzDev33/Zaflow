@@ -245,7 +245,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
   const renderTable = (items: ContentPost[]) => (
     <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="w-full min-w-[960px] text-left text-xs border-collapse">
           <thead>
             <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[11px] tracking-wider">
               <th className="py-3 px-3">Gambar</th>

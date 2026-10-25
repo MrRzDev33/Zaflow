@@ -1,8 +1,9 @@
-import React, { ReactNode, useState } from 'react';
+import React, { ReactNode, useCallback, useEffect, useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { Sidebar } from './Sidebar.tsx';
 import { Topbar } from './Topbar.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';
+import { useMediaQuery } from '../../hooks/useMediaQuery.ts';
 import { Brand, Profile } from '../../types/database.ts';
 
 interface AppLayoutProps {
@@ -43,9 +44,48 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   children,
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
+
+  const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
+
+  // Tutup drawer otomatis saat layar melebar ke desktop.
+  useEffect(() => {
+    if (isDesktop) setIsMobileSidebarOpen(false);
+  }, [isDesktop]);
+
+  // Tombol Escape menutup drawer di HP/tablet.
+  useEffect(() => {
+    if (!isMobileSidebarOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsMobileSidebarOpen(false);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileSidebarOpen]);
+
+  // Di HP/tablet tombol menu membuka drawer; di desktop tombol mengecilkan sidebar.
+  const handleToggleSidebar = useCallback(() => {
+    if (isDesktop) {
+      setIsSidebarCollapsed((prev) => !prev);
+      return;
+    }
+    setIsMobileSidebarOpen((prev) => !prev);
+  }, [isDesktop]);
+
+  const handleSelectTab = useCallback(
+    (tabId: string) => {
+      onSelectTab(tabId);
+      setIsMobileSidebarOpen(false);
+    },
+    [onSelectTab]
+  );
 
   return (
-    <div className="min-h-screen h-screen w-full flex bg-gradient-to-br from-[#D9E4F9] via-[#E8ECF9] to-[#DEE6F8] relative overflow-hidden">
+    <div
+      className="h-screen w-full flex bg-gradient-to-br from-[#D9E4F9] via-[#E8ECF9] to-[#DEE6F8] relative overflow-hidden"
+      style={{ height: '100dvh' }}
+    >
       {/* Soft Ambient Color Spheres in Background (Astra Mesh) */}
       <div className="fixed -top-32 -left-20 w-[600px] h-[600px] bg-gradient-to-br from-[#93C5FD]/40 to-[#818CF8]/30 rounded-full blur-[120px] pointer-events-none -z-0" />
       <div className="fixed top-1/3 -right-28 w-[550px] h-[550px] bg-gradient-to-br from-[#C4B5FD]/35 to-[#F472B6]/25 rounded-full blur-[130px] pointer-events-none -z-0" />
@@ -53,16 +93,28 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
       {/* Full Width Workspace Layout */}
       <div className="w-full h-full flex flex-row overflow-hidden relative z-10">
+        {/* Latar gelap saat drawer navigasi terbuka di HP/tablet */}
+        {isMobileSidebarOpen && (
+          <button
+            type="button"
+            aria-label="Tutup menu navigasi"
+            onClick={closeMobileSidebar}
+            className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-[2px] lg:hidden"
+          />
+        )}
+
         {/* Sidebar Kiri - Translucent Frosted Glass */}
         <Sidebar
           currentTab={currentTab}
-          onSelectTab={onSelectTab}
+          onSelectTab={handleSelectTab}
           aiCreditsRemaining={aiCreditsRemaining}
           aiCreditsTotal={aiCreditsTotal}
           isCollapsed={isSidebarCollapsed}
           isSuperAdmin={isSuperAdmin}
           whatsappUrl={customerService?.whatsappUrl || null}
           whatsappLabel={customerService?.label || 'Bantuan'}
+          isMobileOpen={isMobileSidebarOpen}
+          onCloseMobile={closeMobileSidebar}
         />
 
         {/* Main Content Pane */}
@@ -83,12 +135,21 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             onOpenNewPost={onOpenNewPost}
             onSignOut={onSignOut}
             isSidebarCollapsed={isSidebarCollapsed}
-            onToggleSidebar={() => setIsSidebarCollapsed((prev) => !prev)}
+            onToggleSidebar={handleToggleSidebar}
+            sidebarToggleLabel={
+              isDesktop
+                ? isSidebarCollapsed
+                  ? 'Buka Sidebar'
+                  : 'Ciutkan Sidebar'
+                : isMobileSidebarOpen
+                  ? 'Tutup menu navigasi'
+                  : 'Buka menu navigasi'
+            }
             customerService={customerService}
           />
 
           {/* Workspace Canvas Full Width */}
-          <main className="flex-1 overflow-y-auto p-4 sm:p-6 w-full">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 w-full">
             <div className="w-full space-y-5">
               {children}
             </div>

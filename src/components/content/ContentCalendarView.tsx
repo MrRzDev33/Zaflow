@@ -14,6 +14,7 @@ import { contentService } from '../../services/database/contentService.ts';
 import { EditPostModal } from './EditPostModal.tsx';
 import { NewPostModal } from '../dashboard/NewPostModal.tsx';
 import { ContentThumbnail } from './ContentThumbnail.tsx';
+import { StatusBadge } from '../common/Badges.tsx';
 import { PLATFORM_CATALOG, getBrandPlatforms } from '../../config/platforms.ts';
 
 interface ContentCalendarViewProps {
@@ -118,6 +119,26 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
   const unscheduledPosts = useMemo(() => {
     return filteredPosts.filter((p) => !p.scheduled_at);
   }, [filteredPosts]);
+
+  // Agenda mobile: konten terjadwal diurutkan berdasarkan tanggal tayang.
+  const scheduledPostsSorted = useMemo(() => {
+    return filteredPosts
+      .filter((p) => Boolean(p.scheduled_at))
+      .sort((a, b) => new Date(a.scheduled_at as string).getTime() - new Date(b.scheduled_at as string).getTime());
+  }, [filteredPosts]);
+
+  const formatAgendaDate = (value: string | null | undefined) => {
+    if (!value) return '';
+    try {
+      return new Intl.DateTimeFormat('id-ID', {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'short',
+      }).format(new Date(value));
+    } catch {
+      return value;
+    }
+  };
 
   const handlePrevMonth = () => {
     setCurrentDate(new Date(year, month - 1, 1));
@@ -273,7 +294,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
           </div>
 
           {/* Platform filter tabs */}
-          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50">
+          <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 max-w-full overflow-x-auto">
             {['all', ...availablePlatforms].map((pf) => (
               <button
                 key={pf}
@@ -327,8 +348,8 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
         </div>
       )}
 
-      {/* CALENDAR GRID */}
-      <div className="bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+      {/* CALENDAR GRID (desktop & tablet) */}
+      <div className="hidden md:block bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
         {/* Days of week header */}
         <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50/70 text-slate-600 text-[11px] font-bold uppercase tracking-wider text-center py-2.5">
           {daysOfWeek.map((day) => (
@@ -452,10 +473,75 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
         )}
       </div>
 
+      {/* AGENDA KONTEN (HP): daftar kronologis agar tidak perlu membaca grid 7 kolom */}
+      <div className="md:hidden bg-white border border-slate-200/80 rounded-xl shadow-xs overflow-hidden">
+        <div className="px-4 py-3 border-b border-slate-100">
+          <h3 className="text-sm font-bold text-slate-900">
+            Agenda {monthNames[month]} {year}
+          </h3>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            {scheduledPostsSorted.length} konten terjadwal. Ketuk untuk membuka detail.
+          </p>
+        </div>
+
+        {scheduledPostsSorted.length === 0 ? (
+          <div className="px-4 py-10 text-center">
+            <CalendarIcon className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+            <p className="text-xs font-semibold text-slate-600">Belum ada konten terjadwal</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {canEdit ? 'Ketuk tombol Jadwalkan Konten untuk menambah.' : 'Konten yang dijadwalkan akan muncul di sini.'}
+            </p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {scheduledPostsSorted.map((post) => {
+              const dateKey = (() => {
+                const d = new Date(post.scheduled_at as string);
+                return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+              })();
+              return (
+                <li key={post.id}>
+                  <button
+                    type="button"
+                    onClick={(event) =>
+                      canEdit ? handlePostClick(event, post) : handleDayClick(dateKey)
+                    }
+                    className="w-full flex items-start gap-3 px-4 py-3 text-left hover:bg-slate-50/70 transition"
+                  >
+                    <div className="w-14 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-1.5 py-1.5 text-center">
+                      <p className="text-[10px] uppercase font-bold tracking-wide text-slate-500">
+                        {new Date(post.scheduled_at as string).toLocaleDateString('id-ID', { month: 'short' })}
+                      </p>
+                      <p className="text-base font-extrabold leading-tight text-slate-800">
+                        {new Date(post.scheduled_at as string).getDate()}
+                      </p>
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                          {post.channels[0] || 'Umum'}
+                        </span>
+                        <StatusBadge status={post.status} className="text-[10px]" />
+                        <span className="text-[10px] text-slate-400">{post.pillar}</span>
+                      </div>
+                      <p className="mt-1 text-xs font-bold text-slate-800 truncate">{post.title}</p>
+                      <p className="text-[11px] text-slate-500 truncate">
+                        {formatAgendaDate(post.scheduled_at)}
+                      </p>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+
       {/* Drawer: Konten Belum Terjadwal (Unscheduled Backlog) */}
       {unscheduledPosts.length > 0 && (
         <div className="bg-white border border-slate-200/80 rounded-xl p-4 shadow-xs space-y-2.5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
               Antrean Belum Terjadwal ({unscheduledPosts.length})
             </h3>
@@ -505,7 +591,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
       {/* Day Posts List Modal */}
       {isDayModalOpen && selectedDayModalDate && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-4 border border-slate-200">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-xl space-y-4 border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div>
                 <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">

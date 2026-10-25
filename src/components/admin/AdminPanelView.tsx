@@ -497,7 +497,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
 
       {tab === 'users' && (
         <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
+          <div className="flex flex-col gap-3 border-b border-black/[0.06] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <h2 className="text-sm font-bold text-slate-900">Daftar Pengguna</h2>
               <p className="text-[11px] text-slate-400">Edit akun, atur akses, nonaktifkan, atau jadwalkan penghapusan.</p>
@@ -516,7 +516,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             </div>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Pengguna</th>
@@ -594,7 +594,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
 
       {tab === 'subscriptions' && (
         <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
-          <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
+          <div className="flex flex-col gap-3 border-b border-black/[0.06] px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <h2 className="text-sm font-bold text-slate-900">Langganan Pengguna</h2>
               <p className="text-[11px] text-slate-400">Perpanjang, ubah paket, atau hentikan akses.</p>
@@ -602,7 +602,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             <span className="text-[10px] font-semibold text-slate-400">{subscriptionUsers.length} data</span>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Pengguna</th>
@@ -749,7 +749,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <p className="text-[11px] text-slate-400">Pantau pemakaian dan cabut kode yang masih aktif.</p>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
+              <table className="w-full min-w-[720px] text-left text-xs">
                 <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                   <tr>
                     <th className="px-4 py-2.5">Kode</th>
@@ -925,7 +925,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             <p className="text-[11px] text-slate-400">Pembayaran paket baru dan perpanjangan.</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Transaksi</th>
@@ -969,7 +969,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
             <p className="text-[11px] text-slate-400">Catatan tindakan admin pada akun, langganan, dan pengaturan.</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[720px] text-left text-xs">
               <thead className="border-b border-black/[0.06] bg-slate-50 text-[10px] uppercase text-slate-500">
                 <tr>
                   <th className="px-4 py-2.5">Waktu</th>
@@ -1006,7 +1006,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
 
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm">
-          <form onSubmit={handleSaveUser} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4">
+          <form onSubmit={handleSaveUser} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Edit Akun</h2>

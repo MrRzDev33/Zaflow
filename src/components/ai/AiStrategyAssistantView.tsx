@@ -92,7 +92,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div className="flex items-center gap-3.5">
           <div className="p-3 bg-blue-50 text-blue-600 rounded-2xl shrink-0">
             <BrainCircuit className="w-6 h-6" />

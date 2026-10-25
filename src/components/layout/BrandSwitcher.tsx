@@ -34,7 +34,7 @@ export const BrandSwitcher: React.FC<BrandSwitcherProps> = ({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/60 hover:bg-white/80 backdrop-blur-md border border-white/80 shadow-2xs transition-all text-left cursor-pointer max-w-[200px]"
+        className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/60 hover:bg-white/80 backdrop-blur-md border border-white/80 shadow-2xs transition-all text-left cursor-pointer max-w-[140px] sm:max-w-[200px]"
       >
         <div
           className="w-3 h-3 rounded-md shrink-0 shadow-xs ring-1 ring-white"

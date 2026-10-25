@@ -152,7 +152,7 @@ export const BrandSettingsModal: React.FC<BrandSettingsModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSave} className="p-6 overflow-y-auto space-y-4 flex-1">
+        <form onSubmit={handleSave} className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
           {error && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2.5 text-xs text-red-700">
               <AlertCircle className="w-4 h-4 shrink-0 text-red-500 mt-0.5" />

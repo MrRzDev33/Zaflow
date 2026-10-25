@@ -23,6 +23,8 @@ interface TopbarProps {
   onSignOut: () => void;
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
+  /** Label tombol menu; berbeda antara desktop (ciutkan) dan HP (buka drawer). */
+  sidebarToggleLabel?: string;
   customerService?: { whatsappUrl: string | null; label: string } | null;
 }
 
@@ -37,6 +39,7 @@ export const Topbar: React.FC<TopbarProps> = ({
   onSignOut,
   isSidebarCollapsed,
   onToggleSidebar,
+  sidebarToggleLabel,
   customerService,
 }) => {
   const userName = profile?.full_name?.trim() || 'Pengguna ZaFlow';
@@ -55,19 +58,20 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, []);
 
   return (
-    <header className="h-16 px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0 border-b border-white/40 bg-white/20 backdrop-blur-md z-20">
+    <header className="h-16 px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 shrink-0 border-b border-white/40 bg-white/20 backdrop-blur-md z-20">
       {/* Left: Mobile Sidebar toggle & Workspace Brand Switcher */}
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           onClick={onToggleSidebar}
-          title={isSidebarCollapsed ? 'Buka Sidebar' : 'Ciutkan Sidebar'}
+          title={sidebarToggleLabel || (isSidebarCollapsed ? 'Buka Sidebar' : 'Ciutkan Sidebar')}
+          aria-label={sidebarToggleLabel || (isSidebarCollapsed ? 'Buka Sidebar' : 'Ciutkan Sidebar')}
           className="p-2 text-slate-600 hover:text-slate-900 astra-icon-btn rounded-xl cursor-pointer shrink-0"
         >
           <Menu className="w-4 h-4" strokeWidth={1.8} />
         </button>
 
         {/* Brand Switcher */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 min-w-0">
           <BrandSwitcher
             brands={brands}
             activeBrand={activeBrand}

@@ -143,9 +143,9 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto p-4 sm:p-6">
+    <div className="space-y-6 max-w-6xl mx-auto">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-4 sm:p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
           <div className="flex items-center gap-2">
             <span className="w-3 h-3 rounded-full" style={{ backgroundColor: brand.color_hex }} />
@@ -207,7 +207,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ brand }) => 
           <div className="p-12 text-center text-slate-500 text-xs">Belum ada catatan aktivitas untuk kriteria ini.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[760px] text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-[11px] uppercase font-bold text-slate-500 border-b border-slate-200">
                   <th className="px-6 py-3">Waktu</th>
