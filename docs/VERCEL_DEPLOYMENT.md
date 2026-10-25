@@ -85,7 +85,8 @@ Buka **Project → Settings → Environment Variables**. Tambahkan untuk **Produ
 | `MIDTRANS_SERVER_KEY` | `Mid-server-...` / `SB-Mid-server-...` | Untuk pembayaran |
 | `MIDTRANS_CLIENT_KEY` | `Mid-client-...` | Opsional |
 | `MIDTRANS_IS_PRODUCTION` | `true` | Ya |
-| `APP_URL` | `https://domain-anda.com` | Ya |
+| `APP_URL` | `https://zaaflow.vercel.app` | Ya |
+| `VITE_APP_URL` | `https://zaaflow.vercel.app` | Ya |
 | `ALLOW_SANDBOX_CHECKOUT` | `false` | Ya |
 | `NODE_ENV` | `production` | Ya |
 
@@ -93,6 +94,7 @@ Aturan penting:
 
 - `SUPABASE_SERVICE_ROLE_KEY`, `MIDTRANS_SERVER_KEY`, dan `GEMINI_API_KEY` **tidak boleh** memakai prefix `VITE_`.
 - `VITE_*` di-inline saat build. Setelah mengubah nilainya, lakukan **Redeploy**.
+- `APP_URL` dan `VITE_APP_URL` harus sama dengan domain produksi agar tautan konfirmasi email, reset kata sandi, dan callback Midtrans tidak jatuh ke localhost.
 - Jangan mengunggah `.env.local` ke GitHub. File itu hanya untuk lokal.
 
 ---

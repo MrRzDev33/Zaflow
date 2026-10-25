@@ -167,17 +167,32 @@ SELECT pg_get_functiondef('public.activate_subscription_from_payment(uuid,text,t
 
 Di **Authentication → URL Configuration**:
 
-- **Site URL**: `http://localhost:3000` (development) atau domain produksi.
+- **Site URL**: `https://zaaflow.vercel.app` untuk produksi. Ini adalah fallback terakhir Supabase bila `redirectTo` tidak diizinkan, jadi **jangan biarkan localhost**.
 - **Redirect URLs** tambahkan:
-  - `http://localhost:3000/**`
-  - `https://domain-anda.com/**`
+  - `https://zaaflow.vercel.app`
+  - `https://zaaflow.vercel.app/**`
+  - `http://localhost:3000`
+  - `http://localhost:3000/**` (khusus development)
+- Jika memakai domain lain di kemudian hari, tambahkan juga domain tersebut.
 
 Di **Authentication → Providers → Email**:
 
 - Aktifkan **Confirm email** untuk produksi.
-- Atur template **Reset Password** agar mengarah ke aplikasi. Aplikasi menangani event `PASSWORD_RECOVERY` dan menampilkan form kata sandi baru.
+- Buka **Email Templates → Confirm signup** dan **Reset password**, pastikan tautan memakai `{{ .ConfirmationURL }}`. Jangan menulis `http://localhost:3000` langsung di template.
 
-> Catatan: pengguna yang mendaftar saat konfirmasi email aktif belum memiliki sesi. Setelah mengklik tautan verifikasi, mereka dapat masuk.
+Di **Vercel → Project Settings → Environment Variables** (Production dan Preview):
+
+- `APP_URL=https://zaaflow.vercel.app`
+- `VITE_APP_URL=https://zaaflow.vercel.app`
+- **Redeploy** setelah mengubah `VITE_APP_URL`, karena nilainya ditanam saat build.
+
+Perilaku aplikasi:
+
+- Tautan konfirmasi mengarah ke `https://zaaflow.vercel.app/?confirmed=1`. Setelah email terverifikasi, aplikasi menutup sesi otomatis dan menampilkan **halaman login** dengan pesan “Email berhasil diverifikasi”.
+- Tautan reset mengarah ke `https://zaaflow.vercel.app/?reset=1`. Aplikasi menampilkan form **kata sandi baru**. Jika tautan kedaluwarsa/tidak valid, halaman login menampilkan pesan agar meminta tautan baru.
+- Reset dari **Panel Admin → Pengguna** juga memakai `APP_URL` yang sama.
+
+> Catatan: pengguna yang mendaftar saat konfirmasi email aktif belum memiliki sesi. Setelah mengklik tautan verifikasi, mereka diarahkan ke halaman login untuk masuk.
 
 ## 5. Harga Paket 6 Bulan, Kode Aktivasi, Trial, dan Masa Tenggang
 
@@ -251,6 +266,9 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | `Signature Midtrans tidak valid` | Server key berbeda (sandbox vs production) | Samakan `MIDTRANS_IS_PRODUCTION` dan server key |
 | Trial tidak muncul setelah daftar | Trial memang tidak dibuat otomatis dan tidak bisa dimulai sendiri | Minta kode trial ke customer service, lalu masukkan kodenya di halaman aktivasi |
 | Lisensi tidak muncul setelah login | User belum punya lisensi dan belum menukarkan kode/membeli paket | Gunakan kode aktivasi dari customer service atau selesaikan perpanjangan |
+| Tautan verifikasi email / reset kata sandi mengarah ke `localhost:3000` | **Site URL** Supabase masih localhost, URL produksi belum masuk **Redirect URLs**, atau `VITE_APP_URL`/`APP_URL` belum diisi | Set **Site URL** ke `https://zaaflow.vercel.app`, tambahkan `https://zaaflow.vercel.app` dan `https://zaaflow.vercel.app/**` di **Redirect URLs**, isi `VITE_APP_URL` dan `APP_URL`, lalu redeploy |
+| Setelah klik konfirmasi email langsung masuk Workspace, bukan halaman login | Versi aplikasi lama atau parameter `confirmed=1` hilang | Pastikan `emailRedirectTo` memakai `?confirmed=1` dan deploy versi terbaru |
+| Halaman reset menampilkan “Tautan reset kata sandi tidak valid atau sudah kedaluwarsa” | Tautan sudah dipakai/kedaluwarsa, atau sesi recovery tidak terbentuk karena redirect tidak diizinkan | Minta tautan reset baru; pastikan domain produksi ada di **Redirect URLs** |
 | Pembelian pertama ditolak saat memilih Midtrans (`403`) | Perilaku yang benar | Midtrans hanya untuk perpanjangan. Buat kode aktivasi di **Panel Admin → Kode Aktivasi** untuk pembeli baru |
 | Kode aktivasi berbayar ditolak: “belum terhubung ke email pembeli” | Kode dibuat tanpa `assigned_email` | Edit kode di **Panel Admin → Kode Aktivasi** dan isi email pembeli, atau buat kode baru dengan email wajib |
 | Kode aktivasi ditolak: “ditujukan untuk akun lain” | Email akun yang login berbeda dengan `assigned_email` | Pastikan pembeli login dengan email yang sama, atau ubah email kode selama belum dipakai |

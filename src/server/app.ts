@@ -162,7 +162,14 @@ const midtransClientKeyModeMismatch =
   midtransClientKey.length > 0 &&
   midtransClientKeyMode !== 'unknown' &&
   midtransClientKeyMode !== midtransServerKeyMode;
-const appUrl = (process.env.APP_URL || `http://localhost:${port}`).replace(/\/+$/, '');
+const vercelProductionHost = String(process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim();
+const productionFallbackAppUrl = vercelProductionHost
+  ? (/^https?:\/\//i.test(vercelProductionHost) ? vercelProductionHost : `https://${vercelProductionHost}`)
+  : 'https://zaaflow.vercel.app';
+const appUrl = (
+  process.env.APP_URL ||
+  (process.env.NODE_ENV === 'production' ? productionFallbackAppUrl : `http://localhost:${port}`)
+).replace(/\/+$/, '');
 const allowSandboxCheckout = String(process.env.ALLOW_SANDBOX_CHECKOUT || 'false').trim().toLowerCase() === 'true';
 
 if (!hasSupabaseAdmin) {
@@ -2719,7 +2726,7 @@ app.post('/api/admin/users/:id/reset-password', authenticateUser, async (req: Re
       return;
     }
     const { error: resetError } = await supabaseAdmin.auth.resetPasswordForEmail(data.user.email, {
-      redirectTo: appUrl,
+      redirectTo: `${appUrl}/?reset=1`,
     });
     if (resetError) throw resetError;
     await writeAdminAudit({

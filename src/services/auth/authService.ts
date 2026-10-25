@@ -1,6 +1,15 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
+import { getPublicAppUrl } from '../../config/env.ts';
 import { SignInCredentials, SignUpCredentials } from '../../types/auth.ts';
 import { Profile } from '../../types/database.ts';
+
+/**
+ * Membangun URL tujuan setelah pengguna mengklik tautan email Supabase.
+ * Selalu memakai domain publik aplikasi, bukan localhost.
+ */
+function buildAuthRedirect(query: string): string {
+  return `${getPublicAppUrl()}/${query}`;
+}
 
 export const authService = {
   /**
@@ -18,6 +27,9 @@ export const authService = {
         data: {
           full_name: fullName,
         },
+        // Setelah email dikonfirmasi, pengguna diarahkan ke halaman login
+        // aplikasi produksi, bukan Site URL default Supabase.
+        emailRedirectTo: buildAuthRedirect('?confirmed=1'),
       },
     });
 
@@ -49,7 +61,7 @@ export const authService = {
     if (!isConfigured) {
       throw new Error('Supabase belum dikonfigurasi.');
     }
-    const redirectTo = `${window.location.origin}${window.location.pathname}?reset=1`;
+    const redirectTo = buildAuthRedirect('?reset=1');
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo });
     if (error) throw error;
   },

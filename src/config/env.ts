@@ -32,11 +32,45 @@ const stored = getStoredSupabaseConfig();
 const rawSupabaseUrl = (import.meta.env.VITE_SUPABASE_URL as string | undefined) || stored.url;
 const rawAnonKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined) || stored.anonKey;
 
+/**
+ * Domain produksi yang dipakai sebagai fallback bila `VITE_APP_URL` belum diisi.
+ * Ini mencegah tautan verifikasi email dan reset kata sandi jatuh ke localhost.
+ */
+export const DEFAULT_PRODUCTION_APP_URL = 'https://zaaflow.vercel.app';
+
+/**
+ * Menormalkan URL aplikasi: menambah protokol bila hilang dan menghapus
+ * trailing slash agar penggabungan path tidak menghasilkan `//`.
+ */
+export function normalizeAppUrl(url?: string | null): string {
+  if (!url) return '';
+  let cleaned = url.trim();
+  if (!cleaned) return '';
+  if (!/^https?:\/\//i.test(cleaned)) cleaned = `https://${cleaned}`;
+  return cleaned.replace(/\/+$/, '');
+}
+
+/**
+ * URL publik aplikasi untuk tautan email Supabase (konfirmasi & reset).
+ * Prioritas: `VITE_APP_URL` -> origin browser saat ini -> domain produksi.
+ */
+export function getPublicAppUrl(): string {
+  const configured = normalizeAppUrl(import.meta.env.VITE_APP_URL as string | undefined);
+  if (configured) return configured;
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    const origin = normalizeAppUrl(window.location.origin);
+    if (origin) return origin;
+  }
+
+  return DEFAULT_PRODUCTION_APP_URL;
+}
+
 export const env = {
   rawSupabaseUrl,
   supabaseUrl: sanitizeSupabaseUrl(rawSupabaseUrl),
   supabaseAnonKey: rawAnonKey?.trim(),
-  appUrl: (import.meta.env.VITE_APP_URL || window.location.origin) as string,
+  appUrl: getPublicAppUrl(),
   isDev: import.meta.env.DEV,
 };
 

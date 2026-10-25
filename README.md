@@ -41,7 +41,7 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
    - `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
    - `GEMINI_API_KEY`
    - `MIDTRANS_SERVER_KEY` (opsional untuk mode pembayaran)
-   - `APP_URL`
+   - `APP_URL` dan `VITE_APP_URL` (URL publik aplikasi, mis. `https://zaaflow.vercel.app`)
 
 3. Jalankan server dev:
 
@@ -71,6 +71,18 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 > Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, lalu mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, dan batas bucket 1 MB.
 
 > **Wajib:** jalankan migrasi 10 **sebelum** memakai form kode aktivasi baru. Form tersebut menulis kolom `buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, dan `notes` yang dibuat oleh migrasi ini.
+
+### Tautan email Supabase (konfirmasi & reset kata sandi)
+
+Agar tautan email tidak jatuh ke `localhost`, samakan tiga hal:
+
+1. **Supabase → Authentication → URL Configuration**
+   - **Site URL**: `https://zaaflow.vercel.app`
+   - **Redirect URLs**: `https://zaaflow.vercel.app`, `https://zaaflow.vercel.app/**`, `http://localhost:3000`, dan `http://localhost:3000/**`
+2. **Vercel → Environment Variables**: `APP_URL` dan `VITE_APP_URL` = `https://zaaflow.vercel.app`, lalu **redeploy**.
+3. **Email Templates**: gunakan `{{ .ConfirmationURL }}` pada template Confirm signup dan Reset password.
+
+Tautan konfirmasi berakhir di halaman login (`?confirmed=1`), sedangkan tautan reset menampilkan form kata sandi baru (`?reset=1`).
 
 Setelah migrasi, cek cepat:
 

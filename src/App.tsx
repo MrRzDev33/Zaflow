@@ -113,6 +113,12 @@ export default function App() {
   );
   const [acceptingInvite, setAcceptingInvite] = useState(false);
   const [inviteFeedback, setInviteFeedback] = useState<{ success: boolean; message: string } | null>(null);
+  const [authNotice, setAuthNotice] = useState<string | null>(null);
+  const [confirmationPending, setConfirmationPending] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('confirmed') === '1';
+  });
+  const confirmationHandledRef = useRef(false);
 
   const isSuperAdmin = profile?.system_role === 'super_admin';
   const canEditContent = activeRole === 'owner' || activeRole === 'admin' || activeRole === 'editor';
@@ -159,6 +165,49 @@ export default function App() {
       setEntryGateDismissed(false);
     }
   }, [user?.id]);
+
+  // Tautan konfirmasi Supabase membuat sesi otomatis. Sesuai permintaan,
+  // pengguna diarahkan ke halaman login: sesi ditutup lalu tampilkan pesan sukses.
+  useEffect(() => {
+    if (!confirmationPending) return;
+    if (authLoading) return;
+    if (confirmationHandledRef.current) return;
+    confirmationHandledRef.current = true;
+
+    const url = new URL(window.location.href);
+    url.searchParams.delete('confirmed');
+    url.searchParams.delete('type');
+    window.history.replaceState({}, '', url.toString());
+
+    signOut()
+      .catch(() => {
+        // Abaikan: yang penting pengguna kembali ke halaman login.
+      })
+      .finally(() => {
+        setAuthNotice('Email berhasil diverifikasi. Silakan masuk dengan kata sandi Anda.');
+        setConfirmationPending(false);
+      });
+  }, [authLoading, confirmationPending, signOut]);
+
+  // Jika tautan reset tidak menghasilkan sesi recovery, tampilkan pesan yang jelas
+  // di halaman login alih-alih membiarkan pengguna di halaman kosong.
+  useEffect(() => {
+    if (authLoading || passwordRecovery) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('reset') !== '1') return;
+    if (user) return;
+
+    params.delete('reset');
+    const query = params.toString();
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
+    setAuthNotice('Tautan reset kata sandi tidak valid atau sudah kedaluwarsa. Silakan minta tautan baru.');
+  }, [authLoading, passwordRecovery, user]);
+
+  // Pesan dari tautan email hanya ditampilkan saat pengguna belum masuk.
+  useEffect(() => {
+    if (user) setAuthNotice(null);
+  }, [user]);
 
   const markEntryGateDismissed = useCallback(() => {
     if (user?.id) {
@@ -342,6 +391,18 @@ export default function App() {
     );
   }
 
+  // Menutup sesi otomatis dari tautan konfirmasi email sebelum menampilkan login.
+  if (confirmationPending) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
+        <div className="flex items-center gap-3 text-slate-800">
+          <Loader2 className="w-6 h-6 animate-spin text-blue-600" />
+          <span className="font-semibold text-sm">Memverifikasi email...</span>
+        </div>
+      </div>
+    );
+  }
+
   // Tampilkan form pembuatan kata sandi baru setelah pengguna membuka tautan recovery.
   if (passwordRecovery) {
     return <ResetPasswordForm onComplete={completePasswordRecovery} />;
@@ -349,7 +410,7 @@ export default function App() {
 
   // Jika belum masuk, tampilkan portal autentikasi
   if (!user) {
-    return <AuthPage />;
+    return <AuthPage notice={authNotice} />;
   }
 
   // Pemeriksaan akses dilakukan setelah login, sebelum workspace ditampilkan.

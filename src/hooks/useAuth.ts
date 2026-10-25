@@ -4,6 +4,19 @@ import { authService } from '../services/auth/authService.ts';
 import { isConfigured } from '../config/supabase.ts';
 import { Profile } from '../types/database.ts';
 
+/**
+ * Mendeteksi apakah URL saat ini berasal dari tautan reset kata sandi.
+ * Dipakai sebagai fallback bila event PASSWORD_RECOVERY terlewat.
+ */
+function hasRecoveryRequestInUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const search = new URLSearchParams(window.location.search);
+  if (search.get('reset') === '1') return true;
+  if (search.get('type') === 'recovery') return true;
+  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  return hash.get('type') === 'recovery';
+}
+
 export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -36,6 +49,9 @@ export function useAuth() {
       setUser(initialSession?.user ?? null);
       if (initialSession?.user) {
         fetchProfile(initialSession.user.id);
+        // Fallback: tautan recovery valid tetapi event PASSWORD_RECOVERY
+        // belum sempat tertangkap listener.
+        if (hasRecoveryRequestInUrl()) setPasswordRecovery(true);
       }
       setLoading(false);
     }).catch((err) => {
@@ -58,6 +74,7 @@ export function useAuth() {
       setUser(s?.user ?? null);
       if (s?.user) {
         fetchProfile(s.user.id);
+        if (hasRecoveryRequestInUrl()) setPasswordRecovery(true);
       } else {
         setProfile(null);
       }

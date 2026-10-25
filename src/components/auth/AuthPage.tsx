@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Calendar, BarChart3, Users } from 'lucide-react';
+import { Layers, Calendar, BarChart3, Users, Info } from 'lucide-react';
 import { LoginForm } from './LoginForm.tsx';
 import { RegisterForm } from './RegisterForm.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 import { teamService } from '../../services/database/teamService.ts';
 
-export const AuthPage: React.FC = () => {
+interface AuthPageProps {
+  /** Pesan status dari tautan email (konfirmasi akun / reset kata sandi). */
+  notice?: string | null;
+}
+
+export const AuthPage: React.FC<AuthPageProps> = ({ notice }) => {
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('login');
   const [pendingToken, setPendingToken] = useState<string | null>(null);
   const [invitePreview, setInvitePreview] = useState<{
@@ -122,6 +127,13 @@ export const AuthPage: React.FC = () => {
           {/* Kolom Kanan: Card Form Login / Register - iOS Frosted Glass Sheet */}
           <div className="lg:col-span-5">
             <div className="bg-white/85 backdrop-blur-2xl border border-black/[0.08] rounded-3xl p-6 sm:p-7 shadow-[0_12px_40px_rgba(0,0,0,0.08)] ring-1 ring-white/50">
+              {notice && (
+                <div className="mb-5 flex items-start gap-2.5 rounded-2xl border border-[#007AFF]/20 bg-[#007AFF]/10 p-3.5 text-xs leading-relaxed text-slate-700">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0 text-[#007AFF]" />
+                  <span>{notice}</span>
+                </div>
+              )}
+
               {/* Info Undangan Tim jika ada token di URL */}
               {invitePreview && (
                 <div className="mb-5 p-3.5 rounded-2xl bg-[#007AFF]/10 border border-[#007AFF]/15 text-xs">
