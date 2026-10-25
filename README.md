@@ -165,6 +165,19 @@ Alur pembayaran: pengguna lama yang ingin memperpanjang masuk → status akses d
 
 Panduan SQL dan operasional lengkap ada di **`docs/SUPABASE_SETUP.md`**.
 
+## Landing Page Penjualan (`/promo`)
+
+Halaman penjualan terpisah dari aplikasi, dirancang mobile-first dan tetap rapi di desktop (kolom selebar ±430px di tengah layar).
+
+- URL: `/promo`. Di Vercel dilayani lewat rewrite `/promo` → `/index.html` di `vercel.json`; server Express juga otomatis melayani path ini.
+- Isi: hero, masalah, fitur, 4 langkah aktivasi, paket & harga, FAQ, dan CTA WhatsApp.
+- Harga diambil dari `src/config/plans.ts` (`PLAN_CATALOG`), jadi angkanya sama dengan kode aplikasi.
+- Tombol beli memakai tautan produk Lynk.id dari env `VITE_LYNK_STARTER_URL`, `VITE_LYNK_PRO_URL`, dan `VITE_LYNK_ULTRA_URL`. Jika kosong, tombol otomatis mengarah ke WhatsApp customer service dengan pesan berisi nama paket.
+- Pembayaran tetap diproses di Lynk.id. Kode aktivasi **dibuat manual oleh admin** seperti alur sebelumnya; tidak ada webhook Lynk.id.
+- Nomor WhatsApp diambil dari endpoint publik `/api/public/customer-service`, bukan ditulis di kode.
+- Landing dimuat lewat dynamic import, sehingga bundle Workspace (App) tidak ikut diunduh pengunjung iklan.
+- Pengunjung diarahkan mendaftar dengan **email yang sama** seperti saat membayar di Lynk.id, karena kode aktivasi terikat email.
+
 ## Skrip
 
 | Perintah | Fungsi |

@@ -87,6 +87,9 @@ Buka **Project → Settings → Environment Variables**. Tambahkan untuk **Produ
 | `MIDTRANS_IS_PRODUCTION` | `true` | Ya |
 | `APP_URL` | `https://zaaflow.vercel.app` | Ya |
 | `VITE_APP_URL` | `https://zaaflow.vercel.app` | Ya |
+| `VITE_LYNK_STARTER_URL` | `https://lynk.id/...` | Untuk landing `/promo` |
+| `VITE_LYNK_PRO_URL` | `https://lynk.id/...` | Untuk landing `/promo` |
+| `VITE_LYNK_ULTRA_URL` | `https://lynk.id/...` | Untuk landing `/promo` |
 | `ALLOW_SANDBOX_CHECKOUT` | `false` | Ya |
 | `NODE_ENV` | `production` | Ya |
 
