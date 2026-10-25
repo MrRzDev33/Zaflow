@@ -3,7 +3,6 @@ import {
   AlertCircle,
   ArrowRight,
   CalendarDays,
-  Check,
   CheckCircle2,
   Loader2,
   LogOut,
@@ -15,9 +14,8 @@ import {
   Users,
   Zap,
 } from 'lucide-react';
-import { formatIDR } from '../../config/plans.ts';
 import { useAppBranding } from '../../hooks/useAppBranding.ts';
-import { accessService, type AccessPlan, type AccessStatus } from '../../services/access/accessService.ts';
+import { accessService, type AccessStatus } from '../../services/access/accessService.ts';
 import { getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 
@@ -35,7 +33,6 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
   onSignOut,
 }) => {
   const { logoUrl } = useAppBranding();
-  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
   const [redeeming, setRedeeming] = useState(false);
   const [code, setCode] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -110,29 +107,6 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
     }
   };
 
-  const handlePurchase = async (plan: AccessPlan) => {
-    setProcessingPlan(plan.id);
-    setErrorMsg(null);
-    setSuccessMsg(null);
-    try {
-      const res = await accessService.createPayment(plan.id);
-      if (res.sandbox) {
-        setSuccessMsg(res.message || `Paket ${plan.name} berhasil diaktifkan.`);
-        const next = await onRefresh();
-        if (next?.hasAccess) onContinue?.();
-        return;
-      }
-      if (!res.redirectUrl) {
-        throw new Error('Halaman pembayaran belum tersedia. Silakan coba lagi.');
-      }
-      window.location.assign(res.redirectUrl);
-    } catch (err) {
-      setErrorMsg(getApiErrorMessage(err, 'Pembayaran belum dapat diproses.'));
-    } finally {
-      setProcessingPlan(null);
-    }
-  };
-
   const whatsappUrl = status.customerService.whatsappUrl;
   const isExpired = Boolean(status.license?.is_expired);
   const isTrialLicense = Boolean(
@@ -187,7 +161,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                   ? 'Masa aktif akun telah berakhir'
                   : isWorkspaceMember
                     ? 'Akses workspace belum aktif'
-                    : 'Silakan pilih paket yang mau kamu beli'}
+                    : 'Aktifkan akun dengan kode aktivasi'}
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-slate-500">
             {blocked
@@ -196,11 +170,11 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
                 ? status.license
                   ? isTrialLicense
                     ? 'Kode trial berhasil digunakan. Lanjutkan ke Workspace sebelum masa trial berakhir.'
-                    : 'Paket Anda sudah siap. Lanjutkan ke Workspace, atau perpanjang paket dan gunakan kode aktivasi di bawah.'
+                    : 'Paket Anda sudah siap. Lanjutkan ke Workspace. Kode aktivasi baru bisa digunakan untuk memperpanjang masa aktif.'
                   : 'Akun admin dapat langsung masuk ke Workspace.'
                 : isWorkspaceMember
                   ? 'Akses Anda mengikuti paket pemilik workspace. Hubungi pemilik workspace jika paket belum aktif.'
-                  : 'Pilih salah satu paket bulanan di bawah. Mau coba trial dulu? Minta kode trial ke admin melalui tombol customer service.'}
+                  : 'Masukkan kode aktivasi yang dikirim admin setelah pembelian. Belum punya kode? Beli paket lewat WhatsApp customer service.'}
           </p>
         </div>
 
@@ -312,121 +286,73 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
             )}
 
             {!isWorkspaceMember && (
-              <>
-                <div className="mt-10 flex items-end justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-extrabold tracking-tight text-slate-900">Paket bulanan</h2>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Harga jelas, bisa berhenti kapan saja. Tidak ada biaya tersembunyi.
-                    </p>
+              <div className="mx-auto mt-8 grid max-w-4xl gap-4 lg:grid-cols-2">
+                <div className="rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_10px_40px_rgba(15,23,42,0.04)] sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                      <Ticket className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-bold text-slate-900">Punya kode aktivasi?</h3>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+                        Masukkan kode yang dikirim admin ke email pembelian Anda. Kode hanya berlaku untuk
+                        email tersebut dan dapat dipakai satu kali.
+                      </p>
+                      <form onSubmit={handleRedeem} className="mt-3 space-y-2">
+                        <input
+                          value={code}
+                          onChange={(event) => setCode(event.target.value.toUpperCase())}
+                          placeholder="ZF-PRO-XXXXXX-XXXXXX"
+                          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
+                        />
+                        <button
+                          type="submit"
+                          disabled={redeeming || !code.trim()}
+                          className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {redeeming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
+                          Gunakan Kode
+                        </button>
+                      </form>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRefresh}
-                    disabled={refreshing}
-                    className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-50 disabled:opacity-60"
-                  >
-                    <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? 'animate-spin' : ''}`} />
-                    Segarkan
-                  </button>
                 </div>
 
-                <div className="mt-4 grid gap-4 md:grid-cols-3">
-              {status.plans.map((plan) => (
-                <div
-                  key={plan.id}
-                  className={`relative flex flex-col rounded-3xl border bg-white p-5 shadow-[0_10px_40px_rgba(15,23,42,0.05)] ${
-                    plan.isPromo ? 'border-blue-300 ring-1 ring-blue-100' : 'border-black/[0.07]'
-                  }`}
-                >
-                  {plan.isPromo && (
-                    <div className="absolute -top-2.5 left-4 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wide text-white">
-                      {plan.promoLabel || 'Promo'}
+                <div className="rounded-3xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-[0_10px_40px_rgba(15,23,42,0.04)] sm:p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700">
+                      <MessageCircle className="h-5 w-5" />
                     </div>
-                  )}
-                  <h3 className="text-base font-extrabold text-slate-900">{plan.name}</h3>
-                  <p className="mt-1 min-h-8 text-[11px] leading-relaxed text-slate-500">{plan.tagline}</p>
-                  <div className="mt-4">
-                    {plan.isPromo && (
-                      <span className="text-xs font-semibold text-slate-400 line-through">
-                        {formatIDR(plan.normalPrice)}
-                      </span>
-                    )}
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-extrabold tracking-tight text-slate-900">
-                        {formatIDR(plan.effectivePrice)}
-                      </span>
-                      <span className="text-[11px] font-medium text-slate-400">/bulan</span>
-                    </div>
-                    {plan.isPromo && plan.promoEndsAt && (
-                      <p className="mt-1 text-[10px] font-medium text-blue-600">
-                        Berakhir {new Date(plan.promoEndsAt).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-sm font-bold text-slate-900">Belum punya kode?</h3>
+                      <p className="mt-1 text-[11px] leading-relaxed text-slate-600">
+                        Pembelian paket 6 bulan dilakukan melalui customer service. Setelah pembayaran
+                        dikonfirmasi, admin akan mengirim kode aktivasi ke email Anda.
                       </p>
-                    )}
+                      {whatsappUrl ? (
+                        <a
+                          href={whatsappUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-emerald-700"
+                        >
+                          <MessageCircle className="h-4 w-4" />
+                          Beli via WhatsApp
+                        </a>
+                      ) : (
+                        <p className="mt-3 rounded-xl bg-white/70 px-3 py-2 text-[11px] font-medium text-slate-500">
+                          Hubungi customer service ZaFlow untuk membeli paket.
+                        </p>
+                      )}
+                    </div>
                   </div>
-                  <ul className="mt-4 flex-1 space-y-2">
-                    {plan.highlights.map((item) => (
-                      <li key={item} className="flex items-start gap-2 text-[11px] text-slate-600">
-                        <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    type="button"
-                    onClick={() => handlePurchase(plan)}
-                    disabled={Boolean(processingPlan)}
-                    className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-extrabold text-white transition-colors hover:bg-slate-800 disabled:opacity-60"
-                  >
-                    {processingPlan === plan.id ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <ArrowRight className="h-4 w-4" />
-                    )}
-                    {status.isRenewal ? 'Perpanjang' : 'Pilih'} {plan.name}
-                  </button>
                 </div>
-              ))}
-                </div>
-              </>
+              </div>
             )}
 
             {isWorkspaceMember && (
               <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-blue-200 bg-blue-50 p-5 text-xs leading-relaxed text-blue-800">
                 Paket dan kredit AI Anda mengikuti workspace yang mengundang Anda. Anda tidak perlu membayar langganan terpisah.
-              </div>
-            )}
-
-            {!isWorkspaceMember && (
-              <div className="mx-auto mt-8 max-w-3xl rounded-3xl border border-black/[0.07] bg-white p-5 shadow-[0_10px_40px_rgba(15,23,42,0.04)] sm:p-6">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600">
-                    <Ticket className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-bold text-slate-900">Punya kode aktivasi?</h3>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
-                      Masukkan kode dari tim ZaFlow untuk mengaktifkan paket. Kode trial juga dikirim oleh
-                      customer service setelah permintaan trial Anda disetujui.
-                    </p>
-                    <form onSubmit={handleRedeem} className="mt-3 flex flex-col gap-2 sm:flex-row">
-                      <input
-                        value={code}
-                        onChange={(event) => setCode(event.target.value.toUpperCase())}
-                        placeholder="ZF-PRO-XXXXXX-XXXXXX"
-                        className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 font-mono text-xs text-slate-800 outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-100"
-                      />
-                      <button
-                        type="submit"
-                        disabled={redeeming || !code.trim()}
-                        className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {redeeming ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ticket className="h-4 w-4" />}
-                        Gunakan Kode
-                      </button>
-                    </form>
-                  </div>
-                </div>
               </div>
             )}
 
@@ -453,7 +379,7 @@ export const SubscriptionGate: React.FC<SubscriptionGateProps> = ({
         {whatsappUrl && (
           <div className="mx-auto mt-8 max-w-3xl rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4 text-center">
             <p className="text-[11px] font-medium text-emerald-800">
-              Butuh bantuan memilih paket?{' '}
+              Butuh bantuan aktivasi?{' '}
               <a
                 href={whatsappUrl}
                 target="_blank"

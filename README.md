@@ -1,6 +1,6 @@
 # ZaFlow
 
-Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi SaaS untuk agensi/tim media sosial. Frontend React + Vite, backend Express (BFF), database & auth Supabase, AI Gemini, dan pembayaran Midtrans.
+Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi SaaS untuk agensi/tim media sosial. Frontend React + Vite, backend Express (BFF), database & auth Supabase, AI Gemini, serta kode aktivasi dan Midtrans untuk perpanjangan.
 
 ## Fitur Utama
 
@@ -8,9 +8,10 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Database konten, kalender, dan kanban workflow.
 - Ekstraksi metrik dari screenshot/video dengan AI dan laporan analitik.
 - AI Strategy Assistant berbasis data historis brand.
-- Langganan bulanan dengan kuota kredit AI, batas brand/anggota, promo berjangka, dan trial 3 hari yang diajukan ke customer service.
-- Pembayaran Midtrans (Snap) dengan webhook terverifikasi, harga promo hanya untuk pembelian baru, serta kode aktivasi sekali pakai.
-- Log aktivitas tim dan panel admin lengkap (akun, langganan, kode aktivasi, transaksi, audit, harga, dan customer service WhatsApp).
+- Langganan 6 bulan dengan kuota kredit AI total, batas brand/anggota, dan trial 3 hari yang diajukan ke customer service.
+- Pembelian pertama hanya lewat kode aktivasi yang dibuat admin setelah pembayaran via Meta Ads/WhatsApp; kode terikat email pembeli, sekali pakai, dan berlaku 30 hari.
+- Pembayaran Midtrans (Snap) dengan webhook terverifikasi, khusus untuk perpanjangan paket yang sudah pernah berbayar.
+- Log aktivitas tim dan panel admin lengkap (akun, langganan, kode aktivasi + data pembeli, transaksi, audit, harga paket, dan customer service WhatsApp).
 - Daftar data besar (konten, log aktivitas, metrik, transaksi, kode aktivasi, audit) memakai pagination dengan pilihan jumlah baris dan nomor halaman.
 - Kompresi gambar otomatis di browser dengan batas unggah 1 MB.
 
@@ -65,8 +66,11 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 7. `src/services/database/migrations/20261024_01_activation_code_hardening.sql`
 8. `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql`
 9. `src/services/database/migrations/20261024_03_trial_request_only.sql`
+10. `src/services/database/migrations/20261025_01_six_month_plans.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, membuat langganan bulanan/promo, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, audit admin, dan batas bucket 1 MB.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, lalu mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, dan batas bucket 1 MB.
+
+> **Wajib:** jalankan migrasi 10 **sebelum** memakai form kode aktivasi baru. Form tersebut menulis kolom `buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, dan `notes` yang dibuat oleh migrasi ini.
 
 Setelah migrasi, cek cepat:
 
@@ -101,6 +105,15 @@ WHERE table_schema = 'public'
 SELECT conname FROM pg_constraint
 WHERE conrelid = 'public.brands'::regclass
   AND conname = 'brands_platforms_check';
+
+-- Data pembeli pada kode aktivasi (migrasi 10)
+SELECT column_name FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'activation_codes'
+  AND column_name IN ('buyer_name', 'buyer_phone', 'price_amount', 'payment_status', 'sales_channel', 'notes');
+
+-- Harga paket 6 bulan aktif
+SELECT value FROM public.app_settings WHERE key = 'pricing';
 ```
 
 ## Penyiapan Midtrans
@@ -120,19 +133,23 @@ Ringkasan:
 4. Isi `APP_URL` dengan domain publik aplikasi agar pengguna kembali ke halaman yang benar setelah membayar.
 5. Untuk pengujian lokal, daftarkan URL publik (mis. via tunnel) sebagai notification URL, atau aktifkan `ALLOW_SANDBOX_CHECKOUT=true` **hanya untuk development**.
 
-Alur pembayaran: pengguna masuk → status akses diperiksa → klien memilih paket → `POST /api/payments/midtrans/create` → server menghitung harga normal/promo dan membuat transaksi Snap → pengguna diarahkan ke halaman Midtrans → notifikasi masuk ke `/api/webhook/midtrans` → langganan bulanan diaktifkan secara idempoten. Perpanjangan selalu memakai harga normal, dan masa aktif baru ditambahkan setelah periode berjalan.
+Alur pembayaran: pengguna lama yang ingin memperpanjang masuk → status akses diperiksa → klien memilih paket → `POST /api/payments/midtrans/create` → server menghitung harga paket 6 bulan dan membuat transaksi Snap → pengguna diarahkan ke halaman Midtrans → notifikasi masuk ke `/api/webhook/midtrans` → masa aktif 180 hari ditambahkan dan kuota paket ditambahkan ke sisa kuota. Endpoint ini menolak pengguna yang belum pernah berbayar (403); pembelian pertama hanya melalui kode aktivasi.
 
 ## Langganan, Trial, dan Panel Admin
 
-- Paket bulanan: Starter Rp 29.000, Pro Rp 59.000, Ultra Rp 119.000.
-- Promo awal: Starter Rp 19.000, Pro Rp 39.000, Ultra Rp 79.000; hanya untuk pembelian baru dan berakhir sesuai tanggal yang diatur admin.
+- Paket 6 bulan: Starter Rp 69.000, Pro Rp 99.000, Ultra Rp 130.000. Harga tersebut adalah harga total 6 bulan dan **tidak ditampilkan** di halaman login/gate; harga hanya muncul di Workspace saat pengguna ingin memperpanjang.
+- Kuota AI adalah kuota **total 6 bulan** (bukan reset bulanan): Starter 300, Pro 600, Ultra 1.200. Perpanjangan menambah kuota baru ke sisa kuota tanpa mereset pemakaian.
+- Promo dihapus. Harga diatur admin di **Panel Admin → Harga Paket** (satu harga per paket).
+- **Pembelian pertama hanya lewat kode aktivasi.** Pembeli menghubungi customer service (mis. dari Meta Ads), membayar di luar aplikasi, lalu admin membuat kode aktivasi dengan email pembeli. Kode terikat email, sekali pakai, dan berlaku 30 hari sejak dibuat.
+- **Midtrans hanya untuk perpanjangan.** Server menolak pembelian pertama melalui Midtrans; perpanjangan dapat memakai Midtrans, kode aktivasi, atau customer service.
 - Trial 3 hari (20 kredit AI, 1 brand, 1 anggota) bersifat **by request**: pengguna mengajukan trial ke customer service, lalu customer service memberikan kode aktivasi trial. Trial tidak diaktifkan sendiri dari aplikasi, hanya sekali per akun, dan hanya untuk akun yang belum pernah berlangganan berbayar.
-- Akun baru tanpa paket tidak dapat masuk ke Workspace. Setelah login, pengguna diarahkan ke halaman paket untuk membeli paket, menukarkan kode aktivasi, atau mengajukan trial ke customer service.
+- Akun baru tanpa paket tidak dapat masuk ke Workspace. Setelah login, pengguna diarahkan ke halaman aktivasi yang hanya berisi kolom kode aktivasi, kartu trial, dan tombol beli via WhatsApp — tanpa daftar harga.
 - Lisensi trial hanya membuka Workspace jika berasal dari kode aktivasi yang ditukarkan pengguna. Sisa trial otomatis dari trigger pendaftaran lama diabaikan, meskipun barisnya masih ada di database.
 - Masa tenggang 3 hari hanya untuk perpanjangan paket berbayar. Anggota tim mengikuti paket dan kuota pemilik workspace; daftar anggota dan tombol undang dimuat dari role brand, bukan dari embed `profiles` yang tidak memiliki foreign key.
-- Panel Admin: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harga & Promo, Customer Service, Transaksi, Audit Log, dan Pengaturan Aplikasi.
+- Panel Admin: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harga Paket, Customer Service, Transaksi, Audit Log, dan Pengaturan Aplikasi.
+- Kode aktivasi mencatat data pembeli langsung di tabel `activation_codes` (`buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, `notes`) tanpa tabel pesanan terpisah. Email dan data pembeli kode yang belum dipakai dapat diubah admin.
 - Penghapusan akun lunak selama 7 hari, lalu dibersihkan permanen otomatis saat panel admin dibuka atau lewat tombol pembersihan.
-- Customer service hanya WhatsApp. Tombol muncul di halaman paket, menu bantuan, dan footer selama kontak diaktifkan admin.
+- Customer service hanya WhatsApp. Tombol muncul di halaman aktivasi, Workspace, menu bantuan, dan footer selama kontak diaktifkan admin.
 
 Panduan SQL dan operasional lengkap ada di **`docs/SUPABASE_SETUP.md`**.
 

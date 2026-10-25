@@ -1,24 +1,29 @@
 /**
  * Katalog paket ZaFlow.
  *
- * Satu sumber kebenaran untuk harga dasar, kuota AI, dan batas brand/anggota.
- * File ini sengaja tidak mengimpor apa pun agar aman dipakai di browser
- * maupun di server.
+ * Satu sumber kebenaran untuk harga paket 6 bulan, kuota AI, dan batas
+ * brand/anggota. File ini sengaja tidak mengimpor apa pun agar aman dipakai di
+ * browser maupun di server.
+ *
+ * Catatan:
+ * - Tidak ada lagi promo. Harga di bawah adalah harga paket 6 bulan.
+ * - Kuota AI adalah kuota total selama 6 bulan (bukan kuota bulanan).
  */
 
 export type PlanId = 'trial' | 'starter' | 'pro' | 'ultra';
 
 export const TRIAL_DAYS = 3;
+export const PLAN_DURATION_DAYS = 180;
+export const PLAN_DURATION_MONTHS = 6;
 export const GRACE_PERIOD_DAYS = 3;
 export const SOFT_DELETE_DAYS = 7;
 
 export interface Plan {
   id: PlanId;
   name: string;
-  /** Harga normal bulanan dalam Rupiah. */
+  /** Harga paket 6 bulan dalam Rupiah. */
   price: number;
-  /** Harga promo bulanan dalam Rupiah. */
-  promoPrice: number;
+  /** Kuota AI total selama 6 bulan. */
   aiQuota: number;
   maxBrands: number;
   maxTeamMembers: number;
@@ -32,7 +37,6 @@ export const PLAN_CATALOG: Record<PlanId, Plan> = {
     id: 'trial',
     name: 'Trial',
     price: 0,
-    promoPrice: 0,
     aiQuota: 20,
     maxBrands: 1,
     maxTeamMembers: 1,
@@ -43,38 +47,35 @@ export const PLAN_CATALOG: Record<PlanId, Plan> = {
   starter: {
     id: 'starter',
     name: 'Starter',
-    price: 29000,
-    promoPrice: 19000,
-    aiQuota: 100,
+    price: 69000,
+    aiQuota: 300,
     maxBrands: 1,
     maxTeamMembers: 2,
     purchasable: true,
     tagline: 'Untuk kreator solo yang mulai serius',
-    highlights: ['100 kredit AI/bulan', '1 brand', '2 anggota tim'],
+    highlights: ['300 kredit AI / 6 bulan', '1 brand', '2 anggota tim'],
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    price: 59000,
-    promoPrice: 39000,
-    aiQuota: 300,
+    price: 99000,
+    aiQuota: 600,
     maxBrands: 3,
     maxTeamMembers: 5,
     purchasable: true,
     tagline: 'Untuk tim konten yang berkembang',
-    highlights: ['300 kredit AI/bulan', '3 brand', '5 anggota tim'],
+    highlights: ['600 kredit AI / 6 bulan', '3 brand', '5 anggota tim'],
   },
   ultra: {
     id: 'ultra',
     name: 'Ultra',
-    price: 119000,
-    promoPrice: 79000,
-    aiQuota: 1000,
+    price: 130000,
+    aiQuota: 1200,
     maxBrands: 10,
     maxTeamMembers: 15,
     purchasable: true,
     tagline: 'Untuk agensi dan tim besar',
-    highlights: ['1.000 kredit AI/bulan', '10 brand', '15 anggota tim'],
+    highlights: ['1.200 kredit AI / 6 bulan', '10 brand', '15 anggota tim'],
   },
 };
 
@@ -101,12 +102,8 @@ export function formatIDR(amount: number): string {
 }
 
 export interface PlanPricingOverride {
-  normalPrice: number;
-  promoPrice: number;
-  promoActive: boolean;
-  promoStartsAt?: string | null;
-  promoEndsAt?: string | null;
-  promoLabel?: string | null;
+  /** Harga paket 6 bulan. */
+  price: number;
 }
 
 export interface PricingSettings {
@@ -115,88 +112,27 @@ export interface PricingSettings {
 }
 
 export interface ResolvedPlanPrice {
-  normalPrice: number;
-  promoPrice: number;
-  effectivePrice: number;
-  isPromo: boolean;
-  promoLabel: string | null;
-  promoEndsAt: string | null;
+  price: number;
 }
 
 export const DEFAULT_PRICING_SETTINGS: PricingSettings = {
   currency: 'IDR',
   plans: {
-    starter: {
-      normalPrice: PLAN_CATALOG.starter.price,
-      promoPrice: PLAN_CATALOG.starter.promoPrice,
-      promoActive: false,
-      promoStartsAt: null,
-      promoEndsAt: null,
-      promoLabel: 'Promo Peluncuran',
-    },
-    pro: {
-      normalPrice: PLAN_CATALOG.pro.price,
-      promoPrice: PLAN_CATALOG.pro.promoPrice,
-      promoActive: false,
-      promoStartsAt: null,
-      promoEndsAt: null,
-      promoLabel: 'Promo Peluncuran',
-    },
-    ultra: {
-      normalPrice: PLAN_CATALOG.ultra.price,
-      promoPrice: PLAN_CATALOG.ultra.promoPrice,
-      promoActive: false,
-      promoStartsAt: null,
-      promoEndsAt: null,
-      promoLabel: 'Promo Peluncuran',
-    },
+    starter: { price: PLAN_CATALOG.starter.price },
+    pro: { price: PLAN_CATALOG.pro.price },
+    ultra: { price: PLAN_CATALOG.ultra.price },
   },
 };
 
-function toTime(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) ? time : null;
-}
-
-export function isPromoWindowActive(promo: PlanPricingOverride, now = Date.now()): boolean {
-  if (!promo.promoActive) return false;
-  const startsAt = toTime(promo.promoStartsAt);
-  const endsAt = toTime(promo.promoEndsAt);
-  // Promo harus selalu punya batas waktu agar tidak berjalan tanpa akhir.
-  if (endsAt === null) return false;
-  if (startsAt !== null && now < startsAt) return false;
-  if (now > endsAt) return false;
-  return true;
-}
-
 export function resolvePlanPrice(
   planId: 'starter' | 'pro' | 'ultra',
-  settings: PricingSettings | null | undefined,
-  options?: { isRenewal?: boolean; now?: number }
+  settings: PricingSettings | null | undefined
 ): ResolvedPlanPrice {
   const plan = PLAN_CATALOG[planId];
   const override = settings?.plans?.[planId];
-  const normalPrice = Math.max(
+  const price = Math.max(
     0,
-    Number(override?.normalPrice ?? plan.price) || plan.price
+    Number(override?.price ?? plan.price) || plan.price
   );
-  const promoPrice = Math.max(
-    0,
-    Number(override?.promoPrice ?? plan.promoPrice) || plan.promoPrice
-  );
-  const promo = override || DEFAULT_PRICING_SETTINGS.plans[planId];
-  const promoWindowActive = isPromoWindowActive(promo, options?.now ?? Date.now());
-  const promoValid = promoPrice > 0 && promoPrice < normalPrice;
-  const isRenewal = Boolean(options?.isRenewal);
-  const isPromo = promoWindowActive && promoValid && !isRenewal;
-
-  return {
-    normalPrice,
-    promoPrice,
-    effectivePrice: isPromo ? promoPrice : normalPrice,
-    isPromo,
-    promoLabel: isPromo ? (promo.promoLabel || 'Promo') : null,
-    promoEndsAt: isPromo ? (promo.promoEndsAt || null) : null,
-  };
+  return { price };
 }

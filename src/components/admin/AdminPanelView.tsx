@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
-import { PURCHASABLE_PLANS, formatIDR, isPromoWindowActive } from '../../config/plans.ts';
+import { PLAN_DURATION_DAYS, PURCHASABLE_PLANS, formatIDR } from '../../config/plans.ts';
 import { AdminBrandingPanel } from './AdminBrandingPanel.tsx';
 import { Pagination } from '../common/Pagination.tsx';
 import { usePagination } from '../../hooks/usePagination.ts';
@@ -66,7 +66,7 @@ const TABS: Array<{ id: TabId; label: string; icon: React.ComponentType<{ classN
   { id: 'users', label: 'Pengguna', icon: Users },
   { id: 'subscriptions', label: 'Langganan', icon: Key },
   { id: 'codes', label: 'Kode Aktivasi', icon: Ticket },
-  { id: 'pricing', label: 'Harga & Promo', icon: Tag },
+  { id: 'pricing', label: 'Harga Paket', icon: Tag },
   { id: 'support', label: 'Customer Service', icon: MessageCircle },
   { id: 'transactions', label: 'Transaksi', icon: CreditCard },
   { id: 'audit', label: 'Riwayat Admin', icon: ScrollText },
@@ -105,7 +105,7 @@ const auditActionLabel: Record<string, string> = {
   restore_user: 'Pulihkan akun',
   delete_user: 'Hapus permanen akun',
   cleanup_deleted_users: 'Bersihkan akun terjadwal',
-  update_pricing: 'Ubah harga & promo',
+  update_pricing: 'Ubah harga paket',
   update_customer_service: 'Ubah customer service',
   create_activation_codes: 'Buat kode aktivasi',
   revoke_activation_code: 'Cabut kode aktivasi',
@@ -139,36 +139,6 @@ function formatDateTime(value?: string | null): string {
   }
 }
 
-function toLocalInput(value?: string | null): string {
-  if (!value) return '';
-  // Nilai dari input datetime-local sudah berupa waktu lokal. Jangan
-  // menggesernya lagi agar tanggal promo tidak terlihat berubah sendiri.
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return value.slice(0, 16);
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return '';
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function fromLocalInput(value: string): string | null {
-  if (!value) return null;
-  const date = new Date(value);
-  return Number.isFinite(date.getTime()) ? date.toISOString() : null;
-}
-
-function localDateTimeAfterDays(days: number): string {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-function isFutureDateTime(value: string | null | undefined): boolean {
-  if (!value) return false;
-  const time = new Date(value).getTime();
-  return Number.isFinite(time) && time > Date.now();
-}
-
 export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
   const [tab, setTab] = useState<TabId>('overview');
   const [stats, setStats] = useState<AdminStats>({
@@ -194,8 +164,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
   const [supportDraft, setSupportDraft] = useState({ whatsapp: '', label: '', message: '', active: false });
   const [codeForm, setCodeForm] = useState({
     planId: 'starter',
-    durationDays: 30,
+    durationDays: PLAN_DURATION_DAYS,
     assignedEmail: '',
+    buyerName: '',
+    buyerPhone: '',
+    priceAmount: 0,
+    paymentStatus: 'paid',
+    salesChannel: 'meta_ads',
+    notes: '',
     expiresInDays: 30,
     quantity: 1,
   });
@@ -354,28 +330,6 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
     );
   };
 
-  const handleTogglePromo = (planId: 'starter' | 'pro' | 'ultra', active: boolean) => {
-    if (!pricingDraft?.plans?.[planId]) return;
-    const plan = pricingDraft.plans[planId];
-    const nextPlan = active
-      ? {
-          ...plan,
-          promoActive: true,
-          promoStartsAt: plan.promoStartsAt || localDateTimeAfterDays(0),
-          // Promo wajib punya batas waktu. Isi otomatis 30 hari agar promo
-          // tidak tampak aktif tetapi langsung dianggap berakhir.
-          promoEndsAt: isFutureDateTime(plan.promoEndsAt)
-            ? plan.promoEndsAt
-            : localDateTimeAfterDays(30),
-        }
-      : { ...plan, promoActive: false };
-
-    setPricingDraft({
-      ...pricingDraft,
-      plans: { ...pricingDraft.plans, [planId]: nextPlan },
-    });
-  };
-
   const handleSavePricing = async (event: React.FormEvent) => {
     event.preventDefault();
     if (!pricingDraft) return;
@@ -383,25 +337,13 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
       pricing: {
         currency: 'IDR',
         plans: {
-          starter: {
-            ...pricingDraft.plans.starter,
-            promoStartsAt: fromLocalInput(pricingDraft.plans.starter.promoStartsAt || ''),
-            promoEndsAt: fromLocalInput(pricingDraft.plans.starter.promoEndsAt || ''),
-          },
-          pro: {
-            ...pricingDraft.plans.pro,
-            promoStartsAt: fromLocalInput(pricingDraft.plans.pro.promoStartsAt || ''),
-            promoEndsAt: fromLocalInput(pricingDraft.plans.pro.promoEndsAt || ''),
-          },
-          ultra: {
-            ...pricingDraft.plans.ultra,
-            promoStartsAt: fromLocalInput(pricingDraft.plans.ultra.promoStartsAt || ''),
-            promoEndsAt: fromLocalInput(pricingDraft.plans.ultra.promoEndsAt || ''),
-          },
+          starter: { price: Number(pricingDraft.plans.starter?.price) || 0 },
+          pro: { price: Number(pricingDraft.plans.pro?.price) || 0 },
+          ultra: { price: Number(pricingDraft.plans.ultra?.price) || 0 },
         },
       },
     };
-    await run('save-pricing', () => request('/api/admin/pricing', { method: 'PUT', body: payload }), 'Harga dan promo berhasil disimpan.');
+    await run('save-pricing', () => request('/api/admin/pricing', { method: 'PUT', body: payload }), 'Harga paket berhasil disimpan.');
   };
 
   const handleSaveSupport = async (event: React.FormEvent) => {
@@ -537,7 +479,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button onClick={() => setTab('users')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Kelola Pengguna</button>
                 <button onClick={() => setTab('codes')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Buat Kode Aktivasi</button>
-                <button onClick={() => setTab('pricing')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Atur Harga Promo</button>
+                <button onClick={() => setTab('pricing')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Atur Harga Paket</button>
                 <button onClick={() => setTab('support')} className="rounded-xl border border-slate-200 p-3 text-left text-xs font-semibold text-slate-700 hover:bg-slate-50">Kontak WhatsApp</button>
               </div>
             </div>
@@ -545,7 +487,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <h2 className="text-sm font-bold text-slate-900">Status Layanan</h2>
               <div className="mt-3 space-y-2 text-xs text-slate-600">
                 <p className="flex items-center justify-between"><span>Kontak customer service</span><span className={stats.customerService?.active ? 'font-bold text-emerald-600' : 'font-bold text-slate-400'}>{stats.customerService?.active ? 'Aktif' : 'Belum aktif'}</span></p>
-                <p className="flex items-center justify-between"><span>Promo berjalan</span><span className="font-bold text-slate-800">{['starter', 'pro', 'ultra'].filter((id) => isPromoWindowActive(stats.pricing?.plans?.[id] || {})).length} paket</span></p>
+                <p className="flex items-center justify-between"><span>Paket berbayar</span><span className="font-bold text-slate-800">3 paket / 6 bulan</span></p>
                 <p className="flex items-center justify-between"><span>Pemilik akses lama</span><span className="font-bold text-slate-800">{stats.licenses.filter((l) => l.is_legacy_lifetime).length} akun</span></p>
               </div>
             </div>
@@ -702,7 +644,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap justify-end gap-1">
                         {!user.license.is_legacy_lifetime && (
-                          <button onClick={() => run(`extend-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}/extend`, { method: 'POST', body: { days: 30 } }), 'Langganan diperpanjang 30 hari.')} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"><CalendarPlus className="h-3 w-3" />+30 hari</button>
+                          <button onClick={() => run(`extend-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}/extend`, { method: 'POST', body: { days: PLAN_DURATION_DAYS } }), 'Langganan diperpanjang 180 hari.')} className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1.5 text-[10px] font-semibold text-emerald-700 hover:bg-emerald-100"><CalendarPlus className="h-3 w-3" />+180 hari</button>
                         )}
                         <button onClick={() => { if (window.confirm('Hentikan akses langganan akun ini?')) run(`revoke-${user.id}`, () => request(`/api/admin/subscriptions/${user.id}`, { method: 'PATCH', body: { status: 'revoked' } }), 'Langganan dihentikan.'); }} className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] font-semibold text-red-700 hover:bg-red-100"><Ban className="h-3 w-3" />Hentikan</button>
                       </div>
@@ -734,31 +676,71 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               <h2 className="text-sm font-bold text-slate-900">Buat Kode Aktivasi</h2>
             </div>
             <label className="block text-[11px] font-semibold text-slate-600">Paket
-              <select value={codeForm.planId} onChange={(event) => setCodeForm({ ...codeForm, planId: event.target.value, durationDays: event.target.value === 'trial' ? 3 : 30 })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+              <select
+                value={codeForm.planId}
+                onChange={(event) => {
+                  const planId = event.target.value;
+                  const plan = PURCHASABLE_PLANS.find((item) => item.id === planId);
+                  setCodeForm({
+                    ...codeForm,
+                    planId,
+                    durationDays: planId === 'trial' ? 3 : PLAN_DURATION_DAYS,
+                    priceAmount: planId === 'trial' ? 0 : plan?.price || 0,
+                    paymentStatus: planId === 'trial' ? 'free' : 'paid',
+                  });
+                }}
+                className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+              >
                 <option value="trial">Trial 3 hari</option>
-                {PURCHASABLE_PLANS.map((plan) => <option key={plan.id} value={plan.id}>{plan.name}</option>)}
+                {PURCHASABLE_PLANS.map((plan) => (
+                  <option key={plan.id} value={plan.id}>{plan.name} — {formatIDR(plan.price)} / 6 bulan</option>
+                ))}
               </select>
             </label>
+            <label className="block text-[11px] font-semibold text-slate-600">Email pembeli (wajib)
+              <input type="email" required value={codeForm.assignedEmail} onChange={(event) => setCodeForm({ ...codeForm, assignedEmail: event.target.value })} placeholder="nama@email.com" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              <span className="mt-1 block text-[10px] font-normal text-slate-400">Kode hanya bisa dipakai oleh akun dengan email ini.</span>
+            </label>
             <div className="grid grid-cols-2 gap-3">
-              <label className="block text-[11px] font-semibold text-slate-600">Masa aktif (hari)
-                <input type="number" min={1} max={3650} disabled={codeForm.planId === 'trial'} value={codeForm.durationDays} onChange={(event) => setCodeForm({ ...codeForm, durationDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs disabled:text-slate-400" />
+              <label className="block text-[11px] font-semibold text-slate-600">Nama pembeli
+                <input value={codeForm.buyerName} onChange={(event) => setCodeForm({ ...codeForm, buyerName: event.target.value })} placeholder="Nama" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              </label>
+              <label className="block text-[11px] font-semibold text-slate-600">No. WhatsApp
+                <input value={codeForm.buyerPhone} onChange={(event) => setCodeForm({ ...codeForm, buyerPhone: event.target.value })} placeholder="08xx" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-[11px] font-semibold text-slate-600">Nominal (Rp)
+                <input type="number" min={0} value={codeForm.priceAmount} onChange={(event) => setCodeForm({ ...codeForm, priceAmount: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+              </label>
+              <label className="block text-[11px] font-semibold text-slate-600">Status bayar
+                <select value={codeForm.paymentStatus} onChange={(event) => setCodeForm({ ...codeForm, paymentStatus: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+                  <option value="paid">Sudah dibayar</option>
+                  <option value="pending">Belum dibayar</option>
+                  <option value="free">Gratis / trial</option>
+                </select>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block text-[11px] font-semibold text-slate-600">Masa aktif
+                <input disabled value={codeForm.planId === 'trial' ? '3 hari' : '180 hari (6 bulan)'} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-500" />
               </label>
               <label className="block text-[11px] font-semibold text-slate-600">Jumlah kode
                 <input type="number" min={1} max={50} value={codeForm.quantity} onChange={(event) => setCodeForm({ ...codeForm, quantity: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
               </label>
             </div>
-            <label className="block text-[11px] font-semibold text-slate-600">Kunci email (opsional)
-              <input type="email" value={codeForm.assignedEmail} onChange={(event) => setCodeForm({ ...codeForm, assignedEmail: event.target.value })} placeholder="nama@email.com" className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-            </label>
             <label className="block text-[11px] font-semibold text-slate-600">Kedaluwarsa kode (hari)
               <input type="number" min={0} max={3650} value={codeForm.expiresInDays} onChange={(event) => setCodeForm({ ...codeForm, expiresInDays: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-              <span className="mt-1 block text-[10px] font-normal text-slate-400">Isi 0 jika kode tidak perlu kedaluwarsa.</span>
+              <span className="mt-1 block text-[10px] font-normal text-slate-400">Default 30 hari. Isi 0 jika kode tidak perlu kedaluwarsa.</span>
+            </label>
+            <label className="block text-[11px] font-semibold text-slate-600">Catatan
+              <textarea rows={2} value={codeForm.notes} onChange={(event) => setCodeForm({ ...codeForm, notes: event.target.value })} placeholder="Contoh: pembelian via Meta Ads, transfer BCA." className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
             </label>
             <button type="submit" disabled={busy === 'create-codes'} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
               {busy === 'create-codes' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
               Buat Kode
             </button>
-            <p className="text-[10px] leading-relaxed text-slate-400">Kode sekali pakai. Pilih paket Trial untuk memenuhi permintaan trial dari customer service. Kode bisa dibatasi untuk email tertentu dan dicabut kapan saja.</p>
+            <p className="text-[10px] leading-relaxed text-slate-400">Kode sekali pakai dan terikat pada email pembeli. Setelah kode dibuat, salin dan kirim ke pembeli melalui WhatsApp. Kode dapat dicabut atau diubah sebelum dipakai.</p>
           </form>
 
           <div className="overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-sm">
@@ -773,7 +755,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                     <th className="px-4 py-2.5">Kode</th>
                     <th className="px-4 py-2.5">Paket</th>
                     <th className="px-4 py-2.5">Status</th>
-                    <th className="px-4 py-2.5">Email</th>
+                    <th className="px-4 py-2.5">Pembeli</th>
                     <th className="px-4 py-2.5">Kedaluwarsa</th>
                     <th className="px-4 py-2.5 text-right">Aksi</th>
                   </tr>
@@ -796,17 +778,47 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
                             <Copy className="h-3 w-3" />
                           </button>
                         </td>
-                        <td className="px-4 py-2.5 text-slate-600">{code.plan_name}</td>
+                        <td className="px-4 py-2.5 text-slate-600">
+                          <span className="block font-semibold text-slate-800">{code.plan_name}</span>
+                          {Number(code.price_amount) > 0 && (
+                            <span className="block text-[10px] text-slate-400">{formatIDR(Number(code.price_amount))}</span>
+                          )}
+                        </td>
                         <td className="px-4 py-2.5">
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${effectiveStatus === 'active' ? 'bg-emerald-100 text-emerald-700' : effectiveStatus === 'revoked' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-500'}`}>
                             {effectiveStatus === 'active' ? 'Aktif' : effectiveStatus === 'used' ? 'Terpakai' : effectiveStatus === 'revoked' ? 'Dicabut' : 'Kedaluwarsa'}
                           </span>
+                          {code.payment_status && (
+                            <span className="mt-1 block text-[10px] text-slate-400">
+                              {code.payment_status === 'paid' ? 'Sudah dibayar' : code.payment_status === 'free' ? 'Gratis / trial' : 'Belum dibayar'}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-4 py-2.5 text-slate-500">{code.assigned_email || '-'}</td>
+                        <td className="px-4 py-2.5 text-slate-500">
+                          {code.buyer_name && <span className="block font-semibold text-slate-700">{code.buyer_name}</span>}
+                          <span className="block">{code.assigned_email || '-'}</span>
+                          {code.buyer_phone && <span className="block text-[10px] text-slate-400">{code.buyer_phone}</span>}
+                        </td>
                         <td className="px-4 py-2.5 text-slate-500">{formatDate(code.expires_at)}</td>
                         <td className="px-4 py-2.5 text-right">
                           {effectiveStatus === 'active' && (
-                            <button onClick={() => run(`revoke-code-${code.id}`, () => request(`/api/admin/activation-codes/${code.id}/revoke`, { method: 'PATCH' }), 'Kode berhasil dicabut.')} className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-600 hover:bg-red-100">Cabut</button>
+                            <div className="flex justify-end gap-1">
+                              <button
+                                onClick={() => {
+                                  const email = window.prompt('Email pembeli untuk kode ini:', code.assigned_email || '');
+                                  if (!email || email.trim().toLowerCase() === String(code.assigned_email || '').toLowerCase()) return;
+                                  run(
+                                    `edit-code-${code.id}`,
+                                    () => request(`/api/admin/activation-codes/${code.id}`, { method: 'PATCH', body: { assignedEmail: email.trim() } }),
+                                    'Email kode berhasil diperbarui.'
+                                  );
+                                }}
+                                className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                Email
+                              </button>
+                              <button onClick={() => run(`revoke-code-${code.id}`, () => request(`/api/admin/activation-codes/${code.id}/revoke`, { method: 'PATCH' }), 'Kode berhasil dicabut.')} className="rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-semibold text-red-600 hover:bg-red-100">Cabut</button>
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -835,8 +847,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
           <div className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm">
             <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <h2 className="text-sm font-bold text-slate-900">Harga & Promo</h2>
-                <p className="mt-1 text-[11px] text-slate-500">Promo hanya berlaku untuk pembelian paket baru, bukan perpanjangan.</p>
+                <h2 className="text-sm font-bold text-slate-900">Harga Paket 6 Bulan</h2>
+                <p className="mt-1 text-[11px] text-slate-500">Harga di bawah adalah harga paket untuk 6 bulan, bukan harga bulanan. Promo tidak digunakan lagi.</p>
               </div>
               <button type="submit" disabled={busy === 'save-pricing'} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60">
                 {busy === 'save-pricing' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
@@ -849,36 +861,25 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = () => {
               const plan = pricingDraft.plans[planId];
               return (
                 <div key={planId} className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-bold text-slate-900">{planId.charAt(0).toUpperCase() + planId.slice(1)}</h3>
-                    <label className="inline-flex items-center gap-1.5 text-[10px] font-semibold text-slate-500">
-                      <input type="checkbox" checked={Boolean(plan.promoActive)} onChange={(event) => handleTogglePromo(planId, event.target.checked)} />
-                      Promo aktif
-                    </label>
-                  </div>
-                  <label className="block text-[11px] font-semibold text-slate-600">Harga normal
-                    <input type="number" min={0} value={plan.normalPrice} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, normalPrice: Number(event.target.value) } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-                  </label>
-                  <label className="block text-[11px] font-semibold text-slate-600">Harga promo
-                    <input type="number" min={0} value={plan.promoPrice} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoPrice: Number(event.target.value) } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-                  </label>
-                  <label className="block text-[11px] font-semibold text-slate-600">Label promo
-                    <input value={plan.promoLabel || ''} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoLabel: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-                  </label>
-                  <label className="block text-[11px] font-semibold text-slate-600">Mulai promo
-                    <input type="datetime-local" value={toLocalInput(plan.promoStartsAt)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoStartsAt: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
-                  </label>
-                  <label className="block text-[11px] font-semibold text-slate-600">Akhir promo
-                    <input type="datetime-local" value={toLocalInput(plan.promoEndsAt)} onChange={(event) => setPricingDraft({ ...pricingDraft, plans: { ...pricingDraft.plans, [planId]: { ...plan, promoEndsAt: event.target.value } } })} className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs" />
+                  <h3 className="text-sm font-bold text-slate-900">{planId.charAt(0).toUpperCase() + planId.slice(1)}</h3>
+                  <label className="block text-[11px] font-semibold text-slate-600">Harga paket 6 bulan (Rp)
+                    <input
+                      type="number"
+                      min={0}
+                      value={plan?.price ?? 0}
+                      onChange={(event) => setPricingDraft({
+                        ...pricingDraft,
+                        plans: {
+                          ...pricingDraft.plans,
+                          [planId]: { ...plan, price: Number(event.target.value) },
+                        },
+                      })}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs"
+                    />
                   </label>
                   <p className="rounded-xl bg-slate-50 p-2 text-[10px] text-slate-500">
-                    Harga berlaku: <strong>{formatIDR(isPromoWindowActive(plan) ? plan.promoPrice : plan.normalPrice)}</strong> / bulan
+                    Harga berlaku: <strong>{formatIDR(Number(plan?.price) || 0)}</strong> / 6 bulan
                   </p>
-                  {plan.promoActive && !isPromoWindowActive(plan) && (
-                    <p className="rounded-xl border border-amber-200 bg-amber-50 p-2 text-[10px] font-medium text-amber-700">
-                      Promo aktif, tetapi jadwalnya belum berjalan atau sudah berakhir. Periksa tanggal mulai dan akhir promo.
-                    </p>
-                  )}
                 </div>
               );
             })}

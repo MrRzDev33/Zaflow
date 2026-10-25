@@ -189,7 +189,8 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
             <h1 className="text-xl font-extrabold text-slate-900">Paket & Kuota AI</h1>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Kelola paket bulanan, masa aktif, dan kredit AI Anda. Pembayaran aman melalui QRIS, transfer bank, e-wallet, atau kartu.
+            Kelola paket 6 bulan, masa aktif, dan kredit AI Anda. Perpanjangan dapat dilakukan melalui
+            Midtrans, kode aktivasi, atau customer service.
           </p>
         </div>
         <button
@@ -246,7 +247,7 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
             <div>
               <span className="text-[11px] text-slate-400 block">Siklus</span>
               <span className="text-xs font-bold text-slate-800">
-                {license?.is_legacy_lifetime ? 'Seumur hidup' : 'Bulanan'}
+                {license?.is_legacy_lifetime ? 'Seumur hidup' : '6 bulan'}
               </span>
             </div>
             <div>
@@ -284,7 +285,7 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
               <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }} />
             </div>
             <p className="text-[10px] text-slate-400">
-              Terpakai {used} kredit. Kuota diperbarui setiap siklus bulanan.
+              Terpakai {used} kredit. Kuota adalah total untuk 6 bulan dan bertambah saat perpanjangan.
             </p>
           </div>
         </div>
@@ -332,7 +333,7 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
         <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
           <h3 className="font-bold text-sm text-slate-900 flex items-center gap-2">
             <ShoppingBag className="w-4 h-4 text-emerald-600" />
-            {isWorkspaceMember ? 'Paket Workspace' : status?.isRenewal ? 'Perpanjang Paket' : 'Pilih Paket Bulanan'}
+            {isWorkspaceMember ? 'Paket Workspace' : status?.isRenewal ? 'Perpanjang Paket' : 'Paket 6 Bulan'}
           </h3>
           {isWorkspaceMember ? (
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs leading-relaxed text-blue-800">
@@ -342,28 +343,34 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
             <>
               <p className="text-xs text-slate-500">
                 {status?.isRenewal
-                  ? 'Harga perpanjangan menggunakan harga normal. Promo hanya berlaku untuk pembelian paket baru.'
-                  : 'Harga promo berlaku terbatas. Setelah promo berakhir, harga kembali normal.'}
+                  ? 'Perpanjangan dapat dibayar melalui Midtrans atau dengan kode aktivasi. Sisa kuota tetap dipertahankan dan ditambah kuota baru.'
+                  : 'Pembelian pertama dilakukan melalui customer service. Setelah pembayaran, admin mengirim kode aktivasi ke email Anda.'}
               </p>
               <div className="space-y-2">
                 {(status?.plans || []).map((plan) => (
                   <button
                     key={plan.id}
-                    onClick={() => handlePurchase(plan.id, plan.name)}
-                    disabled={Boolean(processingPlan)}
-                    className="w-full flex items-center justify-between p-3 border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl transition-all text-left disabled:opacity-60 disabled:cursor-wait"
+                    onClick={() => {
+                      if (status?.isRenewal) {
+                        handlePurchase(plan.id, plan.name);
+                      } else if (whatsappUrl) {
+                        window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+                      }
+                    }}
+                    disabled={Boolean(processingPlan) || (!status?.isRenewal && !whatsappUrl)}
+                    className="w-full flex items-center justify-between p-3 border border-slate-200 hover:border-blue-400 hover:bg-blue-50/40 rounded-xl transition-all text-left disabled:opacity-60 disabled:cursor-not-allowed"
                   >
                     <div>
                       <span className="font-extrabold text-xs text-slate-900 block">{plan.name}</span>
                       <span className="text-[11px] text-slate-500">{plan.highlights.join(' • ')}</span>
+                      <span className="mt-1 block text-[10px] font-semibold text-slate-400">
+                        {status?.isRenewal ? 'Perpanjang via Midtrans' : 'Beli via WhatsApp'}
+                      </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <div className="text-right">
-                        {plan.isPromo && (
-                          <span className="block text-[10px] text-slate-400 line-through">{formatIDR(plan.normalPrice)}</span>
-                        )}
-                        <span className="font-extrabold text-xs text-slate-900">{formatIDR(plan.effectivePrice)}</span>
-                        <span className="block text-[10px] text-slate-400">/bulan</span>
+                        <span className="font-extrabold text-xs text-slate-900">{formatIDR(plan.price)}</span>
+                        <span className="block text-[10px] text-slate-400">/ 6 bulan</span>
                       </div>
                       {processingPlan === plan.id && <Loader2 className="w-4 h-4 animate-spin text-blue-600" />}
                     </div>
@@ -371,8 +378,22 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
                 ))}
               </div>
               <p className="text-[10px] text-slate-400 leading-relaxed">
-                Paket aktif selama 30 hari dan dapat diperpanjang kapan saja. Masa tenggang 3 hari berlaku untuk perpanjangan.
+                Paket aktif selama 6 bulan. Masa tenggang 3 hari berlaku untuk perpanjangan.
+                {status?.isRenewal
+                  ? ' Perpanjangan juga bisa dilakukan lewat kode aktivasi atau customer service.'
+                  : ' Kode aktivasi berlaku 30 hari sejak dibuat.'}
               </p>
+              {status?.isRenewal && whatsappUrl && (
+                <a
+                  href={whatsappUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-emerald-700 hover:underline"
+                >
+                  <MessageCircle className="w-3.5 h-3.5" />
+                  Atau perpanjang via WhatsApp
+                </a>
+              )}
             </>
           )}
         </div>

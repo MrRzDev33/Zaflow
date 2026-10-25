@@ -8,6 +8,7 @@ import { GoogleGenAI } from '@google/genai';
 import {
   DEFAULT_PRICING_SETTINGS,
   GRACE_PERIOD_DAYS,
+  PLAN_DURATION_DAYS,
   PURCHASABLE_PLANS,
   TRIAL_DAYS,
   TRIAL_PLAN,
@@ -301,12 +302,23 @@ async function writeAppSetting(key: string, value: unknown, updatedBy?: string |
 async function getPricingSettings(): Promise<PricingSettings> {
   const stored = await readAppSetting<any>('pricing', DEFAULT_PRICING_SETTINGS);
   if (!stored || typeof stored !== 'object' || !stored.plans) return DEFAULT_PRICING_SETTINGS;
+
+  // Kompatibilitas dengan pengaturan lama yang menyimpan `normalPrice`.
+  // Sejak paket 6 bulan, satu-satunya harga yang berlaku adalah `price`.
+  const normalize = (planId: 'starter' | 'pro' | 'ultra'): { price: number } => {
+    const fallback = DEFAULT_PRICING_SETTINGS.plans[planId].price;
+    const row = stored.plans?.[planId] || {};
+    const raw = Number(row.price ?? row.normalPrice ?? fallback);
+    const price = Number.isFinite(raw) && raw > 0 ? Math.round(raw) : fallback;
+    return { price };
+  };
+
   return {
     currency: 'IDR',
     plans: {
-      starter: { ...DEFAULT_PRICING_SETTINGS.plans.starter, ...(stored.plans.starter || {}) },
-      pro: { ...DEFAULT_PRICING_SETTINGS.plans.pro, ...(stored.plans.pro || {}) },
-      ultra: { ...DEFAULT_PRICING_SETTINGS.plans.ultra, ...(stored.plans.ultra || {}) },
+      starter: normalize('starter'),
+      pro: normalize('pro'),
+      ultra: normalize('ultra'),
     },
   };
 }
@@ -372,7 +384,9 @@ interface NormalizedLicense {
 }
 
 function normalizeLicense(license: any): NormalizedLicense | null {
-  if (!license) return null;
+  // PostgREST dapat mengembalikan objek dengan semua kolom null dari fungsi
+  // composite yang tidak menemukan baris. Objek seperti itu bukan lisensi.
+  if (!license || !license.id) return null;
   const now = Date.now();
   const periodEnd = license.current_period_end ? new Date(license.current_period_end).getTime() : null;
   const isLegacy = Boolean(license.is_legacy_lifetime);
@@ -396,7 +410,7 @@ function normalizeLicense(license: any): NormalizedLicense | null {
     ai_quota_used: Number(license.ai_quota_used) || 0,
     ai_quota_remaining: Math.max(0, (Number(license.ai_quota_total) || 0) - (Number(license.ai_quota_used) || 0)),
     status: license.status,
-    billing_cycle: license.billing_cycle || (license.plan_id === 'trial' ? 'trial' : 'monthly'),
+    billing_cycle: license.billing_cycle || (license.plan_id === 'trial' ? 'trial' : 'semiannual'),
     current_period_start: license.current_period_start || null,
     current_period_end: license.current_period_end || null,
     is_legacy_lifetime: isLegacy,
@@ -526,7 +540,7 @@ async function isTrialFromActivationCode(userId: string): Promise<boolean> {
  * dan trial yang tidak berasal dari kode aktivasi selalu ditolak.
  */
 async function resolveGrantedLicense(userId: string, license: any): Promise<any | null> {
-  if (!license) return null;
+  if (!license || !license.id) return null;
   if (isLegacyAutoTrialLicense(license)) return null;
   if (isTrialLicenseRow(license) && !(await isTrialFromActivationCode(userId))) {
     return null;
@@ -672,7 +686,11 @@ async function getActiveLicenseRow(userId: string): Promise<any | null> {
     const { data, error } = await supabaseAdmin.rpc('get_active_license', { p_user_id: userId });
     if (!error) {
       if (!data) return null;
-      return Array.isArray(data) ? (data[0] || null) : data;
+      const row = Array.isArray(data) ? (data[0] || null) : data;
+      // Fungsi composite mengembalikan objek berisi null semua saat tidak ada
+      // baris. Tanpa penjagaan ini, akun tanpa lisensi dianggap punya lisensi.
+      if (!row || !row.id) return null;
+      return row;
     }
     if (!isMissingRpcError(error)) return null;
   } catch {
@@ -711,9 +729,7 @@ function buildPlanPayload(
   options: { isRenewal: boolean }
 ) {
   return PURCHASABLE_PLANS.map((plan) => {
-    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing, {
-      isRenewal: options.isRenewal,
-    });
+    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing);
     return {
       id: plan.id,
       name: plan.name,
@@ -722,12 +738,8 @@ function buildPlanPayload(
       aiQuota: plan.aiQuota,
       maxBrands: plan.maxBrands,
       maxTeamMembers: plan.maxTeamMembers,
-      normalPrice: resolved.normalPrice,
-      promoPrice: resolved.promoPrice,
-      effectivePrice: resolved.effectivePrice,
-      isPromo: resolved.isPromo,
-      promoLabel: resolved.promoLabel,
-      promoEndsAt: resolved.promoEndsAt,
+      price: resolved.price,
+      durationDays: PLAN_DURATION_DAYS,
       isRenewal: options.isRenewal,
     };
   });
@@ -1628,7 +1640,7 @@ app.post('/api/webhook/midtrans', async (req: Request, res: Response) => {
           p_max_brands: plan.maxBrands,
           p_max_team_members: plan.maxTeamMembers,
           p_ai_quota: plan.aiQuota,
-          p_period_days: 30,
+          p_period_days: PLAN_DURATION_DAYS,
         }
       );
 
@@ -2361,10 +2373,18 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
       getPricingSettings(),
       hasPriorPaidAccess(user.id),
     ]);
-    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing, {
-      isRenewal: priorPaid,
-    });
-    const amount = resolved.effectivePrice;
+
+    // Pembelian pertama tidak melalui Midtrans. Pembeli baru mendapatkan kode
+    // aktivasi dari admin setelah pembayaran di luar aplikasi.
+    if (!priorPaid) {
+      res.status(403).json({
+        error: 'Pembelian pertama hanya melalui kode aktivasi. Hubungi customer service untuk membeli paket.',
+      });
+      return;
+    }
+
+    const resolved = resolvePlanPrice(plan.id as 'starter' | 'pro' | 'ultra', pricing);
+    const amount = resolved.price;
 
     const orderId = generateOrderId();
     const licenseKey = generateLicenseKey(plan.id);
@@ -2381,15 +2401,13 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
       amount,
       plan_id: plan.id,
       payment_provider: 'midtrans',
-      billing_cycle: 'monthly',
+      billing_cycle: 'semiannual',
       is_renewal: priorPaid,
       raw_payload: {
         plan_id: plan.id,
         plan_name: plan.name,
-        normal_price: resolved.normalPrice,
-        promo_price: resolved.promoPrice,
-        effective_price: resolved.effectivePrice,
-        is_promo: resolved.isPromo,
+        price: resolved.price,
+        duration_days: PLAN_DURATION_DAYS,
         is_renewal: priorPaid,
         sandbox_checkout: false,
       },
@@ -2425,7 +2443,7 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
           p_max_brands: plan.maxBrands,
           p_max_team_members: plan.maxTeamMembers,
           p_ai_quota: plan.aiQuota,
-          p_period_days: 30,
+          p_period_days: PLAN_DURATION_DAYS,
         }
       );
 
@@ -2450,9 +2468,8 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
             sandbox_checkout: true,
             plan_id: plan.id,
             plan_name: plan.name,
-            normal_price: resolved.normalPrice,
-            effective_price: amount,
-            is_promo: resolved.isPromo,
+            price: amount,
+            duration_days: PLAN_DURATION_DAYS,
             is_renewal: priorPaid,
           },
           updated_at: new Date().toISOString(),
@@ -2466,10 +2483,8 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
         licenseKey,
         plan: {
           ...plan,
-          normalPrice: resolved.normalPrice,
-          promoPrice: resolved.promoPrice,
-          effectivePrice: amount,
-          isPromo: resolved.isPromo,
+          price: amount,
+          durationDays: PLAN_DURATION_DAYS,
         },
         license: normalizeLicense(activated),
         message: `Pembayaran uji berhasil. Paket ${plan.name} aktif.`,
@@ -2494,9 +2509,8 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
         raw_payload: {
           plan_id: plan.id,
           plan_name: plan.name,
-          normal_price: resolved.normalPrice,
-          effective_price: amount,
-          is_promo: resolved.isPromo,
+          price: amount,
+          duration_days: PLAN_DURATION_DAYS,
           is_renewal: priorPaid,
           snap_token: snap.token,
           redirect_url: snap.redirect_url,
@@ -2510,10 +2524,8 @@ app.post('/api/payments/midtrans/create', authenticateUser, paymentRateLimiter, 
       orderId,
       plan: {
         ...plan,
-        normalPrice: resolved.normalPrice,
-        promoPrice: resolved.promoPrice,
-        effectivePrice: amount,
-        isPromo: resolved.isPromo,
+        price: amount,
+        durationDays: PLAN_DURATION_DAYS,
       },
       token: snap.token,
       redirectUrl: snap.redirect_url,
@@ -2947,30 +2959,11 @@ app.put('/api/admin/pricing', authenticateUser, async (req: Request, res: Respon
 
   try {
     const normalize = (planId: 'starter' | 'pro' | 'ultra') => {
-      const fallback = DEFAULT_PRICING_SETTINGS.plans[planId];
+      const fallback = DEFAULT_PRICING_SETTINGS.plans[planId].price;
       const row = incoming.plans[planId] || {};
-      const normalPrice = Math.max(0, Math.round(Number(row.normalPrice ?? fallback.normalPrice) || fallback.normalPrice));
-      const promoPrice = Math.max(0, Math.round(Number(row.promoPrice ?? fallback.promoPrice) || fallback.promoPrice));
-      const promoActive = Boolean(row.promoActive);
-      const promoStartsAt = row.promoStartsAt || null;
-      const promoEndsAt = row.promoEndsAt || null;
-      if (promoActive && !promoEndsAt) {
-        throw new Error('Tanggal akhir promo wajib diisi agar promo tidak berjalan tanpa batas.');
-      }
-      if (promoStartsAt && promoEndsAt && new Date(promoStartsAt).getTime() >= new Date(promoEndsAt).getTime()) {
-        throw new Error('Tanggal akhir promo harus setelah tanggal mulai.');
-      }
-      if (promoActive && (!promoEndsAt || !Number.isFinite(new Date(promoEndsAt).getTime()) || new Date(promoEndsAt).getTime() <= Date.now())) {
-        throw new Error('Tanggal akhir promo harus di masa depan agar promo benar-benar berlaku.');
-      }
-      return {
-        normalPrice,
-        promoPrice: Math.min(promoPrice, normalPrice),
-        promoActive,
-        promoStartsAt,
-        promoEndsAt,
-        promoLabel: String(row.promoLabel || 'Promo'),
-      };
+      const raw = Number(row.price ?? row.normalPrice ?? fallback);
+      const price = Number.isFinite(raw) && raw > 0 ? Math.round(raw) : fallback;
+      return { price };
     };
 
     const pricing: PricingSettings = {
@@ -2989,14 +2982,9 @@ app.put('/api/admin/pricing', authenticateUser, async (req: Request, res: Respon
       targetId: 'pricing',
       details: pricing as unknown as Record<string, unknown>,
     });
-    res.json({ success: true, message: 'Harga dan promo berhasil disimpan.', pricing });
-  } catch (error: any) {
-    const message = String(error?.message || '');
-    if (message.startsWith('Tanggal')) {
-      res.status(400).json({ error: message });
-      return;
-    }
-    res.status(500).json({ error: 'Harga dan promo belum dapat disimpan.' });
+    res.json({ success: true, message: 'Harga paket berhasil disimpan.', pricing });
+  } catch {
+    res.status(500).json({ error: 'Harga paket belum dapat disimpan.' });
   }
 });
 
@@ -3057,11 +3045,16 @@ app.post('/api/admin/activation-codes', authenticateUser, async (req: Request, r
     return;
   }
 
-  const durationDays = planId === 'trial'
-    ? TRIAL_DAYS
-    : Math.max(1, Math.min(3650, Number(req.body?.durationDays) || 30));
+  const assignedEmail = req.body?.assignedEmail
+    ? String(req.body.assignedEmail).trim().toLowerCase()
+    : '';
+  if (!assignedEmail || !assignedEmail.includes('@')) {
+    res.status(400).json({ error: 'Email pembeli wajib diisi agar kode hanya berlaku untuk akun tersebut.' });
+    return;
+  }
+
+  const durationDays = planId === 'trial' ? TRIAL_DAYS : PLAN_DURATION_DAYS;
   const quantity = Math.max(1, Math.min(50, Number(req.body?.quantity) || 1));
-  const assignedEmail = req.body?.assignedEmail ? String(req.body.assignedEmail).trim().toLowerCase() : null;
   const rawExpiresInDays = Number(req.body?.expiresInDays);
   const expiresInDays = Number.isFinite(rawExpiresInDays)
     ? Math.max(0, Math.min(3650, rawExpiresInDays))
@@ -3069,6 +3062,19 @@ app.post('/api/admin/activation-codes', authenticateUser, async (req: Request, r
   const expiresAt = expiresInDays > 0
     ? new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000).toISOString()
     : null;
+
+  const pricing = await getPricingSettings();
+  const planPrice = planId === 'trial'
+    ? 0
+    : resolvePlanPrice(planId as 'starter' | 'pro' | 'ultra', pricing).price;
+  const rawPrice = Number(req.body?.priceAmount);
+  const priceAmount = Number.isFinite(rawPrice) && rawPrice >= 0 ? Math.round(rawPrice) : planPrice;
+
+  const buyerName = req.body?.buyerName ? String(req.body.buyerName).trim().slice(0, 120) : null;
+  const buyerPhone = req.body?.buyerPhone ? String(req.body.buyerPhone).trim().slice(0, 40) : null;
+  const salesChannel = String(req.body?.salesChannel || 'meta_ads').trim().slice(0, 60) || 'meta_ads';
+  const paymentStatus = String(req.body?.paymentStatus || (planId === 'trial' ? 'free' : 'paid')).trim().slice(0, 30);
+  const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 500) : null;
 
   try {
     const rows = Array.from({ length: quantity }, () => ({
@@ -3081,6 +3087,12 @@ app.post('/api/admin/activation-codes', authenticateUser, async (req: Request, r
       expires_at: expiresAt,
       status: 'active',
       created_by: admin.id,
+      buyer_name: buyerName,
+      buyer_phone: buyerPhone,
+      price_amount: priceAmount,
+      payment_status: paymentStatus,
+      sales_channel: salesChannel,
+      notes,
     }));
     const { data, error } = await supabaseAdmin
       .from('activation_codes')
@@ -3091,10 +3103,21 @@ app.post('/api/admin/activation-codes', authenticateUser, async (req: Request, r
       adminId: admin.id,
       action: 'create_activation_codes',
       targetType: 'activation_code',
-      details: { planId, quantity, durationDays, assignedEmail },
+      details: {
+        planId,
+        quantity,
+        durationDays,
+        assignedEmail,
+        priceAmount,
+        buyerName,
+        buyerPhone,
+        salesChannel,
+        paymentStatus,
+      },
     });
     res.json({ success: true, message: 'Kode aktivasi berhasil dibuat.', codes: data || [] });
-  } catch {
+  } catch (error) {
+    console.error('Gagal membuat kode aktivasi:', error);
     res.status(500).json({ error: 'Kode aktivasi belum dapat dibuat.' });
   }
 });
@@ -3122,11 +3145,87 @@ app.patch('/api/admin/activation-codes/:id/revoke', authenticateUser, async (req
   }
 });
 
+// Mengubah data pembeli / email tujuan / masa berlaku kode yang belum dipakai.
+app.patch('/api/admin/activation-codes/:id', authenticateUser, async (req: Request, res: Response) => {
+  const admin = await requirePlatformOwner(req, res);
+  if (!admin || !supabaseAdmin) return;
+  const codeId = String(req.params.id || '');
+
+  const { data: existing, error: findError } = await supabaseAdmin
+    .from('activation_codes')
+    .select('id, status, redeemed_at')
+    .eq('id', codeId)
+    .maybeSingle();
+
+  if (findError || !existing) {
+    res.status(404).json({ error: 'Kode aktivasi tidak ditemukan.' });
+    return;
+  }
+  if (existing.redeemed_at || existing.status === 'used') {
+    res.status(400).json({ error: 'Kode yang sudah dipakai tidak dapat diubah.' });
+    return;
+  }
+
+  const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (req.body?.assignedEmail !== undefined) {
+    const email = String(req.body.assignedEmail || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      res.status(400).json({ error: 'Email pembeli tidak valid.' });
+      return;
+    }
+    updates.assigned_email = email;
+  }
+  if (req.body?.expiresInDays !== undefined) {
+    const raw = Number(req.body.expiresInDays);
+    const days = Number.isFinite(raw) ? Math.max(0, Math.min(3650, raw)) : 30;
+    updates.expires_at = days > 0
+      ? new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+  }
+  if (req.body?.buyerName !== undefined) {
+    updates.buyer_name = String(req.body.buyerName || '').trim().slice(0, 120) || null;
+  }
+  if (req.body?.buyerPhone !== undefined) {
+    updates.buyer_phone = String(req.body.buyerPhone || '').trim().slice(0, 40) || null;
+  }
+  if (req.body?.priceAmount !== undefined) {
+    const raw = Number(req.body.priceAmount);
+    if (Number.isFinite(raw) && raw >= 0) updates.price_amount = Math.round(raw);
+  }
+  if (req.body?.paymentStatus !== undefined) {
+    updates.payment_status = String(req.body.paymentStatus || '').trim().slice(0, 30) || 'paid';
+  }
+  if (req.body?.salesChannel !== undefined) {
+    updates.sales_channel = String(req.body.salesChannel || '').trim().slice(0, 60) || 'meta_ads';
+  }
+  if (req.body?.notes !== undefined) {
+    updates.notes = String(req.body.notes || '').trim().slice(0, 500) || null;
+  }
+
+  try {
+    const { error } = await supabaseAdmin
+      .from('activation_codes')
+      .update(updates)
+      .eq('id', codeId);
+    if (error) throw error;
+    await writeAdminAudit({
+      adminId: admin.id,
+      action: 'update_activation_code',
+      targetType: 'activation_code',
+      targetId: codeId,
+      details: updates,
+    });
+    res.json({ success: true, message: 'Data kode aktivasi berhasil diperbarui.' });
+  } catch {
+    res.status(500).json({ error: 'Data kode aktivasi belum dapat diperbarui.' });
+  }
+});
+
 app.post('/api/admin/subscriptions/:userId/extend', authenticateUser, async (req: Request, res: Response) => {
   const admin = await requirePlatformOwner(req, res);
   if (!admin || !supabaseAdmin) return;
   const targetUserId = String(req.params.userId || '');
-  const days = Math.max(1, Math.min(3650, Number(req.body?.days) || 30));
+  const days = Math.max(1, Math.min(3650, Number(req.body?.days) || PLAN_DURATION_DAYS));
 
   const { data: license } = await supabaseAdmin
     .from('licenses')
@@ -3205,7 +3304,7 @@ app.patch('/api/admin/subscriptions/:userId', authenticateUser, async (req: Requ
       return;
     }
     const periodStart = new Date();
-    const periodEnd = new Date(periodStart.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const periodEnd = new Date(periodStart.getTime() + PLAN_DURATION_DAYS * 24 * 60 * 60 * 1000);
     updates.plan_id = plan.id;
     updates.plan_name = plan.name;
     updates.max_brands = plan.maxBrands;
@@ -3213,7 +3312,7 @@ app.patch('/api/admin/subscriptions/:userId', authenticateUser, async (req: Requ
     updates.ai_quota_total = plan.aiQuota;
     updates.ai_quota_used = 0;
     updates.is_legacy_lifetime = false;
-    updates.billing_cycle = 'monthly';
+    updates.billing_cycle = 'semiannual';
     updates.current_period_start = periodStart.toISOString();
     updates.current_period_end = periodEnd.toISOString();
     updates.status = 'active';

@@ -9,12 +9,9 @@ export interface AccessPlan {
   aiQuota: number;
   maxBrands: number;
   maxTeamMembers: number;
-  normalPrice: number;
-  promoPrice: number;
-  effectivePrice: number;
-  isPromo: boolean;
-  promoLabel: string | null;
-  promoEndsAt: string | null;
+  /** Harga paket 6 bulan. */
+  price: number;
+  durationDays: number;
   isRenewal: boolean;
 }
 

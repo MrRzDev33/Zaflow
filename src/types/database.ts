@@ -42,7 +42,7 @@ export interface License {
   status: LicenseStatus;
   owner_user_id?: string | null;
   activated_at?: string | null;
-  billing_cycle?: 'monthly' | 'trial' | 'lifetime' | string;
+  billing_cycle?: 'semiannual' | 'monthly' | 'trial' | 'lifetime' | string;
   current_period_start?: string | null;
   current_period_end?: string | null;
   auto_renew?: boolean;
