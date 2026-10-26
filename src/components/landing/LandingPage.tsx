@@ -34,10 +34,26 @@ import {
 import { useAppBranding } from '../../hooks/useAppBranding.ts';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 
+/**
+ * Tautan produk Lynk.id bawaan. Nilai env VITE_LYNK_* tetap diprioritaskan
+ * agar link bisa diganti tanpa mengubah kode.
+ */
+const DEFAULT_LYNK_LINKS: Record<'starter' | 'pro' | 'ultra', string> = {
+  starter: 'https://lynk.id/zaaflow/qm6999vv7en5',
+  pro: 'https://lynk.id/zaaflow/j2gvv38gwzv5',
+  ultra: 'https://lynk.id/zaaflow/8d5qqrd203q9',
+};
+
 const LYNX_LINKS: Record<'starter' | 'pro' | 'ultra', string> = {
-  starter: ((import.meta.env.VITE_LYNK_STARTER_URL as string | undefined) || '').trim(),
-  pro: ((import.meta.env.VITE_LYNK_PRO_URL as string | undefined) || '').trim(),
-  ultra: ((import.meta.env.VITE_LYNK_ULTRA_URL as string | undefined) || '').trim(),
+  starter:
+    ((import.meta.env.VITE_LYNK_STARTER_URL as string | undefined) || '').trim() ||
+    DEFAULT_LYNK_LINKS.starter,
+  pro:
+    ((import.meta.env.VITE_LYNK_PRO_URL as string | undefined) || '').trim() ||
+    DEFAULT_LYNK_LINKS.pro,
+  ultra:
+    ((import.meta.env.VITE_LYNK_ULTRA_URL as string | undefined) || '').trim() ||
+    DEFAULT_LYNK_LINKS.ultra,
 };
 
 function withWhatsAppText(url: string | null, message: string): string | null {
