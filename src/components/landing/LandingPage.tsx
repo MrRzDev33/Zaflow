@@ -9,6 +9,7 @@ import {
   ChevronDown,
   CircleAlert,
   FileSpreadsheet,
+  Flame,
   Kanban,
   Key,
   Layers,
@@ -55,6 +56,24 @@ const LYNX_LINKS: Record<'starter' | 'pro' | 'ultra', string> = {
     ((import.meta.env.VITE_LYNK_ULTRA_URL as string | undefined) || '').trim() ||
     DEFAULT_LYNK_LINKS.ultra,
 };
+
+/**
+ * Kuota batch 1. Angka sisa bisa diperbarui tanpa mengubah kode lewat env
+ * VITE_PROMO_SLOTS_LEFT (build-time, perlu redeploy), atau ubah nilai
+ * BATCH_REMAINING_DEFAULT di bawah.
+ */
+const BATCH_TOTAL = 10;
+const BATCH_REMAINING_DEFAULT = 10;
+const BATCH_REMAINING = (() => {
+  const rawValue = import.meta.env.VITE_PROMO_SLOTS_LEFT;
+  if (rawValue === undefined || String(rawValue).trim() === '') return BATCH_REMAINING_DEFAULT;
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed)) return BATCH_REMAINING_DEFAULT;
+  return Math.min(BATCH_TOTAL, Math.max(0, Math.floor(parsed)));
+})();
+const BATCH_SOLD = BATCH_TOTAL - BATCH_REMAINING;
+const BATCH_FULL_PERCENT = Math.round((BATCH_SOLD / BATCH_TOTAL) * 100);
+const BATCH_IS_FULL = BATCH_REMAINING === 0;
 
 function withWhatsAppText(url: string | null, message: string): string | null {
   if (!url) return null;
@@ -142,6 +161,10 @@ const FAQ_ITEMS = [
     answer: `Bukan. Harga tersebut adalah harga total untuk ${PLAN_DURATION_MONTHS} bulan (${PLAN_DURATION_DAYS} hari). Tidak ada tagihan bulanan dan tidak ada perpanjangan otomatis.`,
   },
   {
+    question: 'Kenapa batch 1 hanya 10 slot?',
+    answer: `Batch 1 dibatasi ${BATCH_TOTAL} pembeli supaya setiap pembeli dibantu sampai akunnya aktif. Jika slot habis, kamu bisa masuk daftar tunggu batch berikutnya lewat customer service.`,
+  },
+  {
     question: 'Bagaimana cara membayarnya?',
     answer:
       'Pembayaran dilakukan melalui Lynk.id. Kamu bisa memakai QRIS, e-wallet, atau virtual account. Setelah pembayaran masuk, admin mengirim kode aktivasi ke email pembelian.',
@@ -182,6 +205,19 @@ export const LandingPage: React.FC = () => {
     const previousScrollBehavior = document.documentElement.style.scrollBehavior;
     document.documentElement.style.scrollBehavior = 'smooth';
 
+    /*
+     * index.css memakai `overflow-x: hidden` pada html & body. Itu membuat body
+     * menjadi scroll container sehingga header sticky tidak menempel. `clip`
+     * tetap memotong overflow horizontal tanpa membuat scroll container, dan
+     * hanya diterapkan selama landing dibuka.
+     */
+    const rootElement = document.documentElement;
+    const bodyElement = document.body;
+    const previousRootOverflowX = rootElement.style.overflowX;
+    const previousBodyOverflowX = bodyElement.style.overflowX;
+    rootElement.style.overflowX = 'clip';
+    bodyElement.style.overflowX = 'clip';
+
     let active = true;
     fetch('/api/public/customer-service')
       .then((response) => (response.ok ? response.json() : null))
@@ -198,6 +234,8 @@ export const LandingPage: React.FC = () => {
     return () => {
       active = false;
       document.documentElement.style.scrollBehavior = previousScrollBehavior;
+      rootElement.style.overflowX = previousRootOverflowX;
+      bodyElement.style.overflowX = previousBodyOverflowX;
     };
   }, []);
 
@@ -207,6 +245,14 @@ export const LandingPage: React.FC = () => {
   );
   const trialUrl = useMemo(
     () => withWhatsAppText(whatsappUrl, 'Halo ZaFlow, saya ingin mengajukan trial 3 hari untuk mencoba aplikasinya.'),
+    [whatsappUrl]
+  );
+  const waitlistUrl = useMemo(
+    () =>
+      withWhatsAppText(
+        whatsappUrl,
+        'Halo ZaFlow, batch 1 sudah penuh. Saya ingin masuk daftar tunggu batch berikutnya.'
+      ),
     [whatsappUrl]
   );
 
@@ -221,20 +267,41 @@ export const LandingPage: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full bg-[#E9F0FB] sm:bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#eef2fb_45%,_#e6ecf9_100%)] flex justify-center">
-      <div className="w-full max-w-[430px] bg-[#F7F9FD] sm:my-6 sm:rounded-[32px] sm:overflow-hidden sm:shadow-[0_30px_80px_-25px_rgba(15,23,42,0.35)]">
-        {/* Header */}
-        <header className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-slate-200/70 bg-white/85 px-4 py-3 backdrop-blur-xl">
-          <div className="flex items-center gap-2.5">
-            <ZaFlowLogo size="sm" showText={false} />
-            <span className="text-[15px] font-extrabold tracking-tight text-slate-900">{appName}</span>
-          </div>
-          <a
-            href="/"
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 transition-colors hover:bg-slate-50"
+      <div className="w-full max-w-[430px] bg-[#F7F9FD] sm:my-6 sm:rounded-[32px] sm:overflow-clip sm:shadow-[0_30px_80px_-25px_rgba(15,23,42,0.35)]">
+        {/* Header + strip urgensi batch */}
+        <div className="sticky top-0 z-30">
+          <header className="flex items-center justify-between gap-3 border-b border-slate-200/70 bg-[#FFFFFF] px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <ZaFlowLogo size="sm" showText={false} />
+              <span className="text-[15px] font-extrabold tracking-tight text-slate-900">{appName}</span>
+            </div>
+            <a
+              href="/"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-bold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Masuk
+            </a>
+          </header>
+
+          <div
+            className={`flex items-center justify-center gap-1.5 border-b px-3 py-1.5 text-center text-[10px] font-extrabold tracking-tight ${
+              BATCH_IS_FULL
+                ? 'border-slate-900/20 bg-slate-800 text-white'
+                : 'border-amber-500/40 bg-amber-400 text-amber-950'
+            }`}
           >
-            Masuk
-          </a>
-        </header>
+            <Flame className="h-3 w-3 shrink-0" />
+            {BATCH_IS_FULL ? (
+              <span>Batch 1 penuh — daftar tunggu batch berikutnya dibuka</span>
+            ) : (
+              <span>
+                Batch 1 · hanya {BATCH_TOTAL} slot
+                <span className="mx-1 opacity-50">•</span>
+                sisa {BATCH_REMAINING} slot
+              </span>
+            )}
+          </div>
+        </div>
 
         <main>
           {/* Hero */}
@@ -430,7 +497,34 @@ export const LandingPage: React.FC = () => {
               Semua paket aktif {PLAN_DURATION_DAYS} hari. Kuota AI di bawah adalah total selama {PLAN_DURATION_MONTHS} bulan, bukan per bulan.
             </p>
 
-            <div className="mt-4 space-y-3">
+            <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#FFFFFF] text-amber-600 shadow-sm">
+                  <Flame className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <p className="text-[12.5px] font-extrabold text-amber-900">Batch 1 · {BATCH_TOTAL} slot</p>
+                    <p className="shrink-0 text-[10px] font-extrabold uppercase tracking-wide text-amber-700">
+                      {BATCH_IS_FULL ? 'Penuh' : `Sisa ${BATCH_REMAINING}`}
+                    </p>
+                  </div>
+                  <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-amber-200">
+                    <div
+                      className={`h-full rounded-full ${BATCH_IS_FULL ? 'bg-slate-500' : 'bg-amber-500'}`}
+                      style={{ width: `${BATCH_IS_FULL ? 100 : BATCH_FULL_PERCENT}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[10.5px] leading-relaxed text-amber-800">
+                    {BATCH_IS_FULL
+                      ? 'Semua slot batch 1 sudah terisi. Hubungi customer service untuk masuk daftar tunggu batch berikutnya.'
+                      : `${BATCH_SOLD} dari ${BATCH_TOTAL} slot terisi. Batch 1 dibatasi supaya setiap pembeli dibantu sampai akun aktif.`}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
               {PURCHASABLE_PLANS.map((plan) => {
                 const checkoutUrl = getPlanCheckoutUrl(plan);
                 const isPopular = plan.id === 'pro';
@@ -477,7 +571,23 @@ export const LandingPage: React.FC = () => {
                       ))}
                     </ul>
 
-                    {disabled ? (
+                    {BATCH_IS_FULL ? (
+                      waitlistUrl ? (
+                        <a
+                          href={waitlistUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-100 px-4 py-3 text-[12px] font-extrabold text-amber-900 transition-colors hover:bg-amber-200"
+                        >
+                          <MessageCircle className="h-3.5 w-3.5" />
+                          Batch 1 penuh — daftar tunggu
+                        </a>
+                      ) : (
+                        <span className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-[12px] font-bold text-slate-500">
+                          Batch 1 penuh
+                        </span>
+                      )
+                    ) : disabled ? (
                       <span className="mt-3.5 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 py-3 text-[12px] font-bold text-slate-400">
                         Tautan pembelian belum tersedia
                       </span>
@@ -534,7 +644,11 @@ export const LandingPage: React.FC = () => {
             <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-700 via-blue-600 to-indigo-700 p-5 text-white shadow-[0_24px_50px_-24px_rgba(37,99,235,0.9)]">
               <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/15 blur-2xl" />
               <div className="relative">
-                <h2 className="text-xl font-extrabold leading-tight tracking-tight">
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-white/15 px-2.5 py-1 text-[9.5px] font-extrabold uppercase tracking-wider text-white">
+                  <Flame className="h-3 w-3" />
+                  {BATCH_IS_FULL ? 'Batch 1 penuh' : `Batch 1 · sisa ${BATCH_REMAINING} dari ${BATCH_TOTAL} slot`}
+                </div>
+                <h2 className="mt-3 text-xl font-extrabold leading-tight tracking-tight">
                   Berhenti mengelola konten dengan cara lama.
                 </h2>
                 <p className="mt-2 text-[12px] leading-relaxed text-blue-100">

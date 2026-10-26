@@ -90,6 +90,7 @@ Buka **Project → Settings → Environment Variables**. Tambahkan untuk **Produ
 | `VITE_LYNK_STARTER_URL` | `https://lynk.id/...` | Opsional (ada tautan bawaan) |
 | `VITE_LYNK_PRO_URL` | `https://lynk.id/...` | Opsional (ada tautan bawaan) |
 | `VITE_LYNK_ULTRA_URL` | `https://lynk.id/...` | Opsional (ada tautan bawaan) |
+| `VITE_PROMO_SLOTS_LEFT` | `10` | Opsional (sisa slot batch 1 di `/promo`) |
 | `ALLOW_SANDBOX_CHECKOUT` | `false` | Ya |
 | `NODE_ENV` | `production` | Ya |
 

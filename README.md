@@ -175,6 +175,7 @@ Halaman penjualan terpisah dari aplikasi, dirancang mobile-first dan tetap rapi 
 - Tombol beli memakai tautan produk Lynk.id. Tautan bawaan sudah terisi di `LandingPage.tsx` (Starter `qm6999vv7en5`, Pro `j2gvv38gwzv5`, Ultra `8d5qqrd203q9`); env `VITE_LYNK_STARTER_URL`, `VITE_LYNK_PRO_URL`, dan `VITE_LYNK_ULTRA_URL` hanya dipakai bila ingin menimpanya.
 - Pembayaran tetap diproses di Lynk.id. Kode aktivasi **dibuat manual oleh admin** seperti alur sebelumnya; tidak ada webhook Lynk.id.
 - Nomor WhatsApp diambil dari endpoint publik `/api/public/customer-service`, bukan ditulis di kode.
+- **Urgensi batch 1:** landing menampilkan strip di bawah header, kartu kuota, dan penanda di CTA penutup dengan total 10 slot. Sisa slot diatur lewat `VITE_PROMO_SLOTS_LEFT` (kosong = 10) atau konstanta `BATCH_REMAINING_DEFAULT` di `LandingPage.tsx`. Jika diisi `0`, tombol paket otomatis berubah menjadi tautan **daftar tunggu** ke customer service.
 - Landing dimuat lewat dynamic import, sehingga bundle Workspace (App) tidak ikut diunduh pengunjung iklan.
 - Pengunjung diarahkan mendaftar dengan **email yang sama** seperti saat membayar di Lynk.id, karena kode aktivasi terikat email.
 
