@@ -1,5 +1,24 @@
 import { supabase } from '../../config/supabase.ts';
 import { apiRequest } from '../http/apiClient.ts';
+import type {
+  AudienceDetails,
+  ContentInsightType,
+  InsightSeriesPoint,
+  RetentionPoint,
+  TrafficSourceBreakdown,
+  ViewFactorItem,
+} from '../../types/database.ts';
+
+export interface ExtractedInsightsDetail {
+  viewFactors?: ViewFactorItem[];
+  audienceDetails?: AudienceDetails;
+  series?: {
+    views?: InsightSeriesPoint[];
+    likes?: InsightSeriesPoint[];
+    retention?: RetentionPoint[];
+  };
+  approximate?: boolean;
+}
 
 export interface ExtractedMetricsData {
   channel: string;
@@ -16,18 +35,43 @@ export interface ExtractedMetricsData {
   watch_time?: string | null;
   drop_off_rate?: number | null;
   reposts?: number | null;
-  traffic_sources?: {
-    reels?: number;
-    feed?: number;
-    explore?: number;
-    profile?: number;
-    other?: number;
+  profile_visits?: number | null;
+  follows?: number | null;
+  content_type?: ContentInsightType | string | null;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: {
+    followers?: number;
+    non_followers?: number;
   } | null;
+  insights_detail?: ExtractedInsightsDetail | null;
+}
+
+/** Ringkasan akun bulanan hasil ekstraksi AI. */
+export interface ExtractedAccountData {
+  channel: string;
+  period_month?: string | null;
+  summary?: string;
+  confidence?: number;
+  views: number;
+  reach: number;
+  interactions_total: number;
+  profile_visits: number;
+  follows: number;
+  followers_total: number;
+  traffic_sources?: TrafficSourceBreakdown | null;
   audience_breakdown?: {
     followers?: number;
     non_followers?: number;
   } | null;
 }
+
+export interface ExtractAccountResponse {
+  success: boolean;
+  data: ExtractedAccountData;
+  remainingCredits: number;
+  totalCredits?: number;
+}
+
 
 export interface ExtractMetricsResponse {
   success: boolean;
@@ -69,7 +113,8 @@ export const aiClientService = {
     brandId: string,
     imageBase64: string,
     mimeType: string,
-    channel: string = 'Instagram'
+    channel: string = 'Instagram',
+    mode: 'post' | 'account' = 'post'
   ): Promise<ExtractMetricsResponse> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -87,6 +132,7 @@ export const aiClientService = {
         imageBase64,
         mimeType,
         channel,
+        mode,
       }),
     });
 
@@ -104,6 +150,32 @@ export const aiClientService = {
       remainingCredits: result.remainingCredits,
       totalCredits: result.totalCredits,
     } as ExtractMetricsResponse;
+  },
+
+  /**
+   * Ekstraksi ringkasan akun bulanan dari dashboard profesional Instagram.
+   * Memakai endpoint dan kuota yang sama dengan ekstraksi per postingan.
+   */
+  async extractAccountSummary(
+    brandId: string,
+    imageBase64: string,
+    mimeType: string,
+    channel: string = 'Instagram'
+  ): Promise<ExtractAccountResponse> {
+    const response = await this.extractMetricsFromImage(
+      brandId,
+      imageBase64,
+      mimeType,
+      channel,
+      'account'
+    );
+
+    return {
+      success: response.success,
+      data: response.data as unknown as ExtractedAccountData,
+      remainingCredits: response.remainingCredits,
+      totalCredits: response.totalCredits,
+    };
   },
 
   /**

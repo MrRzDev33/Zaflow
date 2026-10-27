@@ -30,6 +30,7 @@ import { ContentPostPerformanceModal } from './ContentPostPerformanceModal.tsx';
 import { getBrandPlatforms } from '../../config/platforms.ts';
 import { Pagination } from '../common/Pagination.tsx';
 import { usePagination } from '../../hooks/usePagination.ts';
+import { formatPercent } from '../../utils/number.ts';
 
 interface ContentPostAnalyticsViewProps {
   brand: Brand | null;
@@ -268,7 +269,14 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
     const reach = latestMetrics.reduce((total, item) => total + (item.reach || 0), 0);
     const engagements = latestMetrics.reduce(
       (total, item) =>
-        total + metricFormulas.totalEngagements(item.likes, item.comments, item.shares, item.saves),
+        total +
+        metricFormulas.totalEngagements(
+          item.likes,
+          item.comments,
+          item.shares,
+          item.saves,
+          Number(item.reposts) || 0
+        ),
       0
     );
     const likes = latestMetrics.reduce((total, item) => total + (item.likes || 0), 0);
@@ -502,7 +510,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
         <SummaryCard
           icon={TrendingUp}
           label="Rata-rata ER"
-          value={`${summary.averageEr}%`}
+          value={formatPercent(summary.averageEr)}
           hint="Berbobot reach"
           color="bg-emerald-50 text-emerald-600"
         />
@@ -525,15 +533,17 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-left text-xs">
+            <table className="w-full min-w-[1140px] text-left text-xs">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Konten</th>
                   <th className="px-4 py-3">Tanggal Posting</th>
                   <th className="px-4 py-3">Channel</th>
+                  <th className="px-4 py-3 text-right">Impressions</th>
                   <th className="px-4 py-3 text-right">Reach</th>
                   <th className="px-4 py-3 text-right">ER</th>
                   <th className="px-4 py-3 text-right">Engagement</th>
+                  <th className="px-4 py-3 text-right">Follow</th>
                   <th className="px-4 py-3 text-right">Snapshot</th>
                   <th className="px-4 py-3 text-right">Aksi</th>
                 </tr>
@@ -547,7 +557,8 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
                         latest.likes,
                         latest.comments,
                         latest.shares,
-                        latest.saves
+                        latest.saves,
+                        Number(latest.reposts) || 0
                       )
                     : 0;
                   const er = latest
@@ -619,13 +630,19 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
                         </div>
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-slate-800">
+                        {latest ? formatNumber(latest.impressions) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-slate-800">
                         {latest ? formatNumber(latest.reach) : '-'}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-emerald-600">
-                        {latest ? `${er}%` : '-'}
+                        {latest ? formatPercent(er) : '-'}
                       </td>
                       <td className="px-4 py-3 text-right font-semibold text-rose-600">
                         {latest ? formatNumber(engagements) : '-'}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-teal-600">
+                        {latest ? formatNumber(latest.follows) : '-'}
                       </td>
                       <td className="px-4 py-3 text-right text-slate-500">
                         {postMetrics.length > 0 ? `${postMetrics.length}x` : 'Belum ada'}

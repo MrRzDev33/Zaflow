@@ -26,12 +26,15 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 8 | `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql` | Platform brand dipilih saat brand dibuat, membersihkan trial otomatis lama, dan memastikan akun baru tanpa paket otomatis |
 | 9 | `src/services/database/migrations/20261024_03_trial_request_only.sql` | Trial hanya lewat permintaan ke customer service; kode trial tetap bisa ditukar setelah pembersihan trial otomatis lama |
 | 10 | `src/services/database/migrations/20261025_01_six_month_plans.sql` | Paket 6 bulan (180 hari), kuota total 6 bulan, kode aktivasi wajib email pembeli, data pembeli pada `activation_codes`, dan harga baru tanpa promo |
+| 11 | `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql` | Metrik tindakan pengguna, jenis konten, detail insight per postingan, dan tabel `account_metrics` untuk ringkasan akun bulanan |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
 > **Wajib:** migrasi 10 harus dijalankan **sebelum** admin memakai form kode aktivasi baru. Form tersebut menulis kolom `buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, dan `notes`.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 10 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Wajib:** migrasi 11 harus dijalankan **sebelum** memakai form Catat Snapshot versi baru, AI Metrics Extractor, atau kartu Ringkasan Akun. Tanpa migrasi ini, kolom `profile_visits`, `follows`, `content_type`, `insights_detail`, dan tabel `account_metrics` belum ada.
+
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 11 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -253,12 +256,34 @@ WHERE u.email = 'email-admin@domain.com';
 
 Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harga Paket, Customer Service, Transaksi, Audit Log, dan Pengaturan Aplikasi. Penghapusan akun bersifat lunak selama 7 hari; pembersihan permanen berjalan otomatis saat panel admin dibuka atau lewat tombol **Bersihkan Terjadwal**.
 
-## 8. Troubleshooting
+## 8. Definisi Metrik Analitik
+
+Sejak migrasi 11, metrik dipisah menjadi dua sumber yang **tidak pernah dijumlahkan**:
+
+| Sumber | Tabel | Isi | Kegunaan |
+|---|---|---|---|
+| Ringkasan Akun | `account_metrics` | Total bulanan dari dashboard profesional: tayangan, reach, interaksi, kunjungan profil, pengikut baru, total pengikut, sumber tayangan, komposisi pemirsa | Angka total resmi akun |
+| Akumulasi Konten | `content_metrics` | Snapshot per postingan dan per waktu pengamatan | Membandingkan performa antar konten |
+
+Rumus dan aturan:
+
+- **Total Engagements** = Likes + Comments + Shares + Saves + Reposts.
+- **Engagement Rate** = Total Engagements ÷ Reach × 100%. Jika Reach kosong, penyebut memakai Impressions.
+- **ER akun** = Total Interaksi ÷ Reach akun (atau Tayangan bila Reach kosong).
+- **Kunjungan Profil**, **Klik Link Eksternal**, dan **Follow** dicatat terpisah dan **bukan** bagian dari Engagements.
+- **Sumber tayangan** memakai enam kategori kanonik Instagram: Cerita, Profil, Beranda (Feed), Tab Reels, Jelajahi (Explore), dan Lainnya. Nilai 0 disembunyikan dan urutan tampil dari persentase terbesar.
+- **Detail per postingan** (faktor tayangan, demografi usia/negara/jenis kelamin, deret grafik) disimpan di kolom JSONB `insights_detail` dan hanya dipakai untuk Instagram. TikTok/YouTube tetap memakai kolom lama.
+- **Desimal persentase** menerima koma maupun titik, disimpan maksimal 2 desimal, dan ditampilkan 1 desimal (contoh `29,8%`).
+- Grafik hasil pembacaan AI yang tidak pasti ditandai `approximate` dan ditampilkan sebagai perkiraan; jika tidak terbaca, grafik disembunyikan.
+
+> **Penting:** jangan menganggap penjumlahan reach per postingan sebagai reach unik. Reach antar postingan bisa tumpang tindih.
+
+## 9. Troubleshooting
 
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 10. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 11. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -293,8 +318,12 @@ Panel Admin memiliki bagian: Ringkasan, Pengguna, Langganan, Kode Aktivasi, Harg
 | Akun diaktifkan kembali langsung punya akses | Akun masih memiliki paket yang aktif | Akses mengikuti sisa paket. Cabut paketnya di bagian **Langganan** jika akses tidak boleh dipulihkan. |
 | Panel admin: `Unexpected token "<" ... is not valid JSON` | Frontend tidak terhubung ke backend; `/api/admin/overview` mengembalikan HTML | Lokal: jalankan `npm run dev`/`npm start`. Vercel: pastikan `api/[...path].ts` ter-deploy dan redeploy setelah mengubah env. |
 | Panel admin: akses ditolak | `profiles.system_role` bukan `super_admin` | Jalankan `SELECT public.bootstrap_super_admin('email@domain.com');` lalu login ulang |
+| Form Catat Snapshot gagal: `column ... profile_visits does not exist` | Migrasi 11 belum dijalankan | Jalankan `20261027_01_content_insights_and_account_metrics.sql` |
+| Kartu Ringkasan Akun gagal memuat: `relation "public.account_metrics" does not exist` | Migrasi 11 belum dijalankan | Jalankan `20261027_01_content_insights_and_account_metrics.sql` |
+| Detail insight Instagram tidak muncul setelah disimpan | Kolom `insights_detail` belum ada / snapshot lama | Jalankan migrasi 11, lalu catat snapshot baru. Snapshot lama sengaja tidak dimigrasi |
+| AI Metrics Extractor mode Ringkasan Akun menolak menyimpan | `period_month` tidak valid atau migrasi 11 belum dijalankan | Pastikan bulan dipilih pada form dan migrasi 11 sudah berjalan |
 
-## 9. Catatan Keamanan
+## 10. Catatan Keamanan
 
 - `SUPABASE_SERVICE_ROLE_KEY`, `MIDTRANS_SERVER_KEY`, dan `GEMINI_API_KEY` tidak boleh memakai prefix `VITE_`.
 - Tabel `licenses`, `transactions`, `activation_codes`, `admin_audit_logs`, `app_settings`, dan `ai_usage_logs` tidak dapat ditulis langsung oleh client setelah migrasi 6.

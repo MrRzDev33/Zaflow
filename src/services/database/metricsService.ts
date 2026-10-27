@@ -1,5 +1,20 @@
 import { supabase, isConfigured } from '../../config/supabase.ts';
-import { ContentMetric, MetricSource, ContentPost } from '../../types/database.ts';
+import {
+  ContentMetric,
+  MetricSource,
+  ContentPost,
+  AccountMetric,
+  AudienceBreakdown,
+  ContentInsightType,
+  ContentInsightsDetail,
+  TrafficSourceBreakdown,
+} from '../../types/database.ts';
+import {
+  buildTrafficSourceItems,
+  normalizeTrafficSources,
+  TRAFFIC_SOURCE_CATALOG,
+  type TrafficSourceItem,
+} from '../../config/insights.ts';
 
 export interface CreateMetricInput {
   brand_id: string;
@@ -12,14 +27,18 @@ export interface CreateMetricInput {
   shares: number;
   saves: number;
   clicks?: number;
+  profile_visits?: number;
+  follows?: number;
+  content_type?: ContentInsightType | string | null;
   source?: MetricSource;
   recorded_at?: string;
   raw_ai_analysis?: Record<string, unknown> | null;
   watch_time?: string | null;
   drop_off_rate?: number | null;
   reposts?: number | null;
-  traffic_sources?: Record<string, number> | null;
-  audience_breakdown?: Record<string, number> | null;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  insights_detail?: ContentInsightsDetail | null;
 }
 
 export interface UpdateMetricInput {
@@ -31,14 +50,34 @@ export interface UpdateMetricInput {
   shares?: number;
   saves?: number;
   clicks?: number;
+  profile_visits?: number;
+  follows?: number;
+  content_type?: ContentInsightType | string | null;
   source?: MetricSource;
   recorded_at?: string;
   raw_ai_analysis?: Record<string, unknown> | null;
   watch_time?: string | null;
   drop_off_rate?: number | null;
   reposts?: number | null;
-  traffic_sources?: Record<string, number> | null;
-  audience_breakdown?: Record<string, number> | null;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  insights_detail?: ContentInsightsDetail | null;
+}
+
+export interface UpsertAccountMetricInput {
+  brand_id: string;
+  channel: string;
+  /** Format YYYY-MM. */
+  period_month: string;
+  views: number;
+  reach: number;
+  interactions_total: number;
+  profile_visits: number;
+  follows: number;
+  followers_total: number;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  raw_ai_analysis?: Record<string, unknown> | null;
 }
 
 export interface MetricsFilterOptions {
@@ -58,7 +97,10 @@ export interface MetricAggregation {
   totalComments: number;
   totalShares: number;
   totalSaves: number;
+  totalReposts: number;
   totalClicks: number;
+  totalProfileVisits: number;
+  totalFollows: number;
   engagementRate: number;
   saveRate: number;
   shareRate: number;
@@ -121,17 +163,88 @@ export interface AnalyticsReportData {
   topPosts: TopPostItem[];
   recentSnapshots: (ContentMetric & { post?: ContentPost | null })[];
   deepInsights?: DeepInsightsSummary;
+  /** Ringkasan akun (dashboard Instagram) — sumber angka total utama. */
+  accountSummary: AccountSummary;
+  /** Akumulasi dari snapshot per konten — pelengkap, bukan reach unik. */
+  contentSummary: ContentAggregateSummary;
 }
+
+export interface AccountSummary {
+  hasData: boolean;
+  periodMonth: string | null;
+  channel: string | null;
+  views: number;
+  reach: number;
+  interactions: number;
+  profileVisits: number;
+  follows: number;
+  followersTotal: number;
+  engagementRate: number;
+  trafficSources: TrafficSourceItem[];
+  audienceBreakdown: { followers: number; nonFollowers: number };
+  updatedAt: string | null;
+}
+
+export interface ContentAggregateSummary {
+  postCount: number;
+  snapshotCount: number;
+  impressions: number;
+  reach: number;
+  engagements: number;
+  engagementRate: number;
+  profileVisits: number;
+  follows: number;
+  trafficSources: TrafficSourceItem[];
+  audienceBreakdown: { followers: number; nonFollowers: number };
+}
+
+const EMPTY_ACCOUNT_SUMMARY: AccountSummary = {
+  hasData: false,
+  periodMonth: null,
+  channel: null,
+  views: 0,
+  reach: 0,
+  interactions: 0,
+  profileVisits: 0,
+  follows: 0,
+  followersTotal: 0,
+  engagementRate: 0,
+  trafficSources: [],
+  audienceBreakdown: { followers: 0, nonFollowers: 0 },
+  updatedAt: null,
+};
+
+const EMPTY_CONTENT_SUMMARY: ContentAggregateSummary = {
+  postCount: 0,
+  snapshotCount: 0,
+  impressions: 0,
+  reach: 0,
+  engagements: 0,
+  engagementRate: 0,
+  profileVisits: 0,
+  follows: 0,
+  trafficSources: [],
+  audienceBreakdown: { followers: 0, nonFollowers: 0 },
+};
 
 /**
  * Formula Helpers & Safe Calculation
  */
 export const metricFormulas = {
   /**
-   * Total Engagements = Likes + Comments + Shares + Saves
+   * Total Engagements = Likes + Comments + Shares + Saves + Reposts
    */
-  totalEngagements(likes: number, comments: number, shares: number, saves: number): number {
-    return Math.max(0, (likes || 0) + (comments || 0) + (shares || 0) + (saves || 0));
+  totalEngagements(
+    likes: number,
+    comments: number,
+    shares: number,
+    saves: number,
+    reposts: number = 0
+  ): number {
+    return Math.max(
+      0,
+      (likes || 0) + (comments || 0) + (shares || 0) + (saves || 0) + (reposts || 0)
+    );
   },
 
   /**
@@ -182,17 +295,23 @@ export const metricsService = {
       input.likes,
       input.comments,
       input.shares,
-      input.saves
+      input.saves,
+      Number(input.reposts) || 0
     );
     const er = metricFormulas.engagementRate(engagements, input.reach, input.impressions);
 
+    const trafficSources = normalizeTrafficSources(input.traffic_sources as Record<string, unknown>);
     const deepAnalysis: Record<string, unknown> = {
       ...(input.raw_ai_analysis || {}),
       ...(input.watch_time !== undefined ? { watch_time: input.watch_time } : {}),
       ...(input.drop_off_rate !== undefined ? { drop_off_rate: input.drop_off_rate } : {}),
       ...(input.reposts !== undefined ? { reposts: input.reposts } : {}),
-      ...(input.traffic_sources !== undefined ? { traffic_sources: input.traffic_sources } : {}),
+      ...(input.profile_visits !== undefined ? { profile_visits: input.profile_visits } : {}),
+      ...(input.follows !== undefined ? { follows: input.follows } : {}),
+      ...(input.content_type !== undefined ? { content_type: input.content_type } : {}),
+      ...(trafficSources ? { traffic_sources: trafficSources } : {}),
       ...(input.audience_breakdown !== undefined ? { audience_breakdown: input.audience_breakdown } : {}),
+      ...(input.insights_detail !== undefined ? { insights_detail: input.insights_detail } : {}),
     };
 
     const { data, error } = await supabase
@@ -209,7 +328,16 @@ export const metricsService = {
         shares: Math.max(0, input.shares || 0),
         saves: Math.max(0, input.saves || 0),
         clicks: Math.max(0, input.clicks || 0),
+        profile_visits: Math.max(0, input.profile_visits || 0),
+        follows: Math.max(0, input.follows || 0),
+        content_type: input.content_type || null,
         source: input.source || 'manual',
+        watch_time: input.watch_time ?? null,
+        drop_off_rate: input.drop_off_rate ?? null,
+        reposts: Math.max(0, Number(input.reposts) || 0),
+        traffic_sources: trafficSources,
+        audience_breakdown: input.audience_breakdown ?? null,
+        insights_detail: input.insights_detail ?? null,
         raw_ai_analysis: deepAnalysis,
         recorded_at: input.recorded_at || new Date().toISOString(),
       })
@@ -239,8 +367,21 @@ export const metricsService = {
     if (input.shares !== undefined) payload.shares = Math.max(0, input.shares);
     if (input.saves !== undefined) payload.saves = Math.max(0, input.saves);
     if (input.clicks !== undefined) payload.clicks = Math.max(0, input.clicks);
+    if (input.profile_visits !== undefined) payload.profile_visits = Math.max(0, input.profile_visits);
+    if (input.follows !== undefined) payload.follows = Math.max(0, input.follows);
+    if (input.content_type !== undefined) payload.content_type = input.content_type;
     if (input.source !== undefined) payload.source = input.source;
     if (input.recorded_at !== undefined) payload.recorded_at = input.recorded_at;
+    if (input.watch_time !== undefined) payload.watch_time = input.watch_time;
+    if (input.drop_off_rate !== undefined) payload.drop_off_rate = input.drop_off_rate;
+    if (input.reposts !== undefined) payload.reposts = Math.max(0, Number(input.reposts) || 0);
+    if (input.traffic_sources !== undefined) {
+      payload.traffic_sources = normalizeTrafficSources(
+        input.traffic_sources as Record<string, unknown>
+      );
+    }
+    if (input.audience_breakdown !== undefined) payload.audience_breakdown = input.audience_breakdown;
+    if (input.insights_detail !== undefined) payload.insights_detail = input.insights_detail;
 
     // Ambil data sekarang untuk merge raw_ai_analysis dan ER
     const { data: current } = await supabase
@@ -254,10 +395,17 @@ export const metricsService = {
       const mergedComments = input.comments !== undefined ? input.comments : current.comments;
       const mergedShares = input.shares !== undefined ? input.shares : current.shares;
       const mergedSaves = input.saves !== undefined ? input.saves : current.saves;
+      const mergedReposts = input.reposts !== undefined ? input.reposts : current.reposts;
       const mergedReach = input.reach !== undefined ? input.reach : current.reach;
       const mergedImpressions = input.impressions !== undefined ? input.impressions : current.impressions;
 
-      const totalEng = metricFormulas.totalEngagements(mergedLikes, mergedComments, mergedShares, mergedSaves);
+      const totalEng = metricFormulas.totalEngagements(
+        mergedLikes,
+        mergedComments,
+        mergedShares,
+        mergedSaves,
+        Number(mergedReposts) || 0
+      );
       payload.engagement_rate = metricFormulas.engagementRate(totalEng, mergedReach, mergedImpressions);
 
       const existingRaw = (current.raw_ai_analysis || {}) as Record<string, unknown>;
@@ -267,8 +415,14 @@ export const metricsService = {
         ...(input.watch_time !== undefined ? { watch_time: input.watch_time } : {}),
         ...(input.drop_off_rate !== undefined ? { drop_off_rate: input.drop_off_rate } : {}),
         ...(input.reposts !== undefined ? { reposts: input.reposts } : {}),
-        ...(input.traffic_sources !== undefined ? { traffic_sources: input.traffic_sources } : {}),
+        ...(input.profile_visits !== undefined ? { profile_visits: input.profile_visits } : {}),
+        ...(input.follows !== undefined ? { follows: input.follows } : {}),
+        ...(input.content_type !== undefined ? { content_type: input.content_type } : {}),
+        ...(input.traffic_sources !== undefined
+          ? { traffic_sources: normalizeTrafficSources(input.traffic_sources as Record<string, unknown>) }
+          : {}),
         ...(input.audience_breakdown !== undefined ? { audience_breakdown: input.audience_breakdown } : {}),
+        ...(input.insights_detail !== undefined ? { insights_detail: input.insights_detail } : {}),
       };
     }
 
@@ -298,6 +452,79 @@ export const metricsService = {
       .delete()
       .eq('id', metricId);
 
+    if (error) throw error;
+  },
+
+  /**
+   * Mengambil ringkasan akun bulanan (dashboard Instagram).
+   * Diurutkan dari bulan terbaru.
+   */
+  async getAccountMetrics(
+    brandId: string,
+    filter?: { channel?: string; startMonth?: string; endMonth?: string }
+  ): Promise<AccountMetric[]> {
+    if (!isConfigured || !brandId) return [];
+
+    let query = supabase
+      .from('account_metrics')
+      .select('*')
+      .eq('brand_id', brandId)
+      .order('period_month', { ascending: false });
+
+    if (filter?.channel) query = query.eq('channel', filter.channel);
+    if (filter?.startMonth) query = query.gte('period_month', filter.startMonth);
+    if (filter?.endMonth) query = query.lte('period_month', filter.endMonth);
+
+    const { data, error } = await query;
+    if (error) {
+      console.error('Gagal mengambil ringkasan akun:', error);
+      throw error;
+    }
+
+    return (data || []) as unknown as AccountMetric[];
+  },
+
+  /**
+   * Menyimpan ringkasan akun bulanan. Satu bulan hanya punya satu baris,
+   * sehingga input ulang akan memperbarui data bulan tersebut.
+   */
+  async upsertAccountMetric(input: UpsertAccountMetricInput): Promise<AccountMetric> {
+    if (!isConfigured) throw new Error('Supabase belum terkonfigurasi.');
+
+    const payload = {
+      brand_id: input.brand_id,
+      channel: input.channel || 'instagram',
+      period_month: input.period_month,
+      views: Math.max(0, Math.round(input.views || 0)),
+      reach: Math.max(0, Math.round(input.reach || 0)),
+      interactions_total: Math.max(0, Math.round(input.interactions_total || 0)),
+      profile_visits: Math.max(0, Math.round(input.profile_visits || 0)),
+      follows: Math.max(0, Math.round(input.follows || 0)),
+      followers_total: Math.max(0, Math.round(input.followers_total || 0)),
+      traffic_sources: normalizeTrafficSources(input.traffic_sources as Record<string, unknown>),
+      audience_breakdown: input.audience_breakdown ?? null,
+      raw_ai_analysis: input.raw_ai_analysis ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
+      .from('account_metrics')
+      .upsert(payload, { onConflict: 'brand_id,channel,period_month' })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Gagal menyimpan ringkasan akun:', error);
+      throw error;
+    }
+
+    return data as AccountMetric;
+  },
+
+  async deleteAccountMetric(id: string): Promise<void> {
+    if (!isConfigured) throw new Error('Supabase belum terkonfigurasi.');
+
+    const { error } = await supabase.from('account_metrics').delete().eq('id', id);
     if (error) throw error;
   },
 
@@ -361,7 +588,10 @@ export const metricsService = {
         totalComments: 0,
         totalShares: 0,
         totalSaves: 0,
+        totalReposts: 0,
         totalClicks: 0,
+        totalProfileVisits: 0,
+        totalFollows: 0,
         engagementRate: 0,
         saveRate: 0,
         shareRate: 0,
@@ -384,6 +614,8 @@ export const metricsService = {
         pillarPerformances: [],
         topPosts: [],
         recentSnapshots: [],
+        accountSummary: EMPTY_ACCOUNT_SUMMARY,
+        contentSummary: EMPTY_CONTENT_SUMMARY,
       };
     }
 
@@ -430,7 +662,10 @@ export const metricsService = {
       let comments = 0;
       let shares = 0;
       let saves = 0;
+      let reposts = 0;
       let clicks = 0;
+      let profileVisits = 0;
+      let follows = 0;
       const uniquePosts = new Set<string>();
 
       for (const item of items) {
@@ -440,11 +675,14 @@ export const metricsService = {
         comments += item.comments || 0;
         shares += item.shares || 0;
         saves += item.saves || 0;
+        reposts += Number(item.reposts || 0);
         clicks += item.clicks || 0;
+        profileVisits += Number(item.profile_visits || 0);
+        follows += Number(item.follows || 0);
         if (item.post_id) uniquePosts.add(item.post_id);
       }
 
-      const totalEng = metricFormulas.totalEngagements(likes, comments, shares, saves);
+      const totalEng = metricFormulas.totalEngagements(likes, comments, shares, saves, reposts);
       const er = metricFormulas.engagementRate(totalEng, reach, impressions);
       const svRate = metricFormulas.saveRate(saves, reach);
       const shRate = metricFormulas.shareRate(shares, reach);
@@ -457,7 +695,10 @@ export const metricsService = {
         totalComments: comments,
         totalShares: shares,
         totalSaves: saves,
+        totalReposts: reposts,
         totalClicks: clicks,
+        totalProfileVisits: profileVisits,
+        totalFollows: follows,
         engagementRate: er,
         saveRate: svRate,
         shareRate: shRate,
@@ -565,11 +806,8 @@ export const metricsService = {
     let dropOffSum = 0;
     let dropOffCount = 0;
     let totalReposts = 0;
-    let reelsTrafficSum = 0;
-    let feedTrafficSum = 0;
-    let exploreTrafficSum = 0;
-    let profileTrafficSum = 0;
-    let trafficCount = 0;
+    const trafficSums: Record<string, number> = {};
+    const trafficCounts: Record<string, number> = {};
     let followersSum = 0;
     let nonFollowersSum = 0;
     let audienceCount = 0;
@@ -604,13 +842,15 @@ export const metricsService = {
         totalReposts += Number(rep);
       }
 
-      const ts = (m.traffic_sources || raw.traffic_sources) as Record<string, number> | undefined;
+      const ts = (m.traffic_sources || raw.traffic_sources) as Record<string, unknown> | undefined;
       if (ts) {
-        reelsTrafficSum += Number(ts.reels || 0);
-        feedTrafficSum += Number(ts.feed || 0);
-        exploreTrafficSum += Number(ts.explore || 0);
-        profileTrafficSum += Number(ts.profile || 0);
-        trafficCount++;
+        for (const { key } of TRAFFIC_SOURCE_CATALOG) {
+          const value = Number(ts[String(key)] || 0);
+          if (value > 0) {
+            trafficSums[String(key)] = (trafficSums[String(key)] || 0) + value;
+            trafficCounts[String(key)] = (trafficCounts[String(key)] || 0) + 1;
+          }
+        }
       }
 
       const aud = (m.audience_breakdown || raw.audience_breakdown) as Record<string, number> | undefined;
@@ -629,35 +869,30 @@ export const metricsService = {
       ? `${(dropOffSum / dropOffCount).toFixed(1)}%`
       : 'Belum dicatat';
 
-    // Label sumber tayangan disesuaikan dengan saluran yang difilter
-    let src1 = 'Shorts / Reels / FYP';
-    let src2 = 'Beranda (Feed)';
-    let src3 = 'Jelajahi (Explore)';
-    let src4 = 'Profil Akun';
-
-    if (channel === 'tiktok') {
-      src1 = 'Untuk Anda (FYP)';
-      src2 = 'Mengikuti (Following)';
-      src3 = 'Suara / Pencarian';
-      src4 = 'Profil Akun';
-    } else if (channel === 'instagram') {
-      src1 = 'Tab Reels';
-      src2 = 'Beranda (Feed)';
-      src3 = 'Jelajahi (Explore)';
-      src4 = 'Profil Akun';
-    } else if (channel === 'youtube') {
-      src1 = 'Shorts Feed';
-      src2 = 'Beranda / Browse';
-      src3 = 'Penelusuran YouTube';
-      src4 = 'Halaman Channel';
+    // Rata-rata sumber tayangan dari snapshot konten (hanya kategori bernilai > 0)
+    const averageTraffic: TrafficSourceBreakdown = {};
+    for (const { key } of TRAFFIC_SOURCE_CATALOG) {
+      const count = trafficCounts[String(key)] || 0;
+      if (count > 0) {
+        averageTraffic[key] = Number(((trafficSums[String(key)] || 0) / count).toFixed(2));
+      }
     }
+    const trafficSourceItems = buildTrafficSourceItems(averageTraffic);
 
-    const trafficSources = [
-      { name: src1, percentage: trafficCount > 0 ? Math.round(reelsTrafficSum / trafficCount) : 0, color: 'bg-pink-600' },
-      { name: src2, percentage: trafficCount > 0 ? Math.round(feedTrafficSum / trafficCount) : 0, color: 'bg-purple-600' },
-      { name: src3, percentage: trafficCount > 0 ? Math.round(exploreTrafficSum / trafficCount) : 0, color: 'bg-blue-600' },
-      { name: src4, percentage: trafficCount > 0 ? Math.round(profileTrafficSum / trafficCount) : 0, color: 'bg-emerald-600' },
-    ];
+    const SOURCE_COLORS: Record<string, string> = {
+      stories: 'bg-amber-500',
+      profile: 'bg-emerald-600',
+      feed: 'bg-purple-600',
+      reels: 'bg-pink-600',
+      explore: 'bg-blue-600',
+      other: 'bg-slate-500',
+    };
+
+    const trafficSources = trafficSourceItems.map((item) => ({
+      name: item.name,
+      percentage: item.percentage,
+      color: SOURCE_COLORS[item.key] || 'bg-slate-500',
+    }));
 
     const audienceBreakdown = audienceCount > 0 ? {
       followers: Number((followersSum / audienceCount).toFixed(1)),
@@ -667,7 +902,8 @@ export const metricsService = {
       nonFollowers: 0,
     };
 
-    const hasVideoData = watchTimeCount > 0 || dropOffCount > 0 || totalReposts > 0 || trafficCount > 0 || audienceCount > 0;
+    const hasVideoData = watchTimeCount > 0 || dropOffCount > 0 || totalReposts > 0
+      || trafficSourceItems.length > 0 || audienceCount > 0;
 
     const deepInsights: DeepInsightsSummary = {
       avgWatchTime: formattedAvgWatchTime,
@@ -675,6 +911,64 @@ export const metricsService = {
       totalReposts,
       hasVideoData,
       trafficSources,
+      audienceBreakdown,
+    };
+
+    // Ringkasan akun bulanan: sumber angka total utama di halaman Analitik.
+    const accountMetrics = await this.getAccountMetrics(brandId, {
+      channel: channel !== 'all' ? channel : undefined,
+    });
+    const accountInPeriod = accountMetrics.filter((item) => {
+      const monthStart = new Date(`${item.period_month}-01T00:00:00`);
+      const monthEnd = new Date(
+        monthStart.getFullYear(),
+        monthStart.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999
+      );
+      return monthEnd.getTime() >= currentStart.getTime() && monthStart.getTime() <= now.getTime();
+    });
+    const latestAccount = accountInPeriod[0] || null;
+
+    const accountSummary: AccountSummary = latestAccount
+      ? {
+          hasData: true,
+          periodMonth: latestAccount.period_month,
+          channel: latestAccount.channel,
+          views: Number(latestAccount.views) || 0,
+          reach: Number(latestAccount.reach) || 0,
+          interactions: Number(latestAccount.interactions_total) || 0,
+          profileVisits: Number(latestAccount.profile_visits) || 0,
+          follows: Number(latestAccount.follows) || 0,
+          followersTotal: Number(latestAccount.followers_total) || 0,
+          engagementRate: metricFormulas.engagementRate(
+            Number(latestAccount.interactions_total) || 0,
+            Number(latestAccount.reach) || 0,
+            Number(latestAccount.views) || 0
+          ),
+          trafficSources: buildTrafficSourceItems(latestAccount.traffic_sources),
+          audienceBreakdown: {
+            followers: Number(latestAccount.audience_breakdown?.followers || 0),
+            nonFollowers: Number(latestAccount.audience_breakdown?.non_followers || 0),
+          },
+          updatedAt: latestAccount.updated_at,
+        }
+      : EMPTY_ACCOUNT_SUMMARY;
+
+    // Akumulasi konten: pelengkap, bukan reach unik.
+    const contentSummary: ContentAggregateSummary = {
+      postCount: currentAgg.postCount,
+      snapshotCount: currentMetrics.length,
+      impressions: currentAgg.totalImpressions,
+      reach: currentAgg.totalReach,
+      engagements: currentAgg.totalEngagements,
+      engagementRate: currentAgg.engagementRate,
+      profileVisits: currentAgg.totalProfileVisits,
+      follows: currentAgg.totalFollows,
+      trafficSources: trafficSourceItems,
       audienceBreakdown,
     };
 
@@ -689,6 +983,8 @@ export const metricsService = {
       topPosts,
       recentSnapshots: currentMetrics.slice(0, 15),
       deepInsights,
+      accountSummary,
+      contentSummary,
     };
   },
 

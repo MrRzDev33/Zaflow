@@ -3449,31 +3449,92 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   }
 
   try {
-    const prompt = `Analisis gambar/screenshot atau rekaman analitik media sosial (${channel}) ini secara presisi dan mendalam.
+    const mode = req.body.mode === 'account' ? 'account' : 'post';
+
+    const accountPrompt = `Analisis gambar/screenshot dashboard profesional Instagram (${channel}) ini secara presisi.
+Tugas: ekstrak RINGKASAN AKUN untuk satu bulan, bukan metrik per postingan.
+Instruksi:
+1. "period_month": bulan data yang tampil dalam format "YYYY-MM". Jika rentang tanggal terlihat, gunakan bulan dengan hari terbanyak. Jika tidak terbaca, null.
+2. Angka utama akun:
+   - "views": total tayangan akun (number)
+   - "reach": total akun yang dijangkau (number)
+   - "interactions_total": total interaksi akun (like + komentar + bagikan + simpan + posting ulang) (number)
+   - "profile_visits": kunjungan profil (number)
+   - "follows": pengikut baru (number)
+   - "followers_total": total pengikut saat ini (number)
+3. "traffic_sources": persentase sumber tayangan akun (0-100) dengan enam kategori:
+   - "stories": Cerita
+   - "profile": Profil
+   - "feed": Beranda (Feed), termasuk "Kabar"
+   - "reels": Tab Reels
+   - "explore": Jelajahi (Explore)
+   - "other": Lainnya
+   Hanya isi kategori yang tampil. Jangan mengarang angka.
+4. "audience_breakdown": "followers" dan "non_followers" dalam persen (0-100).
+5. "confidence": keyakinan pembacaan (1-100).
+6. "summary": ringkasan performa akun 1-2 kalimat dalam bahasa Indonesia.
+
+Kembalikan HANYA JSON murni valid tanpa backticks markdown:
+{
+  "channel": "${channel.toLowerCase()}",
+  "period_month": "2026-10",
+  "summary": "ringkasan singkat performa akun bulan ini",
+  "confidence": 95,
+  "views": 0,
+  "reach": 0,
+  "interactions_total": 0,
+  "profile_visits": 0,
+  "follows": 0,
+  "followers_total": 0,
+  "traffic_sources": {
+    "stories": 0,
+    "profile": 0,
+    "feed": 0,
+    "reels": 0,
+    "explore": 0,
+    "other": 0
+  },
+  "audience_breakdown": {
+    "followers": 0,
+    "non_followers": 0
+  }
+}
+Gunakan angka asli dari gambar. Jika informasi tidak tercantum, isi 0 atau null.`;
+
+    const postPrompt = `Analisis gambar/screenshot atau rekaman analitik media sosial (${channel}) ini secara presisi dan mendalam.
 Platform target: ${channel}.
 Instruksi ekstraksi:
-1. Ekstrak metrik standar:
-   - impressions: total penayangan video / views / tayangan (number)
-   - reach: total akun yang dijangkau / viewers unik (number)
+1. Metrik standar:
+   - impressions: total penayangan / views / tayangan (number)
+   - reach: total akun yang dijangkau / penonton unik (number)
    - likes: jumlah suka (number)
    - comments: jumlah komentar (number)
    - shares: jumlah dibagikan (number)
    - saves: jumlah disimpan / favorit / bookmark (number)
-   - clicks: jumlah klik tautan / link clicks (number)
-2. Ekstrak metrik mendalam video (TikTok / Instagram / Shorts):
-   - "watch_time": waktu tonton rata-rata (misal di TikTok 'Waktu tonton rata-rata 14.5 dtk' atau di Instagram 'Average watch time: 0:34 detik'. Format string '0:XX detik' atau null jika bukan video).
-   - "drop_off_rate": persentase penonton lewati / drop-off (number 0-100). Jika di TikTok tertera 'Menonton video lengkap 32%', maka drop-off adalah (100 - 32) = 68. Jika tidak tertera, isi null.
-   - "reposts": jumlah posting ulang / repost (number 0 jika tidak ada).
-   - "traffic_sources": persentase sumber penayangan (0-100).
-     * Jika TikTok: "reels" untuk Untuk Anda (FYP), "feed" untuk Mengikuti (Following), "explore" untuk Suara/Pencarian, "profile" untuk Profil pribadi.
-     * Jika Instagram: "reels" untuk Tab Reels, "feed" untuk Beranda/Feed, "explore" untuk Jelajahi/Explore, "profile" untuk Profil.
-     * Jika platform lain/YouTube: petakan proporsi serupa.
-   - "audience_breakdown":
-     * "followers": persentase penonton pengikut (0-100).
-     * "non_followers": persentase penonton bukan pengikut (0-100).
-3. "confidence": tingkat keyakinan pembacaan AI (angka 1-100).
-4. "detected_title": judul atau potongan caption/isi video jika tampak pada screenshot.
-5. "summary": ringkasan performa 1-2 kalimat dalam bahasa Indonesia.
+   - reposts: jumlah posting ulang / repost (number, 0 jika tidak ada)
+   - clicks: jumlah klik tautan eksternal / link clicks (number)
+2. Metrik tindakan pengguna:
+   - "profile_visits": kunjungan profil yang diatribusikan ke konten ini (number)
+   - "follows": pengikut baru dari konten ini (number)
+   - "content_type": "reel" untuk Reels/video, "feed" untuk single post, "carousel" untuk carousel, "story" untuk story, atau null jika tidak jelas.
+3. Metrik mendalam video (TikTok / Instagram / Shorts):
+   - "watch_time": waktu tonton rata-rata (misal 'Waktu tonton rata-rata 14.5 dtk' atau 'Average watch time: 0:34 detik'). Format string '0:XX detik' atau null jika bukan video.
+   - "drop_off_rate": persentase penonton lewati / drop-off (number 0-100). Jika tertera 'Menonton video lengkap 32%', maka drop-off = (100 - 32) = 68. Jika tidak tertera, isi null.
+4. "traffic_sources": persentase sumber tayangan (0-100).
+   - Instagram memakai enam kategori: "stories" (Cerita), "profile" (Profil), "feed" (Beranda/Feed, gabungkan "Kabar" ke sini), "reels" (Tab Reels), "explore" (Jelajahi/Explore), "other" (Lainnya).
+   - TikTok: "reels" untuk Untuk Anda (FYP), "feed" untuk Mengikuti (Following), "explore" untuk Suara/Pencarian, "profile" untuk Profil.
+   - YouTube: "reels" untuk Shorts Feed, "feed" untuk Beranda/Browse, "explore" untuk Penelusuran, "profile" untuk Halaman Channel.
+   - Isi hanya kategori yang tampil pada gambar.
+5. "audience_breakdown": "followers" dan "non_followers" dalam persen (0-100).
+6. "insights_detail" (khusus Instagram; null untuk platform lain):
+   - "viewFactors": isi HANYA jika bagian "Faktor yang memengaruhi tayangan" terlihat. Setiap item: { "key": "skip"|"share"|"like"|"save"|"repost"|"comment", "label": teks persis dari Instagram, "value": angka, "rank": urutan mulai 1 sesuai tampilan }. Jika tidak ada, kembalikan array kosong.
+   - "audienceDetails": "ages" berisi [{ "range": "13-17"|"18-24"|"25-34"|"35-44"|"45-54"|"55+", "percentage": angka }], "countries" berisi [{ "country": "Indonesia", "percentage": angka }], "gender" berisi { "male": angka, "female": angka, "other": angka }. Tampilkan SEMUA kelompok yang terlihat.
+   - "series": deret grafik bila terlihat: "views" dan "likes" berisi [{ "label": "Hari 1" atau tanggal, "value": angka }], "retention" berisi [{ "percent": posisi video 0-100, "retention": penonton tersisa 0-100 }].
+   - "approximate": true jika deret grafik hanya perkiraan visual dari gambar, false jika angka pasti.
+   Penting: jika grafik atau angkanya tidak jelas, kembalikan array kosong dan approximate true. JANGAN memaksakan angka karangan.
+7. "confidence": tingkat keyakinan pembacaan AI (angka 1-100).
+8. "detected_title": judul atau potongan caption/isi video jika tampak pada screenshot.
+9. "summary": ringkasan performa 1-2 kalimat dalam bahasa Indonesia.
 
 Kembalikan HANYA JSON murni yang valid tanpa backticks markdown:
 {
@@ -3488,22 +3549,46 @@ Kembalikan HANYA JSON murni yang valid tanpa backticks markdown:
   "comments": 0,
   "shares": 0,
   "saves": 0,
+  "reposts": 0,
   "clicks": 0,
+  "profile_visits": 0,
+  "follows": 0,
+  "content_type": "reel",
   "watch_time": "0:30 detik",
   "drop_off_rate": 25.5,
-  "reposts": 0,
   "traffic_sources": {
-    "reels": 0,
+    "stories": 0,
+    "profile": 0,
     "feed": 0,
+    "reels": 0,
     "explore": 0,
-    "profile": 0
+    "other": 0
   },
   "audience_breakdown": {
     "followers": 0,
     "non_followers": 0
+  },
+  "insights_detail": {
+    "viewFactors": [
+      { "key": "skip", "label": "Jumlah Lewati", "value": 0, "rank": 1 }
+    ],
+    "audienceDetails": {
+      "ages": [{ "range": "18-24", "percentage": 0 }],
+      "countries": [{ "country": "Indonesia", "percentage": 0 }],
+      "gender": { "male": 0, "female": 0, "other": 0 }
+    },
+    "series": {
+      "views": [{ "label": "Hari 1", "value": 0 }],
+      "likes": [{ "label": "Hari 1", "value": 0 }],
+      "retention": [{ "percent": 0, "retention": 100 }]
+    },
+    "approximate": true
   }
 }
 Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi tertentu tidak tercantum pada screenshot, isi angka 0 atau null.`;
+
+    const prompt = mode === 'account' ? accountPrompt : postPrompt;
+
 
     const { response, modelUsed } = await runGeminiWithFallback({
       contents: [
@@ -3599,7 +3684,9 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
   try {
     let brandInfo: any = null;
     let recentPosts: any[] = [];
+    let postIndex: any[] = [];
     let recentMetrics: any[] = [];
+    let accountMetrics: any[] = [];
 
     if (supabaseAdmin) {
       const { data: bData } = await supabaseAdmin
@@ -3617,22 +3704,199 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         .limit(20);
       recentPosts = pData || [];
 
+      // Indeks postingan untuk memberi judul pada detail metrik per konten.
+      const { data: allPosts } = await supabaseAdmin
+        .from('content_posts')
+        .select('id, title, pillar, format, channels, status')
+        .eq('brand_id', brandId)
+        .order('created_at', { ascending: false })
+        .limit(200);
+      postIndex = allPosts || [];
+
       const { data: mData } = await supabaseAdmin
         .from('content_metrics')
-        .select('channel, impressions, reach, likes, comments, shares, saves, engagement_rate, recorded_at')
+        .select(
+          'post_id, channel, impressions, reach, likes, comments, shares, saves, clicks, reposts, profile_visits, follows, content_type, insights_detail, traffic_sources, audience_breakdown, watch_time, drop_off_rate, recorded_at'
+        )
         .eq('brand_id', brandId)
         .order('recorded_at', { ascending: false })
-        .limit(30);
+        .limit(60);
       recentMetrics = mData || [];
+
+      const { data: aData } = await supabaseAdmin
+        .from('account_metrics')
+        .select(
+          'channel, period_month, views, reach, interactions_total, profile_visits, follows, followers_total, traffic_sources, audience_breakdown'
+        )
+        .eq('brand_id', brandId)
+        .order('period_month', { ascending: false })
+        .limit(12);
+      accountMetrics = aData || [];
     }
 
+    const engagementsOf = (m: any) =>
+      (m.likes || 0) +
+      (m.comments || 0) +
+      (m.shares || 0) +
+      (m.saves || 0) +
+      (m.reposts || 0);
+
     let totalReach = 0;
+    let totalImpressions = 0;
     let totalEng = 0;
     for (const m of recentMetrics) {
       totalReach += m.reach || 0;
-      totalEng += (m.likes || 0) + (m.comments || 0) + (m.shares || 0) + (m.saves || 0);
+      totalImpressions += m.impressions || 0;
+      totalEng += engagementsOf(m);
     }
     const avgER = totalReach > 0 ? ((totalEng / totalReach) * 100).toFixed(2) : '0.00';
+
+    // Agregasi per saluran dari snapshot konten (bukan total akun).
+    const channelAggMap = new Map<
+      string,
+      {
+        channel: string;
+        snapshots: number;
+        impressions: number;
+        reach: number;
+        engagements: number;
+        reposts: number;
+        profile_visits: number;
+        follows: number;
+      }
+    >();
+    for (const m of recentMetrics) {
+      const key = String(m.channel || 'lainnya').toLowerCase();
+      const entry =
+        channelAggMap.get(key) ||
+        {
+          channel: key,
+          snapshots: 0,
+          impressions: 0,
+          reach: 0,
+          engagements: 0,
+          reposts: 0,
+          profile_visits: 0,
+          follows: 0,
+        };
+      entry.snapshots += 1;
+      entry.impressions += m.impressions || 0;
+      entry.reach += m.reach || 0;
+      entry.engagements += engagementsOf(m);
+      entry.reposts += m.reposts || 0;
+      entry.profile_visits += m.profile_visits || 0;
+      entry.follows += m.follows || 0;
+      channelAggMap.set(key, entry);
+    }
+    const channelAggregates = Array.from(channelAggMap.values()).map((entry) => ({
+      ...entry,
+      engagement_rate:
+        entry.reach > 0 ? Number(((entry.engagements / entry.reach) * 100).toFixed(2)) : 0,
+    }));
+
+    // Snapshot terbaru per postingan (data sudah terurut menurun).
+    const latestByPost = new Map<string, any>();
+    for (const m of recentMetrics) {
+      const key = m.post_id || `channel:${m.channel}`;
+      if (!latestByPost.has(key)) latestByPost.set(key, m);
+    }
+
+    const postMeta = new Map<string, any>();
+    for (const p of postIndex) postMeta.set(p.id, p);
+
+    const downsampleSeries = (points: any, max = 8) => {
+      if (!Array.isArray(points) || points.length === 0) return [];
+      if (points.length <= max) return points;
+      const step = Math.ceil(points.length / max);
+      return points.filter((_, i) => i % step === 0);
+    };
+
+    const topContentDetails = Array.from(latestByPost.values())
+      .sort((a, b) => engagementsOf(b) - engagementsOf(a))
+      .slice(0, 8)
+      .map((m) => {
+        const post = m.post_id ? postMeta.get(m.post_id) : null;
+        const detail = m.insights_detail || {};
+        const traffic = detail.trafficSources || m.traffic_sources || {};
+        const audience = detail.audience || m.audience_breakdown || {};
+        const eng = engagementsOf(m);
+        return {
+          title: post?.title || `Snapshot ${m.channel}`,
+          pillar: post?.pillar || null,
+          channel: m.channel,
+          content_type: m.content_type || null,
+          recorded_at: m.recorded_at,
+          impressions: m.impressions || 0,
+          reach: m.reach || 0,
+          engagements: eng,
+          engagement_rate:
+            m.reach > 0 ? Number(((eng / m.reach) * 100).toFixed(2)) : 0,
+          likes: m.likes || 0,
+          comments: m.comments || 0,
+          shares: m.shares || 0,
+          saves: m.saves || 0,
+          reposts: m.reposts || 0,
+          profile_visits: m.profile_visits || 0,
+          external_link_clicks: m.clicks || 0,
+          follows: m.follows || 0,
+          watch_time: m.watch_time || null,
+          drop_off_rate: m.drop_off_rate ?? null,
+          traffic_sources: traffic,
+          audience: {
+            followers: Number(audience.followers || 0),
+            non_followers: Number(audience.non_followers || 0),
+          },
+          audience_details: detail.audienceDetails || null,
+          view_factors: detail.viewFactors || [],
+          series: {
+            views: downsampleSeries(detail.series?.views),
+            likes: downsampleSeries(detail.series?.likes),
+            retention: downsampleSeries(detail.series?.retention),
+            approximate: Boolean(detail.approximate),
+          },
+        };
+      });
+
+    // Ringkasan akun terbaru per saluran — sumber total resmi.
+    const latestAccountByChannel = new Map<string, any>();
+    for (const a of accountMetrics) {
+      const key = String(a.channel || 'instagram').toLowerCase();
+      if (!latestAccountByChannel.has(key)) latestAccountByChannel.set(key, a);
+    }
+    const accountSummaries = Array.from(latestAccountByChannel.values()).map((a) => {
+      const interactions = Number(a.interactions_total || 0);
+      const base = Number(a.reach || 0) > 0 ? Number(a.reach) : Number(a.views || 0);
+      return {
+        channel: a.channel,
+        period_month: a.period_month,
+        views: Number(a.views || 0),
+        reach: Number(a.reach || 0),
+        interactions,
+        engagement_rate: base > 0 ? Number(((interactions / base) * 100).toFixed(2)) : 0,
+        profile_visits: Number(a.profile_visits || 0),
+        follows: Number(a.follows || 0),
+        followers_total: Number(a.followers_total || 0),
+        traffic_sources: a.traffic_sources || {},
+        audience: a.audience_breakdown || {},
+      };
+    });
+
+    const accountTrend = Array.from(
+      accountMetrics.reduce((map: Map<string, any[]>, a) => {
+        const key = String(a.channel || 'instagram').toLowerCase();
+        const list = map.get(key) || [];
+        if (list.length < 3) {
+          list.push({
+            period_month: a.period_month,
+            views: Number(a.views || 0),
+            reach: Number(a.reach || 0),
+            interactions: Number(a.interactions_total || 0),
+          });
+        }
+        map.set(key, list);
+        return map;
+      }, new Map<string, any[]>())
+    ).map(([channel, months]) => ({ channel, months }));
 
     const historicalContext = {
       brand_name: brandInfo?.name || 'Brand Klien',
@@ -3647,12 +3911,21 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         channels: p.channels,
         status: p.status,
       })),
-      historical_metrics_summary: {
-        samples_count: recentMetrics.length,
-        average_engagement_rate: `${avgER}%`,
-        total_sample_reach: totalReach,
-        total_sample_engagements: totalEng,
+      dua_sumber_total: {
+        catatan:
+          'Ringkasan Akun dan Akumulasi Konten adalah dua sumber berbeda. JANGAN menjumlahkan atau menggabungkannya.',
+        ringkasan_akun_bulanan: accountSummaries,
+        tren_akun_bulanan: accountTrend,
+        akumulasi_konten: {
+          samples_count: recentMetrics.length,
+          average_engagement_rate: `${avgER}%`,
+          total_sample_impressions: totalImpressions,
+          total_sample_reach: totalReach,
+          total_sample_engagements: totalEng,
+          per_channel: channelAggregates,
+        },
       },
+      detail_per_postingan: topContentDetails,
     };
 
     const prompt = `Anda adalah Senior Social Media Strategist untuk pasar Indonesia.
@@ -3669,7 +3942,11 @@ PRINSIP WAJIB:
 1. PISAHKAN SECARA TEGAS antara FAKTA HISTORIS DATA (Data-Backed Facts) dan REKOMENDASI STRATEGIS (Actionable AI Recommendations).
 2. Jangan membuat klaim bahwa AI menjamin 100% viralitas atau pertumbuhan pasti.
 3. Rencana konten harus konkret untuk kreator/tim pemasaran di Indonesia.
-4. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
+4. Gunakan "ringkasan_akun_bulanan" sebagai total resmi akun. "akumulasi_konten" hanya untuk membandingkan performa antar postingan dan saluran; JANGAN menjumlahkan keduanya.
+5. Total Engagements = likes + komentar + share + simpan + repost. Kunjungan profil, klik link eksternal, dan follow baru BUKAN bagian dari engagement.
+6. Manfaatkan "detail_per_postingan": sumber tayangan enam kategori (cerita, profil, beranda/feed, tab reels, jelajahi/explore, lainnya), faktor tayangan berurutan (jumlah lewati, bagikan, suka, simpan, repost, komentar), demografi pemirsa (usia, negara, jenis kelamin), serta deret grafik. Jelaskan sebab performa berdasarkan data ini, bukan asumsi umum.
+7. Jika "series.approximate" bernilai true atau data grafik kosong, sebut sebagai perkiraan/tidak tersedia. JANGAN mengarang angka yang tidak ada di data.
+8. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
 
 {
   "brand_overview": "Analisis singkat posisi brand saat ini berdasarkan data",

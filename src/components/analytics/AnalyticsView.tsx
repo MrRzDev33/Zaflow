@@ -24,7 +24,9 @@ import { PillarAnalysisCard } from './PillarAnalysisCard.tsx';
 import { MetricHistoryTable } from './MetricHistoryTable.tsx';
 import { FormulaExplanationCard } from './FormulaExplanationCard.tsx';
 import { MetricInputModal } from './MetricInputModal.tsx';
-import { InstagramInsightsCard } from './InstagramInsightsCard.tsx';
+import { AccountSummaryCard } from './AccountSummaryCard.tsx';
+import { ContentAggregateCard } from './ContentAggregateCard.tsx';
+import { AccountSnapshotModal } from './AccountSnapshotModal.tsx';
 import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
 
 interface AnalyticsViewProps {
@@ -46,6 +48,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [accountPeriodMonth, setAccountPeriodMonth] = useState<string | null>(null);
   const [selectedMetricForEdit, setSelectedMetricForEdit] = useState<ContentMetric | null>(null);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -126,6 +130,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
       'Shares',
       'Saves',
       'Clicks',
+      'Kunjungan Profil',
+      'Follow',
       'Engagement Rate (%)',
       'Watch Time',
       'Drop-off Rate (%)',
@@ -151,6 +157,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         m.shares || 0,
         m.saves || 0,
         m.clicks || 0,
+        m.profile_visits || 0,
+        m.follows || 0,
         m.engagement_rate || 0,
         `"${wt}"`,
         dor,
@@ -205,6 +213,36 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
     const wsSummary = XLSX.utils.aoa_to_sheet(summaryData);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Ringkasan Performa');
 
+    // Sheet 1b: Ringkasan Akun vs Akumulasi Konten (dua sumber terpisah)
+    const account = reportData.accountSummary;
+    const contentAgg = reportData.contentSummary;
+    const sourceRows = [
+      ['DUA SUMBER ANGKA — TIDAK DIJUMLAHKAN', ''],
+      ['', ''],
+      ['RINGKASAN AKUN', 'Nilai'],
+      ['Periode', account.periodMonth || '-'],
+      ['Saluran', account.channel || '-'],
+      ['Tayangan', account.views],
+      ['Reach', account.reach],
+      ['Interaksi', account.interactions],
+      ['Engagement Rate (%)', account.engagementRate],
+      ['Kunjungan Profil', account.profileVisits],
+      ['Pengikut Baru', account.follows],
+      ['Total Pengikut', account.followersTotal],
+      ['', ''],
+      ['AKUMULASI KONTEN', 'Nilai'],
+      ['Jumlah Snapshot', contentAgg.snapshotCount],
+      ['Jumlah Postingan', contentAgg.postCount],
+      ['Impressions', contentAgg.impressions],
+      ['Reach (bisa tumpang tindih)', contentAgg.reach],
+      ['Engagements', contentAgg.engagements],
+      ['Engagement Rate (%)', contentAgg.engagementRate],
+      ['Kunjungan Profil', contentAgg.profileVisits],
+      ['Follow', contentAgg.follows],
+    ];
+    const wsSources = XLSX.utils.aoa_to_sheet(sourceRows);
+    XLSX.utils.book_append_sheet(wb, wsSources, 'Sumber Angka');
+
     // Sheet 2: Riwayat Snapshot Lengkap
     const snapshotRows = reportData.recentSnapshots.map((m) => {
       const raw = (m.raw_ai_analysis || {}) as Record<string, any>;
@@ -220,6 +258,8 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         'Shares': m.shares || 0,
         'Saves': m.saves || 0,
         'Clicks': m.clicks || 0,
+        'Kunjungan Profil': m.profile_visits || 0,
+        'Follow': m.follows || 0,
         'Engagement Rate (%)': m.engagement_rate || 0,
         'Watch Time': m.watch_time || raw.watch_time || '-',
         'Drop-off Rate (%)': m.drop_off_rate ?? raw.drop_off_rate ?? '-',
@@ -491,17 +531,16 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
           {/* 2. Interactive Historical Trend Chart */}
           <TrendChart data={reportData.dailyTrends} />
 
-          {/* 2.5 Analisis Mendalam Instagram (Hanya tampil saat filter Instagram dipilih) */}
-          {channel === 'instagram' && (
-            <InstagramInsightsCard
-              reportData={reportData}
-              channel="instagram"
-              onOpenRecord={() => {
-                setSelectedMetricForEdit(null);
-                setIsInputModalOpen(true);
-              }}
-            />
-          )}
+          {/* 2.5 Dua sumber angka: Ringkasan Akun & Akumulasi Konten */}
+          <AccountSummaryCard
+            summary={reportData.accountSummary}
+            onOpenRecord={() => {
+              setAccountPeriodMonth(reportData.accountSummary.periodMonth);
+              setIsAccountModalOpen(true);
+            }}
+          />
+
+          <ContentAggregateCard summary={reportData.contentSummary} />
 
           {/* 3. Top Content & Pillar Performance Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
@@ -541,6 +580,19 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         onClose={() => {
           setIsInputModalOpen(false);
           setSelectedMetricForEdit(null);
+        }}
+        onSaved={fetchData}
+      />
+
+      <AccountSnapshotModal
+        isOpen={isAccountModalOpen}
+        brandId={brand.id}
+        platforms={getBrandPlatforms(brand)}
+        initialPeriodMonth={accountPeriodMonth}
+        initialChannel={channel === 'all' ? undefined : channel}
+        onClose={() => {
+          setIsAccountModalOpen(false);
+          setAccountPeriodMonth(null);
         }}
         onSaved={fetchData}
       />

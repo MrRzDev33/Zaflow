@@ -111,15 +111,45 @@ CREATE TABLE IF NOT EXISTS public.content_metrics (
     shares INT NOT NULL DEFAULT 0,
     saves INT NOT NULL DEFAULT 0,
     clicks INT NOT NULL DEFAULT 0,
+    profile_visits INT NOT NULL DEFAULT 0,
+    follows INT NOT NULL DEFAULT 0,
+    content_type TEXT,
     source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual', 'ai_screenshot', 'ai_video')),
     watch_time TEXT,
     drop_off_rate NUMERIC,
     reposts INT DEFAULT 0,
     traffic_sources JSONB,
     audience_breakdown JSONB,
+    insights_detail JSONB,
     raw_ai_analysis JSONB,
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- 6b. TABEL ACCOUNT_METRICS (Ringkasan Akun Bulanan dari Dashboard Instagram)
+-- Dipisah dari content_metrics: reach akun tidak sama dengan penjumlahan reach
+-- per konten, sehingga keduanya tidak boleh diagregasi menjadi satu angka.
+CREATE TABLE IF NOT EXISTS public.account_metrics (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    channel TEXT NOT NULL DEFAULT 'instagram',
+    period_month TEXT NOT NULL,
+    views INT NOT NULL DEFAULT 0,
+    reach INT NOT NULL DEFAULT 0,
+    interactions_total INT NOT NULL DEFAULT 0,
+    profile_visits INT NOT NULL DEFAULT 0,
+    follows INT NOT NULL DEFAULT 0,
+    followers_total INT NOT NULL DEFAULT 0,
+    traffic_sources JSONB,
+    audience_breakdown JSONB,
+    raw_ai_analysis JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT account_metrics_period_month_format
+        CHECK (period_month ~ '^[0-9]{4}-(0[1-9]|1[0-2])$')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_account_metrics_unique_period
+    ON public.account_metrics (brand_id, channel, period_month);
 
 -- 7. TABEL AI_USAGE_LOGS (Pencatatan Audit Penggunaan Kuota AI)
 CREATE TABLE IF NOT EXISTS public.ai_usage_logs (
@@ -227,6 +257,7 @@ ALTER TABLE public.brands ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.brand_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.content_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.content_metrics ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.account_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_usage_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
@@ -351,6 +382,33 @@ CREATE POLICY "Owner, Admin, dan Editor dapat mengubah metrik"
 DROP POLICY IF EXISTS "Owner dan Admin dapat menghapus metrik" ON public.content_metrics;
 CREATE POLICY "Owner dan Admin dapat menghapus metrik"
     ON public.content_metrics FOR DELETE
+    USING (
+        public.get_user_brand_role(brand_id) IN ('owner', 'admin')
+    );
+
+-- 6b. ACCOUNT_METRICS POLICIES
+DROP POLICY IF EXISTS "Anggota brand dapat membaca ringkasan akun" ON public.account_metrics;
+CREATE POLICY "Anggota brand dapat membaca ringkasan akun"
+    ON public.account_metrics FOR SELECT
+    USING (public.is_brand_member(brand_id));
+
+DROP POLICY IF EXISTS "Owner, Admin, dan Editor dapat mencatat ringkasan akun" ON public.account_metrics;
+CREATE POLICY "Owner, Admin, dan Editor dapat mencatat ringkasan akun"
+    ON public.account_metrics FOR INSERT
+    WITH CHECK (
+        public.get_user_brand_role(brand_id) IN ('owner', 'admin', 'editor')
+    );
+
+DROP POLICY IF EXISTS "Owner, Admin, dan Editor dapat mengubah ringkasan akun" ON public.account_metrics;
+CREATE POLICY "Owner, Admin, dan Editor dapat mengubah ringkasan akun"
+    ON public.account_metrics FOR UPDATE
+    USING (
+        public.get_user_brand_role(brand_id) IN ('owner', 'admin', 'editor')
+    );
+
+DROP POLICY IF EXISTS "Owner dan Admin dapat menghapus ringkasan akun" ON public.account_metrics;
+CREATE POLICY "Owner dan Admin dapat menghapus ringkasan akun"
+    ON public.account_metrics FOR DELETE
     USING (
         public.get_user_brand_role(brand_id) IN ('owner', 'admin')
     );

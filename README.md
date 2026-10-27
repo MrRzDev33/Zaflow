@@ -6,8 +6,10 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 
 - Multi-brand workspace dengan RBAC (owner, admin, editor, viewer).
 - Database konten, kalender, dan kanban workflow.
-- Ekstraksi metrik dari screenshot/video dengan AI dan laporan analitik.
-- AI Strategy Assistant berbasis data historis brand.
+- Ekstraksi metrik dari screenshot/video dengan AI (mode Per Postingan dan Ringkasan Akun) serta laporan analitik.
+- Analitik dua sumber: **Ringkasan Akun** bulanan dari dashboard profesional dan **Akumulasi Konten** dari snapshot per postingan — ditampilkan terpisah dan tidak pernah dijumlahkan.
+- Detail insight Instagram per postingan: sumber tayangan enam kategori, faktor tayangan berurutan, demografi pemirsa (usia/negara/jenis kelamin), dan deret grafik dengan penanda perkiraan AI.
+- AI Strategy Assistant berbasis data historis brand, termasuk detail per postingan dan kedua sumber total.
 - Langganan 6 bulan dengan kuota kredit AI total, batas brand/anggota, dan trial 3 hari yang diajukan ke customer service.
 - Pembelian pertama hanya lewat kode aktivasi yang dibuat admin setelah pembayaran via Meta Ads/WhatsApp; kode terikat email pembeli, sekali pakai, dan berlaku 30 hari.
 - Pembayaran Midtrans (Snap) dengan webhook terverifikasi, khusus untuk perpanjangan paket yang sudah pernah berbayar.
@@ -67,10 +69,13 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 8. `src/services/database/migrations/20261024_02_brand_platforms_and_trial_access_hardening.sql`
 9. `src/services/database/migrations/20261024_03_trial_request_only.sql`
 10. `src/services/database/migrations/20261025_01_six_month_plans.sql`
+11. `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, lalu mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, dan batas bucket 1 MB.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, dan batas bucket 1 MB, lalu menambahkan detail insight per postingan serta tabel `account_metrics`.
 
 > **Wajib:** jalankan migrasi 10 **sebelum** memakai form kode aktivasi baru. Form tersebut menulis kolom `buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, dan `notes` yang dibuat oleh migrasi ini.
+
+> **Wajib:** jalankan migrasi 11 **sebelum** memakai form Catat Snapshot versi baru, AI Metrics Extractor, atau kartu Ringkasan Akun. Migrasi ini menambah `profile_visits`, `follows`, `content_type`, `insights_detail`, dan tabel `account_metrics`.
 
 ### Tautan email Supabase (konfirmasi & reset kata sandi)
 
@@ -164,6 +169,28 @@ Alur pembayaran: pengguna lama yang ingin memperpanjang masuk → status akses d
 - Customer service hanya WhatsApp. Tombol muncul di halaman aktivasi, Workspace, menu bantuan, dan footer selama kontak diaktifkan admin.
 
 Panduan SQL dan operasional lengkap ada di **`docs/SUPABASE_SETUP.md`**.
+
+## Analitik & Insight Metrik
+
+Halaman **Analitik** memisahkan dua sumber angka yang tidak pernah dijumlahkan:
+
+| Sumber | Asal data | Dipakai untuk |
+| --- | --- | --- |
+| **Ringkasan Akun** | Dashboard profesional (bulanan), tabel `account_metrics` | Angka total resmi akun: tayangan, reach, interaksi, kunjungan profil, pengikut baru, total pengikut |
+| **Akumulasi Konten** | Snapshot per postingan, tabel `content_metrics` | Membandingkan performa antar konten dan saluran |
+
+Aturan perhitungan:
+
+- **Total Engagements** = Likes + Comments + Shares + Saves + Reposts.
+- **Engagement Rate** = Total Engagements ÷ Reach × 100%; jika Reach kosong, penyebut memakai Impressions.
+- **ER akun** = Total Interaksi ÷ Reach akun (atau Tayangan bila Reach kosong).
+- **Kunjungan Profil**, **Klik Link Eksternal**, dan **Follow** dicatat terpisah dan bukan bagian dari Engagements.
+- **Sumber tayangan** Instagram memakai enam kategori: Cerita, Profil, Beranda (Feed), Tab Reels, Jelajahi (Explore), dan Lainnya. Kategori bernilai 0 disembunyikan dan diurutkan dari persentase terbesar.
+- **Detail per postingan** hanya untuk Instagram dan disimpan di `content_metrics.insights_detail`: faktor tayangan, demografi pemirsa, dan deret grafik. TikTok/YouTube tetap memakai kolom lama.
+- Desimal persentase menerima koma maupun titik, disimpan maksimal 2 desimal, dan ditampilkan 1 desimal (contoh `29,8%`).
+- Grafik hasil AI yang tidak pasti ditandai **Perkiraan AI**; jika tidak terbaca, grafik disembunyikan dan tidak dipaksakan.
+- Detail per postingan tampil di **modal performa post** dengan pemilih snapshot dan tab Ringkasan, Tayangan, Interaksi, Pemirsa, serta Riwayat.
+- Ekspor CSV/XLSX tetap berisi data umum; file XLSX menambahkan sheet **Sumber Angka** untuk memisahkan kedua total.
 
 ## Landing Page Penjualan (`/promo`)
 

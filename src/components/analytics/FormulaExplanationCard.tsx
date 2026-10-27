@@ -29,10 +29,10 @@ export const FormulaExplanationCard: React.FC = () => {
                 Total Keterlibatan (Engagements)
               </p>
               <p className="font-mono text-[11px] text-blue-700 bg-blue-50 px-2 py-0.5 rounded">
-                Likes + Comments + Shares + Saves
+                Likes + Comments + Shares + Saves + Reposts
               </p>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Total akumulasi seluruh aksi interaksi aktif yang dilakukan audiens pada postingan.
+                Reposts ikut dihitung sebagai interaksi karena menandakan konten layak diteruskan.
               </p>
             </div>
 
@@ -45,7 +45,21 @@ export const FormulaExplanationCard: React.FC = () => {
                 (Total Engagements / Reach) × 100%
               </p>
               <p className="text-[11px] text-slate-500 leading-relaxed">
-                Mengukur persentase audiens unik yang terdorong berinteraksi setelah melihat konten.
+                Memakai Reach; jika Reach belum diisi, sistem memakai Impressions sebagai penyebut.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/70 space-y-1">
+              <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+                Kunjungan Profil vs Klik Link
+              </p>
+              <p className="font-mono text-[11px] text-sky-700 bg-sky-50 px-2 py-0.5 rounded">
+                Tindakan pengguna (bukan bagian Engagements)
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Kunjungan Profil dan Klik Link Eksternal dicatat terpisah dari interaksi konten, bersama
+                jumlah Follow baru. Ketiganya tidak menambah Total Engagements.
               </p>
             </div>
 
@@ -72,6 +86,21 @@ export const FormulaExplanationCard: React.FC = () => {
               </p>
               <p className="text-[11px] text-slate-500 leading-relaxed">
                 Indikator viralitas dan *word-of-mouth*. Mengukur potensi konten menjangkau audiens baru secara organik.
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-lg border border-slate-200/70 space-y-1">
+              <p className="font-bold text-slate-900 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-rose-500"></span>
+                Dua Sumber Angka Total
+              </p>
+              <p className="font-mono text-[11px] text-rose-700 bg-rose-50 px-2 py-0.5 rounded">
+                Ringkasan Akun ≠ Akumulasi Konten
+              </p>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                Ringkasan Akun berasal dari dashboard bulanan dan menjadi sumber total utama. Akumulasi
+                Konten adalah penjumlahan snapshot per postingan (reach bisa tumpang tindih). Keduanya
+                ditampilkan terpisah dan tidak pernah dijumlahkan.
               </p>
             </div>
 

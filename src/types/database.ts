@@ -107,21 +107,94 @@ export interface ContentPost {
   updated_at: string;
 }
 
+/**
+ * Sumber tayangan teratas. Untuk Instagram memakai enam kategori resmi,
+ * platform lain memakai subset yang sama agar tetap bisa dibandingkan.
+ */
+export interface TrafficSourceBreakdown {
+  stories?: number;
+  profile?: number;
+  feed?: number;
+  reels?: number;
+  explore?: number;
+  other?: number;
+}
+
+export interface AudienceBreakdown {
+  followers?: number;
+  non_followers?: number;
+}
+
+/** Faktor yang memengaruhi tayangan, berurutan sesuai prioritas Instagram. */
+export interface ViewFactorItem {
+  key: string;
+  label: string;
+  value: number;
+  rank: number;
+}
+
+export interface InsightSeriesPoint {
+  label: string;
+  value: number;
+}
+
+/** Titik kurva retensi: percent = posisi video (0-100), retention = penonton tersisa (0-100). */
+export interface RetentionPoint {
+  percent: number;
+  retention: number;
+}
+
+export interface AudienceAgeBucket {
+  range: string;
+  percentage: number;
+}
+
+export interface AudienceCountryItem {
+  country: string;
+  percentage: number;
+}
+
+export interface AudienceGenderBreakdown {
+  male: number;
+  female: number;
+  other: number;
+}
+
+export interface AudienceDetails {
+  ages: AudienceAgeBucket[];
+  countries: AudienceCountryItem[];
+  gender: AudienceGenderBreakdown | null;
+}
+
+export interface ContentInsightsSeries {
+  views: InsightSeriesPoint[];
+  likes: InsightSeriesPoint[];
+  retention: RetentionPoint[];
+}
+
+/** Detail insight per postingan (khusus Instagram). */
+export interface ContentInsightsDetail {
+  viewFactors: ViewFactorItem[];
+  trafficSources: TrafficSourceBreakdown;
+  audience: AudienceBreakdown;
+  audienceDetails: AudienceDetails;
+  series: ContentInsightsSeries;
+  /** true jika deret grafik diestimasi AI dari gambar, bukan angka pasti. */
+  approximate: boolean;
+}
+
+export type ContentInsightType = 'reel' | 'feed' | 'carousel' | 'story';
+
 export interface DeepMetricsData {
   watch_time?: string | null;
   drop_off_rate?: number | null;
   reposts?: number | null;
-  traffic_sources?: {
-    reels?: number;
-    feed?: number;
-    explore?: number;
-    profile?: number;
-    other?: number;
-  } | null;
-  audience_breakdown?: {
-    followers?: number;
-    non_followers?: number;
-  } | null;
+  profile_visits?: number | null;
+  follows?: number | null;
+  content_type?: ContentInsightType | string | null;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  insights_detail?: ContentInsightsDetail | null;
 }
 
 export interface ContentMetric {
@@ -137,23 +210,41 @@ export interface ContentMetric {
   shares: number;
   saves: number;
   clicks: number;
+  profile_visits?: number | null;
+  follows?: number | null;
+  content_type?: ContentInsightType | string | null;
   source: MetricSource;
   raw_ai_analysis?: (Record<string, unknown> & DeepMetricsData) | null;
   recorded_at: string;
   watch_time?: string | null;
   drop_off_rate?: number | null;
   reposts?: number | null;
-  traffic_sources?: {
-    reels?: number;
-    feed?: number;
-    explore?: number;
-    profile?: number;
-    other?: number;
-  } | null;
-  audience_breakdown?: {
-    followers?: number;
-    non_followers?: number;
-  } | null;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  insights_detail?: ContentInsightsDetail | null;
+}
+
+/**
+ * Ringkasan akun bulanan dari dashboard profesional Instagram.
+ * Disimpan terpisah dari metrik per konten agar tidak tercampur saat agregasi.
+ */
+export interface AccountMetric {
+  id: string;
+  brand_id: string;
+  channel: string;
+  /** Format YYYY-MM. */
+  period_month: string;
+  views: number;
+  reach: number;
+  interactions_total: number;
+  profile_visits: number;
+  follows: number;
+  followers_total: number;
+  traffic_sources?: TrafficSourceBreakdown | null;
+  audience_breakdown?: AudienceBreakdown | null;
+  raw_ai_analysis?: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AiUsageLog {

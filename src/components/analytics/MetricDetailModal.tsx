@@ -16,9 +16,13 @@ import {
   Trash2,
   Calendar,
   BarChart2,
+  UserPlus,
 } from 'lucide-react';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { metricFormulas } from '../../services/database/metricsService.ts';
+import { buildTrafficSourceItems } from '../../config/insights.ts';
+import { TrafficSourceBars } from './insights/TrafficSourceBars.tsx';
+import { formatCount, formatPercent } from '../../utils/number.ts';
 
 interface MetricDetailModalProps {
   isOpen: boolean;
@@ -42,9 +46,10 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
     metric.likes,
     metric.comments,
     metric.shares,
-    metric.saves
+    metric.saves,
+    Number(metric.reposts) || 0
   );
-  const er = metric.engagement_rate || metricFormulas.engagementRate(totalEng, metric.reach, metric.impressions);
+  const er = metricFormulas.engagementRate(totalEng, metric.reach, metric.impressions);
   const saveRate = metricFormulas.saveRate(metric.saves, metric.reach);
   const shareRate = metricFormulas.shareRate(metric.shares, metric.reach);
 
@@ -53,6 +58,7 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
   const reposts = metric.reposts ?? raw.reposts;
   const traffic = metric.traffic_sources || raw.traffic_sources;
   const audience = metric.audience_breakdown || raw.audience_breakdown;
+  const trafficItems = buildTrafficSourceItems(traffic);
 
   const formatDate = (isoString: string) => {
     try {
@@ -78,15 +84,6 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
         return 'bg-blue-100 text-blue-700 border-blue-200';
     }
   };
-
-  const isTikTok = metric.channel.toLowerCase() === 'tiktok';
-  const isInstagram = metric.channel.toLowerCase() === 'instagram';
-  const isYouTube = metric.channel.toLowerCase() === 'youtube';
-
-  const trafficLabel1 = isTikTok ? 'Untuk Anda (FYP)' : isInstagram ? 'Tab Reels' : isYouTube ? 'Shorts Feed' : 'Reels / Video';
-  const trafficLabel2 = isTikTok ? 'Mengikuti (Following)' : isInstagram ? 'Beranda (Feed)' : isYouTube ? 'Beranda / Browse' : 'Feed / Beranda';
-  const trafficLabel3 = isTikTok ? 'Suara / Pencarian' : isInstagram ? 'Jelajahi (Explore)' : isYouTube ? 'Penelusuran' : 'Explore / Cari';
-  const trafficLabel4 = isTikTok ? 'Profil Akun' : isInstagram ? 'Profil' : isYouTube ? 'Halaman Channel' : 'Profil';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
@@ -194,8 +191,8 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
                   <TrendingUp className="w-3 h-3 text-purple-600" />
                   <span>Engagement Rate</span>
                 </div>
-                <span className="text-sm font-extrabold text-purple-700 block">{er}%</span>
-                <span className="text-[9px] text-purple-600">Total: {totalEng.toLocaleString('id-ID')}</span>
+                <span className="text-sm font-extrabold text-purple-700 block">{formatPercent(er)}</span>
+                <span className="text-[9px] text-purple-600">Total: {formatCount(totalEng)}</span>
               </div>
 
               <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
@@ -226,7 +223,7 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
                 <span className="text-sm font-extrabold text-slate-900 block">
                   {(metric.shares || 0).toLocaleString('id-ID')}
                 </span>
-                <span className="text-[9px] text-slate-500">Rate: {shareRate}%</span>
+                <span className="text-[9px] text-slate-500">Rate: {formatPercent(shareRate)}</span>
               </div>
 
               <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
@@ -237,16 +234,46 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
                 <span className="text-sm font-extrabold text-slate-900 block">
                   {(metric.saves || 0).toLocaleString('id-ID')}
                 </span>
-                <span className="text-[9px] text-slate-500">Rate: {saveRate}%</span>
+                <span className="text-[9px] text-slate-500">Rate: {formatPercent(saveRate)}</span>
               </div>
 
               <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
                 <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
                   <MousePointer className="w-3 h-3 text-indigo-500" />
-                  <span>Link Clicks</span>
+                  <span>Klik Link Eksternal</span>
                 </div>
                 <span className="text-sm font-extrabold text-slate-900 block">
-                  {(metric.clicks || 0).toLocaleString('id-ID')}
+                  {formatCount(metric.clicks)}
+                </span>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
+                  <MousePointer className="w-3 h-3 text-orange-500" />
+                  <span>Kunjungan Profil</span>
+                </div>
+                <span className="text-sm font-extrabold text-slate-900 block">
+                  {formatCount(metric.profile_visits)}
+                </span>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
+                  <UserPlus className="w-3 h-3 text-emerald-600" />
+                  <span>Follow</span>
+                </div>
+                <span className="text-sm font-extrabold text-slate-900 block">
+                  {formatCount(metric.follows)}
+                </span>
+              </div>
+
+              <div className="bg-slate-50 border border-slate-200/70 rounded-xl p-3">
+                <div className="flex items-center gap-1 text-[10px] text-slate-500 mb-1">
+                  <Repeat className="w-3 h-3 text-teal-500" />
+                  <span>Reposts</span>
+                </div>
+                <span className="text-sm font-extrabold text-slate-900 block">
+                  {formatCount(Number(reposts))}
                 </span>
               </div>
             </div>
@@ -283,29 +310,12 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
             </div>
 
             {/* Traffic Sources */}
-            {traffic && (
+            {trafficItems.length > 0 && (
               <div className="pt-2 border-t border-slate-200/70 text-xs">
                 <span className="text-[11px] font-bold text-slate-700 block mb-2">
-                  Sumber Penayangan Teratas (%)
+                  Sumber Penayangan Teratas
                 </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <div className="bg-white p-2 rounded border border-slate-200">
-                    <span className="text-[10px] text-slate-500 block truncate">{trafficLabel1}</span>
-                    <span className="font-bold text-slate-800">{traffic.reels || 0}%</span>
-                  </div>
-                  <div className="bg-white p-2 rounded border border-slate-200">
-                    <span className="text-[10px] text-slate-500 block truncate">{trafficLabel2}</span>
-                    <span className="font-bold text-slate-800">{traffic.feed || 0}%</span>
-                  </div>
-                  <div className="bg-white p-2 rounded border border-slate-200">
-                    <span className="text-[10px] text-slate-500 block truncate">{trafficLabel3}</span>
-                    <span className="font-bold text-slate-800">{traffic.explore || 0}%</span>
-                  </div>
-                  <div className="bg-white p-2 rounded border border-slate-200">
-                    <span className="text-[10px] text-slate-500 block truncate">{trafficLabel4}</span>
-                    <span className="font-bold text-slate-800">{traffic.profile || 0}%</span>
-                  </div>
-                </div>
+                <TrafficSourceBars items={trafficItems} compact />
               </div>
             )}
 
@@ -319,13 +329,13 @@ export const MetricDetailModal: React.FC<MetricDetailModalProps> = ({
                   <div className="bg-white p-2.5 rounded border border-slate-200">
                     <span className="text-[10px] text-slate-500 block">Pengikut (Followers)</span>
                     <span className="font-extrabold text-indigo-700 text-sm">
-                      {audience.followers || 0}%
+                      {formatPercent(audience.followers)}
                     </span>
                   </div>
                   <div className="bg-white p-2.5 rounded border border-slate-200">
                     <span className="text-[10px] text-slate-500 block">Bukan Pengikut (Non-followers)</span>
                     <span className="font-extrabold text-purple-700 text-sm">
-                      {audience.non_followers || 0}%
+                      {formatPercent(audience.non_followers)}
                     </span>
                   </div>
                 </div>
