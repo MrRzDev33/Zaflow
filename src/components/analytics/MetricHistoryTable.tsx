@@ -99,7 +99,7 @@ export const MetricHistoryTable: React.FC<MetricHistoryTableProps> = ({
 
                   <td className="py-2.5 px-3 max-w-[200px]">
                     <span className="font-semibold text-slate-800 line-clamp-1">
-                      {item.post?.title || 'Metrik Umum Akun/Brand'}
+                      {item.post?.title || 'Postingan tidak ditemukan'}
                     </span>
                     {item.post?.pillar && (
                       <span className="text-[10px] text-slate-400 font-medium">

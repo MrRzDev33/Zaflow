@@ -36,10 +36,11 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
         <div>
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-900">Tren Metrik Historis Berdasarkan Tanggal Snapshot</h2>
+            <h2 className="text-sm font-bold text-slate-900">Tren Metrik Berdasarkan Tanggal Posting</h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Total {total.toLocaleString('id-ID')} {metricConfigs[metricKey].label} dalam periode yang dipilih
+            Total {total.toLocaleString('id-ID')} {metricConfigs[metricKey].label} dari postingan pada
+            periode yang dipilih
           </p>
         </div>
 
@@ -61,9 +62,9 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
       </div>
 
       {/* Bar / Column Chart Visual */}
-      {data.length === 0 ? (
+      {data.every((point) => point.postCount === 0) ? (
         <div className="py-16 text-center text-xs text-slate-400">
-          Belum ada data snapshot metrik pada rentang tanggal ini.
+          Belum ada postingan dengan metrik pada rentang tanggal ini.
         </div>
       ) : (
         <div className="relative pt-6 pb-2">
@@ -73,7 +74,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
               <span className="font-semibold">{hoveredPoint.formattedDate}:</span>
               <span className="text-blue-300 font-bold">{hoveredPoint[metricKey].toLocaleString('id-ID')}</span>
               <span className="text-slate-400 text-[10px]">
-                (Suka: {hoveredPoint.likes}, Simpan: {hoveredPoint.saves})
+                ({hoveredPoint.postCount} posting • Suka: {hoveredPoint.likes}, Simpan:{' '}
+                {hoveredPoint.saves})
               </span>
             </div>
           )}

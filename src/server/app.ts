@@ -3707,7 +3707,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
       // Indeks postingan untuk memberi judul pada detail metrik per konten.
       const { data: allPosts } = await supabaseAdmin
         .from('content_posts')
-        .select('id, title, pillar, format, channels, status')
+        .select('id, title, pillar, format, channels, status, posted_at, scheduled_at, created_at, post_url')
         .eq('brand_id', brandId)
         .order('created_at', { ascending: false })
         .limit(200);
@@ -3720,7 +3720,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         )
         .eq('brand_id', brandId)
         .order('recorded_at', { ascending: false })
-        .limit(60);
+        .limit(200);
       recentMetrics = mData || [];
 
       const { data: aData } = await supabaseAdmin
@@ -3734,6 +3734,15 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
       accountMetrics = aData || [];
     }
 
+    // Satu angka per postingan + saluran: snapshot terbaru saja.
+    // Mencegah snapshot berulang dijumlahkan berkali-kali.
+    const latestMetricByPostChannel = new Map<string, any>();
+    for (const m of recentMetrics) {
+      const key = `${m.post_id || 'tanpa-post'}|${String(m.channel || 'lainnya').toLowerCase()}`;
+      if (!latestMetricByPostChannel.has(key)) latestMetricByPostChannel.set(key, m);
+    }
+    const uniqueMetrics = Array.from(latestMetricByPostChannel.values());
+
     const engagementsOf = (m: any) =>
       (m.likes || 0) +
       (m.comments || 0) +
@@ -3744,7 +3753,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
     let totalReach = 0;
     let totalImpressions = 0;
     let totalEng = 0;
-    for (const m of recentMetrics) {
+    for (const m of uniqueMetrics) {
       totalReach += m.reach || 0;
       totalImpressions += m.impressions || 0;
       totalEng += engagementsOf(m);
@@ -3765,7 +3774,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         follows: number;
       }
     >();
-    for (const m of recentMetrics) {
+    for (const m of uniqueMetrics) {
       const key = String(m.channel || 'lainnya').toLowerCase();
       const entry =
         channelAggMap.get(key) ||
@@ -3794,11 +3803,66 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         entry.reach > 0 ? Number(((entry.engagements / entry.reach) * 100).toFixed(2)) : 0,
     }));
 
-    // Snapshot terbaru per postingan (data sudah terurut menurun).
-    const latestByPost = new Map<string, any>();
-    for (const m of recentMetrics) {
+    // Satu entri per postingan: gabungkan snapshot terbaru tiap saluran.
+    // Data sudah terurut menurun berdasarkan recorded_at.
+    type PostAggregate = {
+      postId: string | null;
+      latest: any;
+      channels: string[];
+      impressions: number;
+      reach: number;
+      engagements: number;
+      likes: number;
+      comments: number;
+      shares: number;
+      saves: number;
+      reposts: number;
+      profile_visits: number;
+      clicks: number;
+      follows: number;
+    };
+
+    const postAggMap = new Map<string, PostAggregate>();
+    for (const m of uniqueMetrics) {
       const key = m.post_id || `channel:${m.channel}`;
-      if (!latestByPost.has(key)) latestByPost.set(key, m);
+      const eng = engagementsOf(m);
+      const existing = postAggMap.get(key);
+
+      if (!existing) {
+        postAggMap.set(key, {
+          postId: m.post_id || null,
+          latest: m,
+          channels: [m.channel],
+          impressions: m.impressions || 0,
+          reach: m.reach || 0,
+          engagements: eng,
+          likes: m.likes || 0,
+          comments: m.comments || 0,
+          shares: m.shares || 0,
+          saves: m.saves || 0,
+          reposts: m.reposts || 0,
+          profile_visits: m.profile_visits || 0,
+          clicks: m.clicks || 0,
+          follows: m.follows || 0,
+        });
+        continue;
+      }
+
+      if (!existing.channels.includes(m.channel)) existing.channels.push(m.channel);
+      existing.impressions += m.impressions || 0;
+      existing.reach += m.reach || 0;
+      existing.engagements += eng;
+      existing.likes += m.likes || 0;
+      existing.comments += m.comments || 0;
+      existing.shares += m.shares || 0;
+      existing.saves += m.saves || 0;
+      existing.reposts += m.reposts || 0;
+      existing.profile_visits += m.profile_visits || 0;
+      existing.clicks += m.clicks || 0;
+      existing.follows += m.follows || 0;
+      if (new Date(m.recorded_at).getTime() > new Date(existing.latest.recorded_at).getTime()) {
+        existing.latest = m;
+      }
     }
 
     const postMeta = new Map<string, any>();
@@ -3811,34 +3875,36 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
       return points.filter((_, i) => i % step === 0);
     };
 
-    const topContentDetails = Array.from(latestByPost.values())
-      .sort((a, b) => engagementsOf(b) - engagementsOf(a))
+    const topContentDetails = Array.from(postAggMap.values())
+      .sort((a, b) => b.engagements - a.engagements)
       .slice(0, 8)
-      .map((m) => {
-        const post = m.post_id ? postMeta.get(m.post_id) : null;
+      .map((agg) => {
+        const m = agg.latest;
+        const post = agg.postId ? postMeta.get(agg.postId) : null;
         const detail = m.insights_detail || {};
         const traffic = detail.trafficSources || m.traffic_sources || {};
         const audience = detail.audience || m.audience_breakdown || {};
-        const eng = engagementsOf(m);
         return {
-          title: post?.title || `Snapshot ${m.channel}`,
+          title: post?.title || `Snapshot ${agg.channels.join(', ')}`,
           pillar: post?.pillar || null,
-          channel: m.channel,
+          channels: agg.channels,
+          channel: agg.channels[0],
           content_type: m.content_type || null,
+          posted_at: post ? post.posted_at || post.scheduled_at || post.created_at || null : null,
           recorded_at: m.recorded_at,
-          impressions: m.impressions || 0,
-          reach: m.reach || 0,
-          engagements: eng,
+          impressions: agg.impressions,
+          reach: agg.reach,
+          engagements: agg.engagements,
           engagement_rate:
-            m.reach > 0 ? Number(((eng / m.reach) * 100).toFixed(2)) : 0,
-          likes: m.likes || 0,
-          comments: m.comments || 0,
-          shares: m.shares || 0,
-          saves: m.saves || 0,
-          reposts: m.reposts || 0,
-          profile_visits: m.profile_visits || 0,
-          external_link_clicks: m.clicks || 0,
-          follows: m.follows || 0,
+            agg.reach > 0 ? Number(((agg.engagements / agg.reach) * 100).toFixed(2)) : 0,
+          likes: agg.likes,
+          comments: agg.comments,
+          shares: agg.shares,
+          saves: agg.saves,
+          reposts: agg.reposts,
+          profile_visits: agg.profile_visits,
+          external_link_clicks: agg.clicks,
+          follows: agg.follows,
           watch_time: m.watch_time || null,
           drop_off_rate: m.drop_off_rate ?? null,
           traffic_sources: traffic,
@@ -3917,7 +3983,9 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         ringkasan_akun_bulanan: accountSummaries,
         tren_akun_bulanan: accountTrend,
         akumulasi_konten: {
-          samples_count: recentMetrics.length,
+          catatan:
+            'Satu angka per postingan + saluran memakai snapshot terbaru. Periode mengikuti tanggal posting, bukan tanggal snapshot.',
+          samples_count: uniqueMetrics.length,
           average_engagement_rate: `${avgER}%`,
           total_sample_impressions: totalImpressions,
           total_sample_reach: totalReach,
@@ -3944,9 +4012,11 @@ PRINSIP WAJIB:
 3. Rencana konten harus konkret untuk kreator/tim pemasaran di Indonesia.
 4. Gunakan "ringkasan_akun_bulanan" sebagai total resmi akun. "akumulasi_konten" hanya untuk membandingkan performa antar postingan dan saluran; JANGAN menjumlahkan keduanya.
 5. Total Engagements = likes + komentar + share + simpan + repost. Kunjungan profil, klik link eksternal, dan follow baru BUKAN bagian dari engagement.
-6. Manfaatkan "detail_per_postingan": sumber tayangan enam kategori (cerita, profil, beranda/feed, tab reels, jelajahi/explore, lainnya), faktor tayangan berurutan (jumlah lewati, bagikan, suka, simpan, repost, komentar), demografi pemirsa (usia, negara, jenis kelamin), serta deret grafik. Jelaskan sebab performa berdasarkan data ini, bukan asumsi umum.
-7. Jika "series.approximate" bernilai true atau data grafik kosong, sebut sebagai perkiraan/tidak tersedia. JANGAN mengarang angka yang tidak ada di data.
-8. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
+6. Basis waktu laporan adalah TANGGAL POSTING (posted_at, lalu scheduled_at, lalu created_at), bukan tanggal snapshot (recorded_at). Gunakan "posted_at" pada detail per postingan untuk menyebut kapan konten tayang. Jangan menyimpulkan tren berdasarkan tanggal snapshot.
+7. Angka pada "akumulasi_konten" dan "detail_per_postingan" sudah memakai snapshot terbaru per postingan + saluran. Jangan menjumlahkan ulang snapshot berulang atau menganggapnya sebagai pertumbuhan periode.
+8. Manfaatkan "detail_per_postingan": sumber tayangan enam kategori (cerita, profil, beranda/feed, tab reels, jelajahi/explore, lainnya), faktor tayangan berurutan (jumlah lewati, bagikan, suka, simpan, repost, komentar), demografi pemirsa (usia, negara, jenis kelamin), serta deret grafik. Jelaskan sebab performa berdasarkan data ini, bukan asumsi umum.
+9. Jika "series.approximate" bernilai true atau data grafik kosong, sebut sebagai perkiraan/tidak tersedia. JANGAN mengarang angka yang tidak ada di data.
+10. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
 
 {
   "brand_overview": "Analisis singkat posisi brand saat ini berdasarkan data",

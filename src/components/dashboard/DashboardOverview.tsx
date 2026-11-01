@@ -14,8 +14,14 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { Brand, ContentPost } from '../../types/database.ts';
-import { contentService, DashboardStats } from '../../services/database/contentService.ts';
+import { contentService } from '../../services/database/contentService.ts';
 import { StatusBadge, FormatBadge } from '../common/Badges.tsx';
+import {
+  currentMonthKey,
+  formatMonthKey,
+  resolvePostTimestamp,
+  toMonthKey,
+} from '../../utils/postDate.ts';
 
 interface DashboardOverviewProps {
   brand: Brand | null;
@@ -34,26 +40,15 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onOpenNewBrand,
   onSelectTab,
 }) => {
-  const [stats, setStats] = useState<DashboardStats>({
-    totalContent: 0,
-    scheduledCount: 0,
-    reviewCount: 0,
-    publishedCount: 0,
-    pillarDistribution: [],
-    recentPosts: [],
-  });
   const [allPosts, setAllPosts] = useState<ContentPost[]>([]);
   const [loading, setLoading] = useState(false);
+  const [month, setMonth] = useState(currentMonthKey);
 
   const fetchStats = useCallback(async () => {
     if (!brand) return;
     try {
       setLoading(true);
-      const [dashStats, posts] = await Promise.all([
-        contentService.getDashboardStats(brand.id),
-        contentService.getPosts(brand.id),
-      ]);
-      setStats(dashStats);
+      const posts = await contentService.getPosts(brand.id);
       setAllPosts(posts);
     } catch (err) {
       console.warn('Gagal memuat statistik dashboard:', err);
@@ -66,10 +61,21 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     fetchStats();
   }, [fetchStats]);
 
-  // Perhitungan riil distribusi saluran media sosial dari postingan nyata
+  // Seluruh kartu dan panel dashboard mengikuti bulan yang dipilih.
+  const monthPosts = useMemo(
+    () =>
+      allPosts.filter((post) => {
+        const timestamp = resolvePostTimestamp(post);
+        if (!timestamp) return false;
+        return toMonthKey(new Date(timestamp)) === month;
+      }),
+    [allPosts, month]
+  );
+
+  // Perhitungan riil distribusi saluran media sosial pada bulan terpilih
   const channelBreakdown = useMemo(() => {
     const counts: Record<string, number> = {};
-    allPosts.forEach((post) => {
+    monthPosts.forEach((post) => {
       if (Array.isArray(post.channels)) {
         post.channels.forEach((ch) => {
           counts[ch] = (counts[ch] || 0) + 1;
@@ -79,22 +85,38 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     return Object.entries(counts)
       .map(([channel, count]) => ({ channel, count }))
       .sort((a, b) => b.count - a.count);
-  }, [allPosts]);
+  }, [monthPosts]);
 
-  // Perhitungan riil status alur kerja
+  // Perhitungan riil status alur kerja pada bulan terpilih
   const statusBreakdown = useMemo(() => {
-    const draftCount = allPosts.filter((p) => p.status === 'draft').length;
-    const ideaCount = allPosts.filter((p) => p.status === 'idea').length;
-    const approvedCount = allPosts.filter((p) => p.status === 'approved').length;
     return {
-      idea: ideaCount,
-      draft: draftCount,
-      in_review: stats.reviewCount,
-      approved: approvedCount,
-      scheduled: stats.scheduledCount,
-      published: stats.publishedCount,
+      idea: monthPosts.filter((p) => p.status === 'idea').length,
+      draft: monthPosts.filter((p) => p.status === 'draft').length,
+      in_review: monthPosts.filter((p) => p.status === 'in_review').length,
+      approved: monthPosts.filter((p) => p.status === 'approved').length,
+      scheduled: monthPosts.filter((p) => p.status === 'scheduled').length,
+      published: monthPosts.filter((p) => p.status === 'published').length,
     };
-  }, [allPosts, stats]);
+  }, [monthPosts]);
+
+  const pillarDistribution = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const post of monthPosts) {
+      const pillar = post.pillar || 'Lainnya';
+      counts.set(pillar, (counts.get(pillar) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+      .map(([pillar, count]) => ({ pillar, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [monthPosts]);
+
+  const recentPosts = useMemo(
+    () =>
+      [...monthPosts]
+        .sort((a, b) => resolvePostTimestamp(b) - resolvePostTimestamp(a))
+        .slice(0, 6),
+    [monthPosts]
+  );
 
   if (!brand) {
     return (
@@ -145,7 +167,18 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
+          <label className="flex items-center gap-1.5 rounded-xl border border-white/80 bg-white/70 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs">
+            <CalendarDays className="w-3.5 h-3.5 text-[#2563EB]" strokeWidth={2} />
+            <span className="hidden sm:inline">Periode</span>
+            <input
+              type="month"
+              value={month}
+              onChange={(event) => setMonth(event.target.value || currentMonthKey())}
+              className="bg-transparent text-[11px] font-semibold text-slate-700 focus:outline-none"
+              aria-label="Pilih bulan dashboard"
+            />
+          </label>
           <button
             onClick={fetchStats}
             disabled={loading}
@@ -176,9 +209,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-              {stats.totalContent}
+              {monthPosts.length}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Postingan terdata</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Postingan {formatMonthKey(month)}
+            </p>
           </div>
         </div>
 
@@ -192,9 +227,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-              {stats.scheduledCount}
+              {statusBreakdown.scheduled}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Siap ditayangkan</p>
+            <p className="text-[11px] text-slate-400 mt-1">Siap ditayangkan bulan ini</p>
           </div>
         </div>
 
@@ -208,9 +243,9 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-              {stats.reviewCount}
+              {statusBreakdown.in_review}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Menunggu persetujuan</p>
+            <p className="text-[11px] text-slate-400 mt-1">Menunggu persetujuan bulan ini</p>
           </div>
         </div>
 
@@ -243,7 +278,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   Daftar Konten & Jadwal Publikasi
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Data konten nyata yang tersimpan di workspace ini
+                  Konten pada {formatMonthKey(month)}
                 </p>
               </div>
               <button
@@ -255,12 +290,14 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </button>
             </div>
 
-            {stats.recentPosts.length === 0 ? (
+            {recentPosts.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200/80 rounded-2xl bg-white/30">
                 <Calendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
-                <p className="text-xs font-semibold text-slate-700">Belum ada konten dalam koleksi</p>
+                <p className="text-xs font-semibold text-slate-700">
+                  Belum ada konten pada {formatMonthKey(month)}
+                </p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Mulai dengan membuat draf atau rencana konten pertama Anda
+                  Pilih bulan lain atau buat rencana konten pertama Anda
                 </p>
                 <button
                   onClick={onOpenNewPost}
@@ -272,7 +309,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               </div>
             ) : (
               <div className="divide-y divide-white/60">
-                {stats.recentPosts.map((post) => (
+                {recentPosts.map((post) => (
                   <div
                     key={post.id}
                     className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 hover:bg-white/40 -mx-2 px-2.5 rounded-xl transition-colors"
@@ -328,24 +365,24 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   Proporsi Pilar Konten (Riil)
                 </h3>
                 <p className="text-[11px] text-slate-400">
-                  Dihitung otomatis dari kategori postingan Anda
+                  Proporsi pilar konten pada {formatMonthKey(month)}
                 </p>
               </div>
               <span className="text-xs font-mono font-bold text-slate-700">
-                {stats.totalContent} Post Terdata
+                {monthPosts.length} Post Terdata
               </span>
             </div>
 
-            {stats.pillarDistribution.length === 0 ? (
+            {pillarDistribution.length === 0 ? (
               <p className="text-xs text-slate-400 py-4 text-center">
-                Distribusi pilar akan tampil otomatis setelah Anda menambahkan konten dengan pilar tertentu.
+                Belum ada konten dengan pilar tertentu pada {formatMonthKey(month)}.
               </p>
             ) : (
               <div className="space-y-3">
-                {stats.pillarDistribution.map((item) => {
+                {pillarDistribution.map((item) => {
                   const percent =
-                    stats.totalContent > 0
-                      ? Math.round((item.count / stats.totalContent) * 100)
+                    monthPosts.length > 0
+                      ? Math.round((item.count / monthPosts.length) * 100)
                       : 0;
 
                   return (
@@ -377,9 +414,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-white/60 mb-3">
               <div className="flex items-center gap-2">
                 <Share2 className="w-4 h-4 text-[#2563EB]" strokeWidth={2} />
-                <h3 className="text-sm font-bold text-slate-800 tracking-tight">
-                  Saluran Media Sosial
-                </h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 tracking-tight">
+                    Saluran Media Sosial
+                  </h3>
+                  <p className="text-[10px] text-slate-400">{formatMonthKey(month)}</p>
+                </div>
               </div>
               <span className="text-[11px] font-mono text-slate-400">
                 {channelBreakdown.length} Aktif
@@ -388,7 +428,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
             {channelBreakdown.length === 0 ? (
               <p className="text-xs text-slate-400 py-3 text-center">
-                Belum ada saluran yang digunakan.
+                Belum ada saluran yang digunakan pada {formatMonthKey(month)}.
               </p>
             ) : (
               <div className="space-y-2">
@@ -412,9 +452,12 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             <div className="flex items-center justify-between pb-3 border-b border-white/60 mb-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" strokeWidth={2} />
-                <h3 className="text-sm font-bold text-slate-800 tracking-tight">
-                  Status Alur Kerja
-                </h3>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-800 tracking-tight">
+                    Status Alur Kerja
+                  </h3>
+                  <p className="text-[10px] text-slate-400">{formatMonthKey(month)}</p>
+                </div>
               </div>
             </div>
 

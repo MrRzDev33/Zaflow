@@ -8,6 +8,8 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Database konten, kalender, dan kanban workflow.
 - Ekstraksi metrik dari screenshot/video dengan AI (mode Per Postingan dan Ringkasan Akun) serta laporan analitik.
 - Analitik dua sumber: **Ringkasan Akun** bulanan dari dashboard profesional dan **Akumulasi Konten** dari snapshot per postingan — ditampilkan terpisah dan tidak pernah dijumlahkan.
+- Tren dan filter analitik memakai **tanggal posting** (`posted_at` → `scheduled_at` → `created_at`) dengan snapshot terbaru per postingan + saluran, sehingga filter 7/30/90 hari benar-benar menyaring konten yang tayang pada periode itu.
+- Setiap snapshot metrik wajib terhubung ke satu postingan; snapshot umum tanpa postingan tidak lagi didukung.
 - Detail insight Instagram per postingan: sumber tayangan enam kategori, faktor tayangan berurutan, demografi pemirsa (usia/negara/jenis kelamin), dan deret grafik dengan penanda perkiraan AI.
 - AI Strategy Assistant berbasis data historis brand, termasuk detail per postingan dan kedua sumber total.
 - Langganan 6 bulan dengan kuota kredit AI total, batas brand/anggota, dan trial 3 hari yang diajukan ke customer service.
@@ -70,12 +72,15 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 9. `src/services/database/migrations/20261024_03_trial_request_only.sql`
 10. `src/services/database/migrations/20261025_01_six_month_plans.sql`
 11. `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql`
+12. `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql`
 
-> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, dan batas bucket 1 MB, lalu menambahkan detail insight per postingan serta tabel `account_metrics`.
+> Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, batas bucket 1 MB, detail insight per postingan, tabel `account_metrics`, serta mewajibkan setiap snapshot metrik terhubung ke postingan.
 
 > **Wajib:** jalankan migrasi 10 **sebelum** memakai form kode aktivasi baru. Form tersebut menulis kolom `buyer_name`, `buyer_phone`, `price_amount`, `payment_status`, `sales_channel`, dan `notes` yang dibuat oleh migrasi ini.
 
 > **Wajib:** jalankan migrasi 11 **sebelum** memakai form Catat Snapshot versi baru, AI Metrics Extractor, atau kartu Ringkasan Akun. Migrasi ini menambah `profile_visits`, `follows`, `content_type`, `insights_detail`, dan tabel `account_metrics`.
+
+> **Wajib:** jalankan migrasi 12 **sebelum** memakai versi aplikasi ini. Migrasi ini **menghapus permanen** snapshot tanpa postingan (`post_id IS NULL`) di seluruh brand, lalu menjadikan `post_id` wajib. Laporan sekarang memakai tanggal posting dan snapshot terbaru per postingan + saluran.
 
 ### Tautan email Supabase (konfirmasi & reset kata sandi)
 

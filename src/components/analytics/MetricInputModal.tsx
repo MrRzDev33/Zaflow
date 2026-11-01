@@ -29,6 +29,7 @@ import {
 } from '../../config/insights.ts';
 import { DecimalInput, Field, FieldSection, IntegerInput } from './insights/inputs.tsx';
 import { InsightDetailFields } from './insights/InsightDetailFields.tsx';
+import { PostPicker } from './PostPicker.tsx';
 import { formatCount, formatPercent } from '../../utils/number.ts';
 
 interface MetricInputModalProps {
@@ -144,6 +145,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
   const [form, setForm] = useState<FormState>(() => createEmptyForm(defaultChannel, ''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [postError, setPostError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -177,10 +179,11 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
       const preferredPostId =
         initialPostId && posts.some((post) => post.id === initialPostId)
           ? initialPostId
-          : posts[0]?.id || '';
+          : '';
       setForm(createEmptyForm(defaultChannel, preferredPostId));
     }
     setError(null);
+    setPostError(null);
   }, [isOpen, initialMetric, initialPostId, posts, defaultChannel]);
 
   if (!isOpen) return null;
@@ -206,6 +209,13 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (!form.postId) {
+      setPostError('Postingan wajib dipilih.');
+      setError('Pilih postingan terlebih dahulu. Snapshot tanpa postingan tidak lagi diizinkan.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
@@ -241,6 +251,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
 
       if (initialMetric) {
         const updatePayload: UpdateMetricInput = {
+          post_id: form.postId,
           channel: form.channel,
           impressions: form.impressions,
           reach: form.reach,
@@ -256,7 +267,7 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
       } else {
         const createPayload: CreateMetricInput = {
           brand_id: brandId,
-          post_id: form.postId || null,
+          post_id: form.postId,
           channel: form.channel,
           impressions: form.impressions,
           reach: form.reach,
@@ -318,19 +329,20 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
           )}
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <Field label="Tautkan ke Postingan">
-              <select
+            <Field
+              label="Tautkan ke Postingan *"
+              hint="Pilih bulan, lalu cari judul postingan. Snapshot wajib terhubung ke satu postingan."
+              className="sm:col-span-2"
+            >
+              <PostPicker
+                posts={posts}
                 value={form.postId}
-                onChange={(e) => update({ postId: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-              >
-                <option value="">Snapshot umum (tanpa postingan)</option>
-                {posts.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({p.pillar})
-                  </option>
-                ))}
-              </select>
+                onChange={(postId) => {
+                  update({ postId });
+                  setPostError(null);
+                }}
+                error={postError}
+              />
             </Field>
 
             <Field label="Saluran Media Sosial *">

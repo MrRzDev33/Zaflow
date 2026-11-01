@@ -72,7 +72,7 @@ function currentMonthValue(): string {
 }
 
 function getPostDate(post: ContentPost): string | null {
-  return post.posted_at || post.scheduled_at || post.updated_at || post.created_at || null;
+  return post.posted_at || post.scheduled_at || post.created_at || null;
 }
 
 function getPostTimestamp(post: ContentPost): number {
@@ -611,7 +611,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
                       <td className="px-4 py-3 whitespace-nowrap text-slate-600">
                         <div className="flex items-center gap-1">
                           <Calendar className="h-3 w-3 text-slate-400" />
-                          {formatDate(post.posted_at || post.scheduled_at)}
+                          {formatDate(getPostDate(post))}
                         </div>
                         <div className="mt-0.5 flex items-center gap-1">
                           <StatusBadge status={post.status} />

@@ -33,6 +33,7 @@ import {
 } from '../../config/insights.ts';
 import { DecimalInput, Field, FieldSection, IntegerInput } from '../analytics/insights/inputs.tsx';
 import { InsightDetailFields } from '../analytics/insights/InsightDetailFields.tsx';
+import { PostPicker } from '../analytics/PostPicker.tsx';
 import { formatCount, formatPercent } from '../../utils/number.ts';
 
 interface AiMetricsExtractorViewProps {
@@ -102,6 +103,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
   );
   const [accountData, setAccountData] = useState<ExtractedAccountData | null>(null);
   const [matchedPostId, setMatchedPostId] = useState<string>('');
+  const [postError, setPostError] = useState<string | null>(null);
   const [recordedDate, setRecordedDate] = useState<string>(() =>
     new Date().toISOString().slice(0, 16)
   );
@@ -111,6 +113,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
     setExtractedData(null);
     setAccountData(null);
     setMatchedPostId('');
+    setPostError(null);
   };
 
   const handleModeChange = (next: ExtractorMode) => {
@@ -278,6 +281,12 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
     e.preventDefault();
     if (!brand || !extractedData) return;
 
+    if (!matchedPostId) {
+      setPostError('Postingan wajib dipilih.');
+      setError('Pilih postingan terlebih dahulu. Snapshot tanpa postingan tidak lagi diizinkan.');
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 
@@ -300,7 +309,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
 
       await metricsService.createMetric({
         brand_id: brand.id,
-        post_id: matchedPostId || null,
+        post_id: matchedPostId,
         channel: extractedData.channel || selectedChannel,
         impressions: Number(extractedData.impressions) || 0,
         reach: Number(extractedData.reach) || 0,
@@ -708,19 +717,20 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                 )}
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="Cocokkan dengan Postingan Brand">
-                    <select
+                  <Field
+                    label="Cocokkan dengan Postingan Brand *"
+                    hint="Pilih bulan, lalu cari postingan. Snapshot wajib terhubung ke satu postingan."
+                    className="sm:col-span-2"
+                  >
+                    <PostPicker
+                      posts={posts}
                       value={matchedPostId}
-                      onChange={(e) => setMatchedPostId(e.target.value)}
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-purple-500"
-                    >
-                      <option value="">Snapshot umum (tanpa postingan)</option>
-                      {posts.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title} ({p.pillar})
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(postId) => {
+                        setMatchedPostId(postId);
+                        setPostError(null);
+                      }}
+                      error={postError}
+                    />
                   </Field>
 
                   <Field label="Saluran Platform *">

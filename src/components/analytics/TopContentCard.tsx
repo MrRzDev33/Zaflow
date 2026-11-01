@@ -1,11 +1,24 @@
 import React, { useState } from 'react';
-import { Award, Eye, Heart, Bookmark, Share2 } from 'lucide-react';
+import { Award, Bookmark, CalendarDays, ExternalLink, Share2 } from 'lucide-react';
 import { TopPostItem } from '../../services/database/metricsService.ts';
 import { FormatBadge } from '../common/Badges.tsx';
+import { formatCount, formatPercent } from '../../utils/number.ts';
 
 interface TopContentCardProps {
   topPosts: TopPostItem[];
   onSelectPost?: (postId: string) => void;
+}
+
+function formatPostedAt(value: string | null): string {
+  if (!value) return 'Tanggal posting belum diisi';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'Tanggal posting belum diisi';
+
+  return new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date);
 }
 
 export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSelectPost }) => {
@@ -13,9 +26,9 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
 
   const sortedPosts = [...topPosts].sort((a, b) => {
     if (sortBy === 'er') return b.engagementRate - a.engagementRate;
-    if (sortBy === 'reach') return (b.metric.reach || 0) - (a.metric.reach || 0);
-    if (sortBy === 'saves') return (b.metric.saves || 0) - (a.metric.saves || 0);
-    return (b.metric.shares || 0) - (a.metric.shares || 0);
+    if (sortBy === 'reach') return b.reach - a.reach;
+    if (sortBy === 'saves') return b.saves - a.saves;
+    return b.shares - a.shares;
   });
 
   return (
@@ -25,7 +38,9 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
           <Award className="w-5 h-5 text-amber-500" />
           <div>
             <h2 className="text-sm font-bold text-slate-900">Konten Berkinerja Terbaik (Top Content)</h2>
-            <p className="text-xs text-slate-500">Peringkat postingan dengan respon audiens tertinggi</p>
+            <p className="text-xs text-slate-500">
+              Peringkat postingan pada periode ini berdasarkan snapshot terbaru
+            </p>
           </div>
         </div>
 
@@ -40,7 +55,7 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setSortBy(tab.id as any)}
+              onClick={() => setSortBy(tab.id as 'er' | 'reach' | 'saves' | 'shares')}
               className={`px-2 py-1 rounded-md font-medium transition cursor-pointer ${
                 sortBy === tab.id
                   ? 'bg-white shadow-2xs font-semibold text-slate-900'
@@ -55,7 +70,8 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
 
       {sortedPosts.length === 0 ? (
         <div className="py-10 text-center text-xs text-slate-400">
-          Belum ada metrik yang ditautkan ke postingan konten. Catat snapshot metrik pada postingan untuk melihat ranking.
+          Belum ada metrik pada postingan di periode ini. Catat snapshot metrik pada postingan untuk
+          melihat ranking.
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -81,16 +97,48 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
                 </span>
 
                 <div className="min-w-0">
-                  <p className="font-bold text-slate-900 group-hover:text-blue-600 transition text-xs line-clamp-1">
-                    {item.post.title}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectPost?.(item.post.id);
+                      }}
+                      className="truncate text-left font-bold text-slate-900 group-hover:text-blue-600 transition text-xs line-clamp-1"
+                      title="Buka detail performa postingan"
+                    >
+                      {item.post.title}
+                    </button>
+                    {item.post.post_url && (
+                      <a
+                        href={item.post.post_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={(event) => event.stopPropagation()}
+                        className="shrink-0 text-emerald-500 hover:text-emerald-700"
+                        title="Buka link postingan"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+
                   <div className="flex items-center gap-2 mt-1 text-[11px] text-slate-500 flex-wrap">
                     <span className="font-medium text-slate-700 bg-white px-1.5 py-0.2 rounded border border-slate-200">
-                      {item.post.pillar}
+                      {item.post.pillar || 'Tanpa pilar'}
                     </span>
                     <FormatBadge format={item.post.format} />
-                    <span className="uppercase text-[9px] font-bold px-1.5 py-0.2 bg-slate-200 rounded text-slate-700">
-                      {item.metric.channel}
+                    {item.channels.map((channel) => (
+                      <span
+                        key={channel}
+                        className="uppercase text-[9px] font-bold px-1.5 py-0.2 bg-slate-200 rounded text-slate-700"
+                      >
+                        {channel}
+                      </span>
+                    ))}
+                    <span className="flex items-center gap-1 text-[10px] text-slate-400">
+                      <CalendarDays className="w-3 h-3" />
+                      {formatPostedAt(item.postedAt)}
                     </span>
                   </div>
                 </div>
@@ -101,25 +149,23 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block">Engagement Rate</span>
                   <span className="font-extrabold text-purple-700 text-sm">
-                    {item.engagementRate}%
+                    {formatPercent(item.engagementRate)}
                   </span>
                 </div>
 
                 <div className="text-right hidden sm:block">
                   <span className="text-[10px] text-slate-400 block">Reach</span>
-                  <span className="font-bold text-slate-700">
-                    {(item.metric.reach || 0).toLocaleString('id-ID')}
-                  </span>
+                  <span className="font-bold text-slate-700">{formatCount(item.reach)}</span>
                 </div>
 
                 <div className="flex items-center gap-2 text-slate-600 text-[11px] pl-2 border-l border-slate-200">
                   <span className="flex items-center gap-0.5" title="Saves">
                     <Bookmark className="w-3 h-3 text-amber-500" />
-                    {item.metric.saves || 0}
+                    {formatCount(item.saves)}
                   </span>
                   <span className="flex items-center gap-0.5" title="Shares">
                     <Share2 className="w-3 h-3 text-indigo-500" />
-                    {item.metric.shares || 0}
+                    {formatCount(item.shares)}
                   </span>
                 </div>
               </div>

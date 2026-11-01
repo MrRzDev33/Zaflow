@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS public.content_posts (
 -- 6. TABEL CONTENT_METRICS (Hasil Ekstraksi AI & Analitik Performa Konten)
 CREATE TABLE IF NOT EXISTS public.content_metrics (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    post_id UUID REFERENCES public.content_posts(id) ON DELETE CASCADE,
+    post_id UUID NOT NULL REFERENCES public.content_posts(id) ON DELETE CASCADE,
     brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
     channel TEXT NOT NULL,
     impressions INT NOT NULL DEFAULT 0,
@@ -186,6 +186,8 @@ CREATE INDEX IF NOT EXISTS idx_content_posts_scheduled ON public.content_posts(s
 CREATE INDEX IF NOT EXISTS idx_content_posts_brand_posted_at ON public.content_posts(brand_id, posted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_posts_brand_scheduled_at ON public.content_posts(brand_id, scheduled_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_metrics_brand ON public.content_metrics(brand_id);
+CREATE INDEX IF NOT EXISTS idx_content_metrics_post_channel_recorded
+    ON public.content_metrics(post_id, channel, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_brand ON public.activity_logs(brand_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_user ON public.ai_usage_logs(user_id, created_at DESC);
 

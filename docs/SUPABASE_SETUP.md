@@ -27,6 +27,7 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 9 | `src/services/database/migrations/20261024_03_trial_request_only.sql` | Trial hanya lewat permintaan ke customer service; kode trial tetap bisa ditukar setelah pembersihan trial otomatis lama |
 | 10 | `src/services/database/migrations/20261025_01_six_month_plans.sql` | Paket 6 bulan (180 hari), kuota total 6 bulan, kode aktivasi wajib email pembeli, data pembeli pada `activation_codes`, dan harga baru tanpa promo |
 | 11 | `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql` | Metrik tindakan pengguna, jenis konten, detail insight per postingan, dan tabel `account_metrics` untuk ringkasan akun bulanan |
+| 12 | `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql` | Menghapus permanen snapshot umum (`post_id IS NULL`), menjadikan `post_id` wajib, dan menambah index snapshot terbaru per postingan + saluran |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
@@ -34,7 +35,9 @@ Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaks
 
 > **Wajib:** migrasi 11 harus dijalankan **sebelum** memakai form Catat Snapshot versi baru, AI Metrics Extractor, atau kartu Ringkasan Akun. Tanpa migrasi ini, kolom `profile_visits`, `follows`, `content_type`, `insights_detail`, dan tabel `account_metrics` belum ada.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 11 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Wajib:** migrasi 12 harus dijalankan **sebelum** memakai versi aplikasi ini. Migrasi ini **menghapus permanen** semua snapshot tanpa postingan (`post_id IS NULL`) di seluruh brand, lalu menjadikan `content_metrics.post_id` wajib. Tanpa migrasi ini, penyimpanan snapshot tanpa postingan masih bisa lolos dan laporan bisa salah hitung.
+
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 12 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -265,6 +268,14 @@ Sejak migrasi 11, metrik dipisah menjadi dua sumber yang **tidak pernah dijumlah
 | Ringkasan Akun | `account_metrics` | Total bulanan dari dashboard profesional: tayangan, reach, interaksi, kunjungan profil, pengikut baru, total pengikut, sumber tayangan, komposisi pemirsa | Angka total resmi akun |
 | Akumulasi Konten | `content_metrics` | Snapshot per postingan dan per waktu pengamatan | Membandingkan performa antar konten |
 
+Sejak migrasi 12, setiap snapshot **wajib** terhubung ke satu postingan (`post_id NOT NULL`). Snapshot umum tanpa postingan dihapus permanen.
+
+Aturan periode dan agregasi:
+
+- **Tanggal acuan laporan** adalah tanggal posting: `posted_at`, lalu `scheduled_at`, lalu `created_at`. Tanggal snapshot (`recorded_at`) hanya dipakai untuk memilih snapshot terbaru dan menampilkan riwayat.
+- **Satu angka per postingan + saluran**: jika satu postingan punya beberapa snapshot, laporan memakai snapshot **terbaru** untuk kombinasi tersebut. Snapshot berulang tidak dijumlahkan.
+- Filter 7/30/90 hari dan rentang kustom menyaring **postingan yang tanggal posting-nya** berada di rentang tersebut. Postingan tanpa tanggal valid tidak masuk periode mana pun.
+
 Rumus dan aturan:
 
 - **Total Engagements** = Likes + Comments + Shares + Saves + Reposts.
@@ -283,7 +294,7 @@ Rumus dan aturan:
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 11. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 12. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -322,6 +333,10 @@ Rumus dan aturan:
 | Kartu Ringkasan Akun gagal memuat: `relation "public.account_metrics" does not exist` | Migrasi 11 belum dijalankan | Jalankan `20261027_01_content_insights_and_account_metrics.sql` |
 | Detail insight Instagram tidak muncul setelah disimpan | Kolom `insights_detail` belum ada / snapshot lama | Jalankan migrasi 11, lalu catat snapshot baru. Snapshot lama sengaja tidak dimigrasi |
 | AI Metrics Extractor mode Ringkasan Akun menolak menyimpan | `period_month` tidak valid atau migrasi 11 belum dijalankan | Pastikan bulan dipilih pada form dan migrasi 11 sudah berjalan |
+| Form Catat Snapshot atau AI Extractor menolak menyimpan karena postingan kosong | Versi aplikasi baru mewajibkan setiap snapshot terhubung ke satu postingan | Pilih bulan lalu pilih postingan pada pemilih postingan. Snapshot umum memang tidak lagi diizinkan |
+| `null value in column "post_id" ... violates not-null constraint` | Migrasi 12 belum dijalankan, atau ada klien lama yang masih mengirim snapshot tanpa postingan | Jalankan `20261101_01_require_post_on_content_metrics.sql`, lalu muat ulang aplikasi versi terbaru |
+| Snapshot umum lama masih muncul di laporan | Migrasi 12 belum dijalankan | Jalankan `20261101_01_require_post_on_content_metrics.sql`. Migrasi ini menghapus permanen snapshot `post_id IS NULL` untuk semua brand |
+| Filter 7/30/90 hari terasa tidak berubah | Versi lama memfilter berdasarkan `recorded_at` snapshot, bukan tanggal posting | Perbarui aplikasi ke versi terbaru. Tren dan filter sekarang memakai tanggal posting (`posted_at` → `scheduled_at` → `created_at`) dan snapshot terbaru per postingan + saluran |
 
 ## 10. Catatan Keamanan
 

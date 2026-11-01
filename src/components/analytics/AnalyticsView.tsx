@@ -24,10 +24,12 @@ import { PillarAnalysisCard } from './PillarAnalysisCard.tsx';
 import { MetricHistoryTable } from './MetricHistoryTable.tsx';
 import { FormulaExplanationCard } from './FormulaExplanationCard.tsx';
 import { MetricInputModal } from './MetricInputModal.tsx';
+import { ContentPostPerformanceModal } from './ContentPostPerformanceModal.tsx';
 import { AccountSummaryCard } from './AccountSummaryCard.tsx';
 import { ContentAggregateCard } from './ContentAggregateCard.tsx';
 import { AccountSnapshotModal } from './AccountSnapshotModal.tsx';
 import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
+import { resolvePostDate } from '../../utils/postDate.ts';
 
 interface AnalyticsViewProps {
   brand: Brand | null;
@@ -51,6 +53,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [accountPeriodMonth, setAccountPeriodMonth] = useState<string | null>(null);
   const [selectedMetricForEdit, setSelectedMetricForEdit] = useState<ContentMetric | null>(null);
+  const [newMetricPostId, setNewMetricPostId] = useState<string | null>(null);
+  const [detailPost, setDetailPost] = useState<ContentPost | null>(null);
+  const [detailMetrics, setDetailMetrics] = useState<ContentMetric[]>([]);
   const [isExportMenuOpen, setIsExportMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
@@ -97,12 +102,40 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
     fetchData();
   }, [fetchData]);
 
+  const loadDetailMetrics = useCallback(
+    async (postId: string) => {
+      if (!brand) return;
+      const rows = await metricsService.getMetrics(brand.id, { postId });
+      setDetailMetrics(rows);
+    },
+    [brand]
+  );
+
+  const openPostDetail = useCallback(
+    async (postId: string) => {
+      const post = posts.find((item) => item.id === postId);
+      if (!post) return;
+
+      setDetailPost(post);
+      setDetailMetrics([]);
+      try {
+        await loadDetailMetrics(postId);
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : 'Gagal memuat detail performa postingan.'
+        );
+      }
+    },
+    [posts, loadDetailMetrics]
+  );
+
   const handleDeleteMetric = async (id: string) => {
     if (!window.confirm('Hapus catatan metrik ini?')) return;
     try {
       await metricsService.deleteMetric(id);
       setNotice('Snapshot metrik berhasil dihapus.');
       await fetchData();
+      if (detailPost) await loadDetailMetrics(detailPost.id);
       setTimeout(() => setNotice(null), 3000);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Gagal menghapus metrik.');
@@ -120,8 +153,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
 
     const headers = [
       'Waktu Snapshot',
+      'Tanggal Posting',
       'Saluran Platform',
       'Judul Postingan',
+      'Link Postingan',
       'Pilar Konten',
       'Impressions',
       'Reach',
@@ -144,11 +179,14 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
       const wt = m.watch_time || raw.watch_time || '';
       const dor = m.drop_off_rate ?? raw.drop_off_rate ?? '';
       const rep = m.reposts ?? raw.reposts ?? 0;
+      const postedAt = resolvePostDate(m.post);
 
       return [
         `"${new Date(m.recorded_at).toLocaleString('id-ID')}"`,
+        `"${postedAt ? postedAt.toLocaleDateString('id-ID') : '-'}"`,
         `"${m.channel}"`,
-        `"${(m.post?.title || 'Metrik Umum Brand').replace(/"/g, '""')}"`,
+        `"${(m.post?.title || '-').replace(/"/g, '""')}"`,
+        `"${(m.post?.post_url || '').replace(/"/g, '""')}"`,
         `"${(m.post?.pillar || '-').replace(/"/g, '""')}"`,
         m.impressions || 0,
         m.reach || 0,
@@ -246,10 +284,13 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
     // Sheet 2: Riwayat Snapshot Lengkap
     const snapshotRows = reportData.recentSnapshots.map((m) => {
       const raw = (m.raw_ai_analysis || {}) as Record<string, any>;
+      const postedAt = resolvePostDate(m.post);
       return {
         'Waktu Snapshot': new Date(m.recorded_at).toLocaleString('id-ID'),
+        'Tanggal Posting': postedAt ? postedAt.toLocaleDateString('id-ID') : '-',
         'Saluran': m.channel.toUpperCase(),
-        'Judul Postingan': m.post?.title || 'Metrik Umum Brand',
+        'Judul Postingan': m.post?.title || '-',
+        'Link Postingan': m.post?.post_url || '',
         'Pilar Konten': m.post?.pillar || '-',
         'Impressions': m.impressions || 0,
         'Reach': m.reach || 0,
@@ -465,6 +506,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
           <button
             onClick={() => {
               setSelectedMetricForEdit(null);
+              setNewMetricPostId(null);
               setIsInputModalOpen(true);
             }}
             className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold shadow-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -547,6 +589,9 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
             <div className="lg:col-span-7">
               <TopContentCard
                 topPosts={reportData.topPosts}
+                onSelectPost={(postId) => {
+                  void openPostDetail(postId);
+                }}
               />
             </div>
             <div className="lg:col-span-5">
@@ -570,6 +615,35 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         </div>
       ) : null}
 
+      {/* Modal performa postingan dari kartu Top Content */}
+      <ContentPostPerformanceModal
+        isOpen={Boolean(detailPost)}
+        post={detailPost}
+        metrics={detailMetrics}
+        canEdit={false}
+        onClose={() => {
+          setDetailPost(null);
+          setDetailMetrics([]);
+        }}
+        onEditPost={() => undefined}
+        onAddMetric={(postId) => {
+          setDetailPost(null);
+          setSelectedMetricForEdit(null);
+          setNewMetricPostId(postId);
+          setIsInputModalOpen(true);
+        }}
+        onEditMetric={(metric) => {
+          setDetailPost(null);
+          setSelectedMetricForEdit(metric);
+          setNewMetricPostId(metric.post_id || null);
+          setIsInputModalOpen(true);
+        }}
+        onDeleteMetric={(metric) => {
+          void handleDeleteMetric(metric.id);
+        }}
+        onOpenAiExtractor={() => undefined}
+      />
+
       {/* Modal Input & Edit Metrik */}
       <MetricInputModal
         isOpen={isInputModalOpen}
@@ -577,9 +651,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         posts={posts}
         platforms={getBrandPlatforms(brand)}
         initialMetric={selectedMetricForEdit}
+        initialPostId={newMetricPostId}
         onClose={() => {
           setIsInputModalOpen(false);
           setSelectedMetricForEdit(null);
+          setNewMetricPostId(null);
         }}
         onSaved={fetchData}
       />

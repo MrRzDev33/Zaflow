@@ -15,10 +15,16 @@ import {
   TRAFFIC_SOURCE_CATALOG,
   type TrafficSourceItem,
 } from '../../config/insights.ts';
+import {
+  resolvePostDate,
+  resolvePostTimestamp,
+  toLocalDateKey,
+} from '../../utils/postDate.ts';
 
 export interface CreateMetricInput {
   brand_id: string;
-  post_id?: string | null;
+  /** Wajib: setiap snapshot harus terhubung ke satu postingan. */
+  post_id: string;
   channel: string;
   impressions: number;
   reach: number;
@@ -42,6 +48,7 @@ export interface CreateMetricInput {
 }
 
 export interface UpdateMetricInput {
+  post_id?: string;
   channel?: string;
   impressions?: number;
   reach?: number;
@@ -130,6 +137,7 @@ export interface DailyTrendPoint {
   comments: number;
   shares: number;
   saves: number;
+  postCount: number;
 }
 
 export interface PillarPerformance {
@@ -142,7 +150,14 @@ export interface PillarPerformance {
 
 export interface TopPostItem {
   post: ContentPost;
-  metric: ContentMetric;
+  /** Snapshot terbaru per saluran untuk postingan ini. */
+  metrics: ContentMetric[];
+  channels: string[];
+  postedAt: string | null;
+  impressions: number;
+  reach: number;
+  saves: number;
+  shares: number;
   totalEngagements: number;
   engagementRate: number;
 }
@@ -284,6 +299,28 @@ export const metricFormulas = {
   },
 };
 
+/**
+ * Mengambil satu snapshot terbaru untuk setiap kombinasi postingan + saluran.
+ * Mencegah snapshot berulang dijumlahkan berkali-kali pada laporan.
+ */
+export function getLatestMetricPerPostChannel<T extends ContentMetric>(metrics: T[]): T[] {
+  const latest = new Map<string, T>();
+
+  for (const metric of metrics) {
+    if (!metric.post_id) continue;
+    const key = `${metric.post_id}|${(metric.channel || 'lainnya').toLowerCase()}`;
+    const existing = latest.get(key);
+    if (
+      !existing ||
+      new Date(metric.recorded_at).getTime() > new Date(existing.recorded_at).getTime()
+    ) {
+      latest.set(key, metric);
+    }
+  }
+
+  return Array.from(latest.values());
+}
+
 export const metricsService = {
   /**
    * Mencatat snapshot metrik konten baru ke Supabase
@@ -318,7 +355,7 @@ export const metricsService = {
       .from('content_metrics')
       .insert({
         brand_id: input.brand_id,
-        post_id: input.post_id || null,
+        post_id: input.post_id,
         channel: input.channel || 'instagram',
         impressions: Math.max(0, input.impressions || 0),
         reach: Math.max(0, input.reach || 0),
@@ -359,6 +396,7 @@ export const metricsService = {
     if (!isConfigured) throw new Error('Supabase belum terkonfigurasi.');
 
     const payload: Record<string, unknown> = {};
+    if (input.post_id !== undefined) payload.post_id = input.post_id;
     if (input.channel !== undefined) payload.channel = input.channel;
     if (input.impressions !== undefined) payload.impressions = Math.max(0, input.impressions);
     if (input.reach !== undefined) payload.reach = Math.max(0, input.reach);
@@ -620,42 +658,63 @@ export const metricsService = {
     }
 
     let currentStart: Date;
-    let now: Date;
+    let currentEnd: Date;
     let spanDays: number;
 
     if (periodDays === 'custom' && customStartDate && customEndDate) {
-      currentStart = new Date(customStartDate);
-      now = new Date(customEndDate);
-      now.setHours(23, 59, 59, 999);
-      spanDays = Math.max(1, Math.round((now.getTime() - currentStart.getTime()) / 86400000));
+      currentStart = new Date(`${customStartDate}T00:00:00`);
+      currentEnd = new Date(`${customEndDate}T23:59:59.999`);
+      spanDays = Math.max(
+        1,
+        Math.round((currentEnd.getTime() - currentStart.getTime()) / 86400000)
+      );
     } else {
       const numDays = typeof periodDays === 'number' ? periodDays : 30;
-      now = new Date();
-      currentStart = new Date(now.getTime() - numDays * 86400000);
+      currentEnd = new Date();
+      currentEnd.setHours(23, 59, 59, 999);
+      currentStart = new Date(currentEnd);
+      currentStart.setDate(currentStart.getDate() - (numDays - 1));
+      currentStart.setHours(0, 0, 0, 0);
       spanDays = numDays;
     }
 
-    const previousStart = new Date(currentStart.getTime() - spanDays * 86400000);
+    const previousStart = new Date(currentStart);
+    previousStart.setDate(previousStart.getDate() - spanDays);
+    previousStart.setHours(0, 0, 0, 0);
 
-    // Ambil data dari rentang waktu gabungan (previousStart sampai now)
+    // Semua snapshot brand. Periode ditentukan oleh tanggal posting, bukan recorded_at.
     const allMetrics = await this.getMetrics(brandId, {
-      startDate: previousStart.toISOString(),
       channel: channel !== 'all' ? channel : undefined,
     });
 
-    // Pisahkan metrik periode saat ini dan sebelumnya
-    const currentMetrics = allMetrics.filter((m) => {
-      const rec = new Date(m.recorded_at).getTime();
-      return rec >= currentStart.getTime() && rec <= now.getTime();
+    type MetricWithPost = ContentMetric & { post: ContentPost };
+    const metricsWithPost = allMetrics.filter(
+      (metric): metric is MetricWithPost => Boolean(metric.post_id && metric.post)
+    );
+
+    const postTimestampOf = (metric: MetricWithPost) => resolvePostTimestamp(metric.post);
+
+    // Satu angka per postingan+saluran: snapshot terbaru secara keseluruhan.
+    const latestMetrics = getLatestMetricPerPostChannel(metricsWithPost);
+
+    const currentMetrics = latestMetrics.filter((metric) => {
+      const ts = postTimestampOf(metric);
+      return ts >= currentStart.getTime() && ts <= currentEnd.getTime();
     });
 
-    const previousMetrics = allMetrics.filter((m) => {
-      const rec = new Date(m.recorded_at).getTime();
-      return rec >= previousStart.getTime() && rec < currentStart.getTime();
+    const previousMetrics = latestMetrics.filter((metric) => {
+      const ts = postTimestampOf(metric);
+      return ts >= previousStart.getTime() && ts < currentStart.getTime();
     });
 
-    // Helper kalkulasi agregasi
-    const aggregate = (items: typeof allMetrics): MetricAggregation => {
+    // Riwayat snapshot tetap menampilkan semua snapshot milik postingan periode ini.
+    const currentSnapshots = metricsWithPost.filter((metric) => {
+      const ts = postTimestampOf(metric);
+      return ts >= currentStart.getTime() && ts <= currentEnd.getTime();
+    });
+
+    // Helper kalkulasi agregasi (input sudah satu snapshot terbaru per post+saluran)
+    const aggregate = (items: ContentMetric[]): MetricAggregation => {
       let impressions = 0;
       let reach = 0;
       let likes = 0;
@@ -718,14 +777,18 @@ export const metricsService = {
       sharesPercent: metricFormulas.percentageChange(currentAgg.totalShares, prevAgg.totalShares),
     };
 
-    // Tren harian (Daily Trends)
+    // Tren harian berdasarkan tanggal posting (bukan tanggal snapshot)
     const trendMap = new Map<string, DailyTrendPoint>();
-    // Inisialisasi setiap hari dalam rentang periode saat ini
-    for (let i = 0; i <= spanDays; i++) {
-      const d = new Date(currentStart.getTime() + i * 86400000);
-      if (d.getTime() > now.getTime()) break;
-      const dateKey = d.toISOString().split('T')[0];
-      const formatted = new Intl.DateTimeFormat('id-ID', { day: 'numeric', month: 'short' }).format(d);
+    for (
+      let cursor = new Date(currentStart);
+      cursor.getTime() <= currentEnd.getTime();
+      cursor.setDate(cursor.getDate() + 1)
+    ) {
+      const dateKey = toLocalDateKey(cursor);
+      const formatted = new Intl.DateTimeFormat('id-ID', {
+        day: 'numeric',
+        month: 'short',
+      }).format(cursor);
       trendMap.set(dateKey, {
         date: dateKey,
         formattedDate: formatted,
@@ -736,64 +799,115 @@ export const metricsService = {
         comments: 0,
         shares: 0,
         saves: 0,
+        postCount: 0,
       });
     }
 
     for (const m of currentMetrics) {
-      const dateKey = m.recorded_at.split('T')[0];
-      const point = trendMap.get(dateKey);
-      if (point) {
-        point.impressions += m.impressions || 0;
-        point.reach += m.reach || 0;
-        point.likes += m.likes || 0;
-        point.comments += m.comments || 0;
-        point.shares += m.shares || 0;
-        point.saves += m.saves || 0;
-        point.engagements += metricFormulas.totalEngagements(m.likes, m.comments, m.shares, m.saves);
-      }
+      const postDate = resolvePostDate(m.post);
+      if (!postDate) continue;
+      const point = trendMap.get(toLocalDateKey(postDate));
+      if (!point) continue;
+
+      point.impressions += m.impressions || 0;
+      point.reach += m.reach || 0;
+      point.likes += m.likes || 0;
+      point.comments += m.comments || 0;
+      point.shares += m.shares || 0;
+      point.saves += m.saves || 0;
+      point.engagements += metricFormulas.totalEngagements(
+        m.likes,
+        m.comments,
+        m.shares,
+        m.saves,
+        Number(m.reposts) || 0
+      );
+      point.postCount += 1;
     }
 
     const dailyTrends = Array.from(trendMap.values());
 
-    // Analisis Performa per Pilar Konten
-    const pillarMap = new Map<string, { count: number; reach: number; eng: number; erSum: number }>();
+    // Analisis Performa per Pilar Konten (satu hitungan per postingan)
+    const pillarMap = new Map<
+      string,
+      { posts: Set<string>; reach: number; impressions: number; eng: number }
+    >();
     for (const m of currentMetrics) {
-      const pillar = m.post?.pillar || 'Lainnya';
-      const existing = pillarMap.get(pillar) || { count: 0, reach: 0, eng: 0, erSum: 0 };
-      const eng = metricFormulas.totalEngagements(m.likes, m.comments, m.shares, m.saves);
-      existing.count += 1;
-      existing.reach += m.reach || 0;
-      existing.eng += eng;
-      existing.erSum += Number(m.engagement_rate || 0);
-      pillarMap.set(pillar, existing);
+      const pillar = m.post.pillar || 'Lainnya';
+      const entry =
+        pillarMap.get(pillar) || {
+          posts: new Set<string>(),
+          reach: 0,
+          impressions: 0,
+          eng: 0,
+        };
+      entry.posts.add(m.post.id);
+      entry.reach += m.reach || 0;
+      entry.impressions += m.impressions || 0;
+      entry.eng += metricFormulas.totalEngagements(
+        m.likes,
+        m.comments,
+        m.shares,
+        m.saves,
+        Number(m.reposts) || 0
+      );
+      pillarMap.set(pillar, entry);
     }
 
-    const pillarPerformances: PillarPerformance[] = Array.from(pillarMap.entries()).map(([pillar, data]) => ({
-      pillar,
-      postCount: data.count,
-      totalReach: data.reach,
-      totalEngagements: data.eng,
-      averageER: data.count > 0 ? Number((data.erSum / data.count).toFixed(2)) : 0,
-    })).sort((a, b) => b.totalEngagements - a.totalEngagements);
+    const pillarPerformances: PillarPerformance[] = Array.from(pillarMap.entries())
+      .map(([pillar, data]) => ({
+        pillar,
+        postCount: data.posts.size,
+        totalReach: data.reach,
+        totalEngagements: data.eng,
+        averageER: metricFormulas.engagementRate(data.eng, data.reach, data.impressions),
+      }))
+      .sort((a, b) => b.totalEngagements - a.totalEngagements);
 
-    // Top Content Ranking (Posting dengan performa terbaik)
+    // Top Content Ranking: agregasi seluruh saluran per postingan
     const topPostsMap = new Map<string, TopPostItem>();
     for (const m of currentMetrics) {
-      if (m.post) {
-        const eng = metricFormulas.totalEngagements(m.likes, m.comments, m.shares, m.saves);
-        const er = Number(m.engagement_rate) || metricFormulas.engagementRate(eng, m.reach, m.impressions);
+      const post = m.post;
+      const engagements = metricFormulas.totalEngagements(
+        m.likes,
+        m.comments,
+        m.shares,
+        m.saves,
+        Number(m.reposts) || 0
+      );
+      const existing = topPostsMap.get(post.id);
 
-        // Ambil snapshot dengan engagement tertinggi per post
-        const existing = topPostsMap.get(m.post.id);
-        if (!existing || eng > existing.totalEngagements) {
-          topPostsMap.set(m.post.id, {
-            post: m.post,
-            metric: m,
-            totalEngagements: eng,
-            engagementRate: er,
-          });
-        }
+      if (!existing) {
+        topPostsMap.set(post.id, {
+          post,
+          metrics: [m],
+          channels: [m.channel],
+          postedAt: resolvePostDate(post)?.toISOString() || null,
+          impressions: m.impressions || 0,
+          reach: m.reach || 0,
+          saves: m.saves || 0,
+          shares: m.shares || 0,
+          totalEngagements: engagements,
+          engagementRate: 0,
+        });
+        continue;
       }
+
+      existing.metrics.push(m);
+      if (!existing.channels.includes(m.channel)) existing.channels.push(m.channel);
+      existing.impressions += m.impressions || 0;
+      existing.reach += m.reach || 0;
+      existing.saves += m.saves || 0;
+      existing.shares += m.shares || 0;
+      existing.totalEngagements += engagements;
+    }
+
+    for (const item of topPostsMap.values()) {
+      item.engagementRate = metricFormulas.engagementRate(
+        item.totalEngagements,
+        item.reach,
+        item.impressions
+      );
     }
 
     const topPosts = Array.from(topPostsMap.values())
@@ -929,7 +1043,7 @@ export const metricsService = {
         59,
         999
       );
-      return monthEnd.getTime() >= currentStart.getTime() && monthStart.getTime() <= now.getTime();
+      return monthEnd.getTime() >= currentStart.getTime() && monthStart.getTime() <= currentEnd.getTime();
     });
     const latestAccount = accountInPeriod[0] || null;
 
@@ -961,7 +1075,7 @@ export const metricsService = {
     // Akumulasi konten: pelengkap, bukan reach unik.
     const contentSummary: ContentAggregateSummary = {
       postCount: currentAgg.postCount,
-      snapshotCount: currentMetrics.length,
+      snapshotCount: currentSnapshots.length,
       impressions: currentAgg.totalImpressions,
       reach: currentAgg.totalReach,
       engagements: currentAgg.totalEngagements,
@@ -981,7 +1095,7 @@ export const metricsService = {
       dailyTrends,
       pillarPerformances,
       topPosts,
-      recentSnapshots: currentMetrics.slice(0, 15),
+      recentSnapshots: currentSnapshots.slice(0, 15),
       deepInsights,
       accountSummary,
       contentSummary,
