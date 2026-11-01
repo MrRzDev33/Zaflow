@@ -652,6 +652,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
         platforms={getBrandPlatforms(brand)}
         initialMetric={selectedMetricForEdit}
         initialPostId={newMetricPostId}
+        initialChannel={channel === 'all' ? null : channel}
         onClose={() => {
           setIsInputModalOpen(false);
           setSelectedMetricForEdit(null);

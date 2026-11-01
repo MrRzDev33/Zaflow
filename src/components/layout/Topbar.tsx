@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  LogOut,
-  User as UserIcon,
-  Settings2,
-  Menu,
-  ShieldCheck,
-  ChevronDown,
-} from 'lucide-react';
+  IconChevronDown,
+  IconLogout,
+  IconMenu,
+  IconSettings,
+  IconShield,
+  IconUser,
+} from '../common/icons/ZaflowIcons.tsx';
 import { BrandSwitcher } from './BrandSwitcher.tsx';
 import { Brand, Profile } from '../../types/database.ts';
 
@@ -67,7 +67,7 @@ export const Topbar: React.FC<TopbarProps> = ({
           aria-label={sidebarToggleLabel || (isSidebarCollapsed ? 'Buka Sidebar' : 'Ciutkan Sidebar')}
           className="p-2 text-slate-600 hover:text-slate-900 astra-icon-btn rounded-xl cursor-pointer shrink-0"
         >
-          <Menu className="w-4 h-4" strokeWidth={1.8} />
+          <IconMenu className="w-4 h-4" strokeWidth={1.8} />
         </button>
 
         {/* Brand Switcher */}
@@ -86,7 +86,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               title="Pengaturan Workspace"
               className="p-2 text-slate-500 hover:text-slate-800 astra-icon-btn rounded-xl cursor-pointer shrink-0"
             >
-              <Settings2 className="w-4 h-4" strokeWidth={1.8} />
+              <IconSettings className="w-4 h-4" strokeWidth={1.8} />
             </button>
           )}
         </div>
@@ -126,7 +126,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 {profile?.full_name ? (
                   profile.full_name.charAt(0).toUpperCase()
                 ) : (
-                  <UserIcon className="w-4 h-4 text-slate-600" strokeWidth={2} />
+                  <IconUser className="w-4 h-4 text-slate-600" strokeWidth={2} />
                 )}
               </div>
             </div>
@@ -141,7 +141,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               </p>
             </div>
 
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block shrink-0" strokeWidth={2} />
+            <IconChevronDown className="w-3.5 h-3.5 text-slate-400 hidden sm:block shrink-0" strokeWidth={2} />
           </button>
 
           {/* Unified Profile & Logout Dropdown Menu */}
@@ -156,7 +156,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                 <div className="mt-1.5 flex items-center gap-1.5">
                   {profile?.system_role === 'super_admin' ? (
                     <span className="inline-flex items-center gap-1 text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full bg-[#818CF8]/15 text-[#4F46E5] border border-[#818CF8]/25">
-                      <ShieldCheck className="w-2.5 h-2.5" strokeWidth={2.5} />
+                      <IconShield className="w-2.5 h-2.5" strokeWidth={2.5} />
                       <span>Admin</span>
                     </span>
                   ) : (
@@ -176,7 +176,7 @@ export const Topbar: React.FC<TopbarProps> = ({
                   }}
                   className="w-full flex items-center gap-2 px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/80 rounded-xl transition-all cursor-pointer"
                 >
-                  <LogOut className="w-4 h-4 text-rose-500" strokeWidth={1.8} />
+                  <IconLogout className="w-4 h-4 text-rose-500" strokeWidth={1.8} />
                   <span>Keluar dari Akun</span>
                 </button>
               </div>

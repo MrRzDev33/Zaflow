@@ -767,6 +767,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
           platforms={getBrandPlatforms(brand)}
           initialMetric={metricToEdit}
           initialPostId={metricPostId}
+          initialChannel={channel === 'all' ? null : channel}
           onClose={() => {
             setMetricModalOpen(false);
             setMetricToEdit(null);

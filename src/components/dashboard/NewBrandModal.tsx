@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { X, Building2, Loader2, Check } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+import {
+  IconBuilding,
+  IconCheck,
+  IconClose,
+} from '../common/icons/ZaflowIcons.tsx';
 import { CreateBrandInput } from '../../services/database/brandsService.ts';
 import {
   PLATFORM_CATALOG,
@@ -91,7 +96,7 @@ export const NewBrandModal: React.FC<NewBrandModalProps> = ({ isOpen, onClose, o
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
             <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
-              <Building2 className="w-5 h-5" />
+              <IconBuilding className="w-5 h-5" strokeWidth={1.8} />
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-900">Tambah Workspace Brand</h2>
@@ -102,7 +107,7 @@ export const NewBrandModal: React.FC<NewBrandModalProps> = ({ isOpen, onClose, o
             onClick={onClose}
             className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
           >
-            <X className="w-5 h-5" />
+            <IconClose className="w-5 h-5" />
           </button>
         </div>
 
@@ -160,7 +165,7 @@ export const NewBrandModal: React.FC<NewBrandModalProps> = ({ isOpen, onClose, o
                     style={{ backgroundColor: c }}
                     className="w-6 h-6 rounded-full flex items-center justify-center text-white transition-transform hover:scale-110"
                   >
-                    {colorHex === c && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                    {colorHex === c && <IconCheck className="w-3.5 h-3.5" strokeWidth={2.6} />}
                   </button>
                 ))}
               </div>
@@ -203,7 +208,7 @@ export const NewBrandModal: React.FC<NewBrandModalProps> = ({ isOpen, onClose, o
                         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
                     }`}
                   >
-                    {selected && <Check className="h-3.5 w-3.5" />}
+                    {selected && <IconCheck className="h-3.5 w-3.5" strokeWidth={2.4} />}
                     {platform.name}
                   </button>
                 );

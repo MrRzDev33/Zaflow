@@ -1,5 +1,5 @@
 import React from 'react';
-import { PieChart } from 'lucide-react';
+import { IconPieChart } from '../common/icons/ZaflowIcons.tsx';
 
 interface PillarDistributionProps {
   distribution: { pillar: string; count: number }[];
@@ -22,7 +22,7 @@ export const PillarDistribution: React.FC<PillarDistributionProps> = ({ distribu
       <div className="flex items-center justify-between pb-3.5 border-b border-black/[0.06] mb-4">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded-lg bg-[#5856D6]/10 text-[#5856D6] flex items-center justify-center">
-            <PieChart className="w-3.5 h-3.5" strokeWidth={2} />
+            <IconPieChart className="w-3.5 h-3.5" strokeWidth={1.9} />
           </div>
           <h2 className="text-sm font-semibold tracking-tight text-slate-900">Distribusi Pilar Konten</h2>
         </div>

@@ -1,5 +1,5 @@
 import React, { ReactNode } from 'react';
-import { MoreVertical } from 'lucide-react';
+import { IconMoreVertical } from '../common/icons/ZaflowIcons.tsx';
 
 interface StatCardProps {
   title: string;
@@ -27,7 +27,7 @@ export const StatCard: React.FC<StatCardProps> = ({
           <div className="text-slate-400">{icon}</div>
         ) : (
           <button className="text-slate-400 hover:text-slate-600 transition-colors cursor-pointer">
-            <MoreVertical className="w-3.5 h-3.5" />
+            <IconMoreVertical className="w-3.5 h-3.5" />
           </button>
         )}
       </div>

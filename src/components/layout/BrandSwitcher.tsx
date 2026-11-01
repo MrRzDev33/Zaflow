@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronDown, Plus, Check } from 'lucide-react';
+import { IconCheck, IconChevronDown, IconPlus } from '../common/icons/ZaflowIcons.tsx';
 import { Brand } from '../../types/database.ts';
 
 interface BrandSwitcherProps {
@@ -45,7 +45,7 @@ export const BrandSwitcher: React.FC<BrandSwitcherProps> = ({
             {activeBrand ? activeBrand.name : 'Pilih Brand'}
           </p>
         </div>
-        <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" strokeWidth={2} />
+        <IconChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" strokeWidth={2} />
       </button>
 
       {isOpen && (
@@ -82,7 +82,7 @@ export const BrandSwitcher: React.FC<BrandSwitcherProps> = ({
                     </div>
                   </div>
                   {activeBrand?.id === b.id && (
-                    <Check className="w-4 h-4 text-[#2563EB] shrink-0 ml-2" strokeWidth={2.2} />
+                    <IconCheck className="w-4 h-4 text-[#2563EB] shrink-0 ml-2" strokeWidth={2.2} />
                   )}
                 </button>
               ))
@@ -98,7 +98,7 @@ export const BrandSwitcher: React.FC<BrandSwitcherProps> = ({
                 }}
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-white/80 hover:bg-white text-[#2563EB] border border-white/90 rounded-xl text-xs font-semibold shadow-2xs transition-all cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
                 <span>Tambah Workspace Baru</span>
               </button>
             ) : (
@@ -110,7 +110,7 @@ export const BrandSwitcher: React.FC<BrandSwitcherProps> = ({
                 className="w-full flex items-center justify-center gap-1.5 py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-700 border border-amber-200 rounded-xl text-[11px] font-semibold transition-all cursor-pointer"
                 title="Batas brand pada paket Anda sudah tercapai"
               >
-                <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
                 <span>Batas brand tercapai — Upgrade paket</span>
               </button>
             )}

@@ -206,11 +206,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         pillar,
         status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-        ...(postedAt
-          ? { posted_at: new Date(postedAt).toISOString() }
-          : post.posted_at
-          ? { posted_at: post.posted_at }
-          : {}),
+        // Tanggal posting aktual murni input manual: kosong berarti memang dikosongkan.
+        posted_at: postedAt ? new Date(postedAt).toISOString() : null,
         production_date: productionDate ? new Date(productionDate).toISOString() : null,
         post_url: postUrl.trim() || null,
         media_urls: mediaUrls,
@@ -583,7 +580,9 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
                   </button>
                 )}
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Dipakai untuk filter histori Konten Post</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                Diisi manual saat konten benar-benar tayang
+              </span>
             </div>
           </div>
 

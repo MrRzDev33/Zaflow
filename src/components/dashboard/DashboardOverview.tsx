@@ -1,18 +1,17 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
-  Plus,
-  Building2,
-  RefreshCw,
-  Calendar,
-  Layers,
-  Clock,
-  CheckCircle2,
-  Share2,
-  Zap,
-  ArrowRight,
-  Kanban,
-  CalendarDays,
-} from 'lucide-react';
+  IconArrowRight,
+  IconBuilding,
+  IconCalendar,
+  IconCheck,
+  IconClock,
+  IconKanban,
+  IconLayers,
+  IconPlus,
+  IconRefresh,
+  IconShare,
+  IconSpark,
+} from '../common/icons/ZaflowIcons.tsx';
 import { Brand, ContentPost } from '../../types/database.ts';
 import { contentService } from '../../services/database/contentService.ts';
 import { StatusBadge, FormatBadge } from '../common/Badges.tsx';
@@ -122,7 +121,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
     return (
       <div className="astra-card p-10 text-center max-w-lg mx-auto my-12 shadow-[0_20px_50px_rgba(79,70,229,0.08)]">
         <div className="w-14 h-14 bg-gradient-to-tr from-[#93C5FD] to-[#818CF8] text-white rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-sm">
-          <Building2 className="w-7 h-7" strokeWidth={1.8} />
+          <IconBuilding className="w-7 h-7" strokeWidth={1.8} />
         </div>
         <h2 className="text-xl font-bold tracking-tight text-slate-900">Belum Ada Workspace Brand</h2>
         <p className="text-xs text-slate-500 mt-2 leading-relaxed">
@@ -132,7 +131,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           onClick={onOpenNewBrand}
           className="mt-6 px-5 py-2.5 astra-button-primary rounded-xl text-xs font-semibold inline-flex items-center gap-2 cursor-pointer"
         >
-          <Plus className="w-4 h-4" strokeWidth={2} />
+          <IconPlus className="w-4 h-4" strokeWidth={2} />
           <span>Buat Workspace Brand Baru</span>
         </button>
       </div>
@@ -169,7 +168,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
 
         <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
           <label className="flex items-center gap-1.5 rounded-xl border border-white/80 bg-white/70 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 shadow-2xs">
-            <CalendarDays className="w-3.5 h-3.5 text-[#2563EB]" strokeWidth={2} />
+            <IconCalendar className="w-3.5 h-3.5 text-[#2563EB]" strokeWidth={1.9} />
             <span className="hidden sm:inline">Periode</span>
             <input
               type="month"
@@ -185,13 +184,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
             title="Segarkan Data Riil"
             className="p-2 text-slate-600 astra-icon-btn rounded-xl cursor-pointer"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} strokeWidth={2} />
+            <IconRefresh className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} strokeWidth={1.9} />
           </button>
           <button
             onClick={onOpenNewPost}
             className="px-4 py-2 astra-button-primary rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
             <span>Buat Konten</span>
           </button>
         </div>
@@ -204,7 +203,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold text-slate-700">Total Konten</span>
             <div className="p-1.5 rounded-lg bg-blue-500/10 text-[#2563EB]">
-              <Layers className="w-3.5 h-3.5" strokeWidth={2} />
+              <IconLayers className="w-3.5 h-3.5" strokeWidth={1.9} />
             </div>
           </div>
           <div>
@@ -222,7 +221,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold text-slate-700">Terjadwal</span>
             <div className="p-1.5 rounded-lg bg-indigo-500/10 text-[#4F46E5]">
-              <Calendar className="w-3.5 h-3.5" strokeWidth={2} />
+              <IconCalendar className="w-3.5 h-3.5" strokeWidth={2} />
             </div>
           </div>
           <div>
@@ -238,7 +237,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold text-slate-700">Perlu Review</span>
             <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600">
-              <Clock className="w-3.5 h-3.5" strokeWidth={2} />
+              <IconClock className="w-3.5 h-3.5" strokeWidth={1.9} />
             </div>
           </div>
           <div>
@@ -254,7 +253,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="flex items-center justify-between text-slate-500 mb-2">
             <span className="text-xs font-semibold text-slate-700">Kredit AI</span>
             <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-600">
-              <Zap className="w-3.5 h-3.5" strokeWidth={2} />
+              <IconSpark className="w-3.5 h-3.5" strokeWidth={1.9} />
             </div>
           </div>
           <div>
@@ -286,13 +285,13 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                 className="text-xs font-semibold text-[#2563EB] hover:text-[#1D4ED8] flex items-center gap-1 cursor-pointer transition-colors"
               >
                 <span>Lihat Koleksi</span>
-                <ArrowRight className="w-3.5 h-3.5" />
+                <IconArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
 
             {recentPosts.length === 0 ? (
               <div className="text-center py-10 border border-dashed border-slate-200/80 rounded-2xl bg-white/30">
-                <Calendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
+                <IconCalendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
                 <p className="text-xs font-semibold text-slate-700">
                   Belum ada konten pada {formatMonthKey(month)}
                 </p>
@@ -303,7 +302,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                   onClick={onOpenNewPost}
                   className="mt-3.5 px-3.5 py-1.5 astra-button-primary rounded-xl text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+                  <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
                   <span>Tambah Konten Pertama</span>
                 </button>
               </div>
@@ -327,7 +326,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
                         <span>Pilar: <strong className="text-slate-700 font-medium">{post.pillar}</strong></span>
                         <span className="text-slate-300">·</span>
                         <span className="flex items-center gap-1 text-slate-500 font-mono text-[11px]">
-                          <Calendar className="w-3 h-3 text-slate-400" strokeWidth={1.75} />
+                          <IconCalendar className="w-3 h-3 text-slate-400" strokeWidth={1.75} />
                           {post.scheduled_at
                             ? new Date(post.scheduled_at).toLocaleDateString('id-ID', {
                                 day: 'numeric',
@@ -413,7 +412,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="astra-card p-5">
             <div className="flex items-center justify-between pb-3 border-b border-white/60 mb-3">
               <div className="flex items-center gap-2">
-                <Share2 className="w-4 h-4 text-[#2563EB]" strokeWidth={2} />
+                <IconShare className="w-4 h-4 text-[#2563EB]" strokeWidth={1.9} />
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 tracking-tight">
                     Saluran Media Sosial
@@ -451,7 +450,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           <div className="astra-card p-5">
             <div className="flex items-center justify-between pb-3 border-b border-white/60 mb-3">
               <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" strokeWidth={2} />
+                <IconCheck className="w-4 h-4 text-emerald-600" strokeWidth={1.9} />
                 <div>
                   <h3 className="text-sm font-bold text-slate-800 tracking-tight">
                     Status Alur Kerja
@@ -491,20 +490,20 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               className="w-full flex items-center justify-between p-2.5 rounded-xl bg-white/50 hover:bg-white/80 border border-white/70 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <CalendarDays className="w-4 h-4 text-[#2563EB]" strokeWidth={1.8} />
+                <IconCalendar className="w-4 h-4 text-[#2563EB]" strokeWidth={1.8} />
                 <span>Buka Kalender Editorial</span>
               </div>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              <IconArrowRight className="w-3.5 h-3.5 text-slate-400" />
             </button>
             <button
               onClick={() => onSelectTab && onSelectTab('kanban')}
               className="w-full flex items-center justify-between p-2.5 rounded-xl bg-white/50 hover:bg-white/80 border border-white/70 text-xs font-semibold text-slate-700 transition-colors cursor-pointer"
             >
               <div className="flex items-center gap-2">
-                <Kanban className="w-4 h-4 text-[#4F46E5]" strokeWidth={1.8} />
+                <IconKanban className="w-4 h-4 text-[#4F46E5]" strokeWidth={1.8} />
                 <span>Buka Kanban Workflow</span>
               </div>
-              <ArrowRight className="w-3.5 h-3.5 text-slate-400" />
+              <IconArrowRight className="w-3.5 h-3.5 text-slate-400" />
             </button>
           </div>
         </div>

@@ -39,6 +39,12 @@ interface MetricInputModalProps {
   platforms?: string[];
   initialMetric?: ContentMetric | null;
   initialPostId?: string | null;
+  /**
+   * Saluran awal saat membuat snapshot baru.
+   * `null` berarti belum ada saluran terpilih (mis. filter "Semua"),
+   * `undefined` memakai saluran pertama milik brand.
+   */
+  initialChannel?: string | null;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -138,10 +144,16 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
   platforms,
   initialMetric,
   initialPostId = null,
+  initialChannel,
   onClose,
   onSaved,
 }) => {
-  const defaultChannel = platforms?.[0] || PLATFORM_ORDER[0];
+  const defaultChannel =
+    initialChannel === null
+      ? ''
+      : initialChannel && (!platforms || platforms.includes(initialChannel))
+      ? initialChannel
+      : platforms?.[0] || PLATFORM_ORDER[0];
   const [form, setForm] = useState<FormState>(() => createEmptyForm(defaultChannel, ''));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -191,7 +203,10 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
   const activePlatforms = platforms && platforms.length > 0 ? platforms : PLATFORM_ORDER;
   const channelOptions = activePlatforms.includes(form.channel)
     ? activePlatforms
-    : [form.channel, ...activePlatforms];
+    : form.channel
+    ? [form.channel, ...activePlatforms]
+    : activePlatforms;
+  const hasChannel = Boolean(form.channel);
   const isInstagram = form.channel === 'instagram';
 
   const update = (partial: Partial<FormState>) => setForm((prev) => ({ ...prev, ...partial }));
@@ -213,6 +228,11 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
     if (!form.postId) {
       setPostError('Postingan wajib dipilih.');
       setError('Pilih postingan terlebih dahulu. Snapshot tanpa postingan tidak lagi diizinkan.');
+      return;
+    }
+
+    if (!form.channel) {
+      setError('Pilih saluran media sosial terlebih dahulu agar kolom metrik sesuai platform.');
       return;
     }
 
@@ -348,9 +368,15 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
             <Field label="Saluran Media Sosial *">
               <select
                 value={form.channel}
+                required
                 onChange={(e) => update({ channel: e.target.value })}
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs capitalize focus:outline-none focus:ring-1 focus:ring-blue-500"
               >
+                {!form.channel && (
+                  <option value="" disabled>
+                    Pilih saluran media sosial
+                  </option>
+                )}
                 {channelOptions.map((platformId) => (
                   <option key={platformId} value={platformId}>
                     {getPlatformName(platformId)}
@@ -485,7 +511,17 @@ export const MetricInputModal: React.FC<MetricInputModalProps> = ({
             </div>
           </FieldSection>
 
-          {isInstagram ? (
+          {!hasChannel ? (
+            <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-4 text-center">
+              <p className="text-xs font-semibold text-slate-700">
+                Pilih saluran media sosial terlebih dahulu
+              </p>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Kolom metrik tambahan akan menyesuaikan platform yang dipilih, tanpa kolom
+                Instagram yang tidak relevan.
+              </p>
+            </div>
+          ) : isInstagram ? (
             <>
               <div className="flex items-center gap-2 pt-1">
                 <Video className="h-4 w-4 text-pink-600" />

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calendar, Plus } from 'lucide-react';
+import { IconCalendar, IconPlus } from '../common/icons/ZaflowIcons.tsx';
 import { ContentPost } from '../../types/database.ts';
 import { StatusBadge, FormatBadge } from '../common/Badges.tsx';
 
@@ -35,21 +35,21 @@ export const RecentContentList: React.FC<RecentContentListProps> = ({ posts, onO
           onClick={onOpenNewPost}
           className="text-xs font-medium text-[#007AFF] hover:text-[#0055B3] bg-[#007AFF]/10 hover:bg-[#007AFF]/15 px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all ios-button cursor-pointer"
         >
-          <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+          <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
           <span>Tambah Konten</span>
         </button>
       </div>
 
       {posts.length === 0 ? (
         <div className="text-center py-10 border border-dashed border-black/10 rounded-xl bg-black/[0.01]">
-          <Calendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
+          <IconCalendar className="w-8 h-8 text-slate-400 mx-auto mb-2" strokeWidth={1.5} />
           <p className="text-xs font-medium text-slate-700">Belum ada konten dalam antrean</p>
           <p className="text-xs text-slate-400 mt-0.5">Mulai dengan mencatat ide atau draf konten pertama Anda</p>
           <button
             onClick={onOpenNewPost}
             className="mt-3.5 text-xs font-medium text-white bg-[#007AFF] hover:bg-[#0066D6] px-4 py-2 rounded-xl inline-flex items-center gap-1.5 shadow-[0_2px_8px_rgba(0,122,255,0.25)] transition-all ios-button cursor-pointer"
           >
-            <Plus className="w-3.5 h-3.5" strokeWidth={2} />
+            <IconPlus className="w-3.5 h-3.5" strokeWidth={2} />
             <span>Buat Konten Pertama</span>
           </button>
         </div>
@@ -70,7 +70,7 @@ export const RecentContentList: React.FC<RecentContentListProps> = ({ posts, onO
                   <span>Pilar: <strong className="text-slate-700 font-medium">{post.pillar}</strong></span>
                   <span className="text-slate-300">·</span>
                   <span className="flex items-center gap-1 text-slate-500 font-mono text-[11px]">
-                    <Calendar className="w-3 h-3 text-slate-400" strokeWidth={1.75} />
+                    <IconCalendar className="w-3 h-3 text-slate-400" strokeWidth={1.75} />
                     {formatScheduledDate(post.scheduled_at)}
                   </span>
                 </div>

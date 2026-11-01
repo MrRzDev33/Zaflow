@@ -1,5 +1,5 @@
 import React, { ReactNode, useCallback, useEffect, useState } from 'react';
-import { MessageCircle } from 'lucide-react';
+import { IconChat } from '../common/icons/ZaflowIcons.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { Topbar } from './Topbar.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';
@@ -162,7 +162,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1.5 font-semibold text-emerald-700 hover:text-emerald-800"
                 >
-                  <MessageCircle className="h-3.5 w-3.5" />
+                  <IconChat className="h-3.5 w-3.5" />
                   {customerService.label || 'Bantuan'} via WhatsApp
                 </a>
               )}

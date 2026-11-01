@@ -1,21 +1,22 @@
 import React from 'react';
 import {
-  LayoutDashboard,
-  Library,
-  CalendarDays,
-  Kanban,
-  BarChart3,
-  FileImage,
-  ScanEye,
-  BrainCircuit,
-  Users,
-  History,
-  Key,
-  ShieldCheck,
-  Zap,
-  MessageCircle,
-  X,
-} from 'lucide-react';
+  IconAnalytics,
+  IconCalendar,
+  IconChat,
+  IconClose,
+  IconCollection,
+  IconDashboard,
+  IconHistory,
+  IconKanban,
+  IconLicense,
+  IconPost,
+  IconScanAI,
+  IconShield,
+  IconSpark,
+  IconStrategy,
+  IconTeam,
+  type ZaIconProps,
+} from '../common/icons/ZaflowIcons.tsx';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 import { useMediaQuery } from '../../hooks/useMediaQuery.ts';
 
@@ -36,7 +37,7 @@ interface SidebarProps {
 interface NavItem {
   id: string;
   label: string;
-  icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
+  icon: React.ComponentType<ZaIconProps>;
 }
 
 interface NavSection {
@@ -68,29 +69,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
     {
       title: 'Perencanaan',
       items: [
-        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'content_db', label: 'Koleksi Konten', icon: Library },
-        { id: 'calendar', label: 'Kalender Konten', icon: CalendarDays },
-        { id: 'kanban', label: 'Alur Konten', icon: Kanban },
+        { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
+        { id: 'content_db', label: 'Koleksi Konten', icon: IconCollection },
+        { id: 'calendar', label: 'Kalender Konten', icon: IconCalendar },
+        { id: 'kanban', label: 'Alur Konten', icon: IconKanban },
       ],
     },
     {
       title: 'Analitik & Strategi',
       items: [
-        { id: 'analytics', label: 'Analitik & Laporan', icon: BarChart3 },
-        { id: 'content_posts', label: 'Konten Post', icon: FileImage },
-        { id: 'ai_extractor', label: 'Ambil Metrik AI', icon: ScanEye },
-        { id: 'ai_strategy', label: 'Asisten Strategi', icon: BrainCircuit },
+        { id: 'analytics', label: 'Analitik & Laporan', icon: IconAnalytics },
+        { id: 'content_posts', label: 'Konten Post', icon: IconPost },
+        { id: 'ai_extractor', label: 'Ambil Metrik AI', icon: IconScanAI },
+        { id: 'ai_strategy', label: 'Asisten Strategi', icon: IconStrategy },
       ],
     },
     {
       title: 'Akses & Tim',
       items: [
-        { id: 'team', label: 'Anggota & Tim', icon: Users },
-        { id: 'activity_logs', label: 'Riwayat Aktivitas', icon: History },
-        { id: 'license', label: 'Paket & Kuota', icon: Key },
+        { id: 'team', label: 'Anggota & Tim', icon: IconTeam },
+        { id: 'activity_logs', label: 'Riwayat Aktivitas', icon: IconHistory },
+        { id: 'license', label: 'Paket & Kuota', icon: IconLicense },
         ...(isSuperAdmin
-          ? [{ id: 'admin', label: 'Admin', icon: ShieldCheck }]
+          ? [{ id: 'admin', label: 'Admin', icon: IconShield }]
           : []),
       ],
     },
@@ -116,7 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           aria-label="Tutup menu navigasi"
           className="lg:hidden p-2 -mr-1.5 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white/70 transition"
         >
-          <X className="w-5 h-5" strokeWidth={1.8} />
+          <IconClose className="w-5 h-5" strokeWidth={1.8} />
         </button>
       </div>
 
@@ -174,7 +175,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               collapsed ? 'justify-center p-2' : 'w-full justify-start gap-2 px-3 py-2 text-xs font-semibold'
             }`}
           >
-            <MessageCircle className="h-4 w-4 shrink-0" />
+            <IconChat className="h-4 w-4 shrink-0" />
             {!collapsed && <span className="truncate">{whatsappLabel}</span>}
           </a>
         </div>
@@ -207,7 +208,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           title={`Kredit AI: ${aiCreditsRemaining}/${aiCreditsTotal}`}
         >
           <div className="p-2 rounded-xl bg-white/60 text-[#2563EB] shadow-2xs">
-            <Zap className="w-4 h-4" strokeWidth={2} />
+            <IconSpark className="w-4 h-4" strokeWidth={1.9} />
           </div>
         </div>
       )}

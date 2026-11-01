@@ -192,7 +192,9 @@ export const contentService = {
 
     const { data: { user } } = await supabase.auth.getUser();
     const status = input.status || 'idea';
-    const postedAt = input.posted_at || (isPublishedStatus(status) ? new Date().toISOString() : null);
+    // Tanggal posting aktual hanya diisi manual oleh pengguna.
+    // Jangan pernah mengisinya otomatis dari status atau waktu unggah snapshot.
+    const postedAt = input.posted_at || null;
 
     const { data, error } = await supabase
       .from('content_posts')
@@ -252,23 +254,6 @@ export const contentService = {
     if (input.production_date !== undefined) payload.production_date = input.production_date;
     if (input.post_url !== undefined) payload.post_url = normalizePostUrl(input.post_url);
     if (input.media_urls !== undefined) payload.media_urls = input.media_urls;
-
-    // Saat status diubah menjadi published dan belum punya tanggal posting aktual,
-    // isi otomatis dengan waktu sekarang agar halaman histori dapat memfilternya.
-    if (
-      input.status !== undefined &&
-      isPublishedStatus(input.status) &&
-      input.posted_at === undefined
-    ) {
-      const { data: currentPost } = await supabase
-        .from('content_posts')
-        .select('posted_at')
-        .eq('id', postId)
-        .maybeSingle();
-      if (!currentPost?.posted_at) {
-        payload.posted_at = new Date().toISOString();
-      }
-    }
 
     const { data, error } = await supabase
       .from('content_posts')
