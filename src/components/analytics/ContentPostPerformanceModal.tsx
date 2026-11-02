@@ -203,7 +203,7 @@ export const ContentPostPerformanceModal: React.FC<ContentPostPerformanceModalPr
               <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
                 <span className="inline-flex items-center gap-1">
                   <Calendar className="h-3 w-3" />
-                  {formatDate(post.posted_at || post.scheduled_at)}
+                  {formatDate(post.scheduled_at)}
                 </span>
                 {(post.channels || []).map((channel) => (
                   <span

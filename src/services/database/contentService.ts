@@ -13,7 +13,6 @@ export interface CreatePostInput {
   pillar?: string;
   status?: ContentStatus;
   scheduled_at?: string | null;
-  posted_at?: string | null;
   production_date?: string | null;
   post_url?: string | null;
   media_urls?: string[];
@@ -29,7 +28,6 @@ export interface UpdatePostInput {
   pillar?: string;
   status?: ContentStatus;
   scheduled_at?: string | null;
-  posted_at?: string | null;
   production_date?: string | null;
   post_url?: string | null;
   media_urls?: string[];
@@ -127,9 +125,9 @@ export const contentService = {
       });
     }
 
-    // Filter rentang tanggal berdasarkan tanggal posting aktual,
-    // lalu fallback ke jadwal tayang untuk data lama.
-    const effectiveDate = (p: ContentPost) => p.posted_at || p.scheduled_at || p.updated_at || p.created_at;
+    // Filter rentang tanggal berdasarkan jadwal posting (termasuk jam),
+    // lalu fallback ke tanggal dibuat untuk konten yang belum dijadwalkan.
+    const effectiveDate = (p: ContentPost) => p.scheduled_at || p.created_at;
     if (options?.startDate) {
       const start = new Date(options.startDate).getTime();
       posts = posts.filter((p) => {
@@ -192,9 +190,6 @@ export const contentService = {
 
     const { data: { user } } = await supabase.auth.getUser();
     const status = input.status || 'idea';
-    // Tanggal posting aktual hanya diisi manual oleh pengguna.
-    // Jangan pernah mengisinya otomatis dari status atau waktu unggah snapshot.
-    const postedAt = input.posted_at || null;
 
     const { data, error } = await supabase
       .from('content_posts')
@@ -209,7 +204,6 @@ export const contentService = {
         pillar: input.pillar || 'Edukatif',
         status,
         scheduled_at: input.scheduled_at || null,
-        posted_at: postedAt,
         production_date: input.production_date || null,
         post_url: normalizePostUrl(input.post_url),
         media_urls: input.media_urls || [],
@@ -250,7 +244,6 @@ export const contentService = {
     if (input.pillar !== undefined) payload.pillar = input.pillar;
     if (input.status !== undefined) payload.status = input.status;
     if (input.scheduled_at !== undefined) payload.scheduled_at = input.scheduled_at;
-    if (input.posted_at !== undefined) payload.posted_at = input.posted_at;
     if (input.production_date !== undefined) payload.production_date = input.production_date;
     if (input.post_url !== undefined) payload.post_url = normalizePostUrl(input.post_url);
     if (input.media_urls !== undefined) payload.media_urls = input.media_urls;
@@ -304,8 +297,7 @@ export const contentService = {
       format: original.format,
       pillar: original.pillar,
       status: 'draft', // Selalu mulai dari draft saat menduplikasi
-      scheduled_at: null, // Reset jadwal tayang agar diatur ulang
-      posted_at: null,
+      scheduled_at: null, // Reset jadwal posting agar diatur ulang
       production_date: original.production_date || null,
       post_url: null,
       media_urls: [...(original.media_urls || [])],

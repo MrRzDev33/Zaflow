@@ -185,7 +185,15 @@ export const aiClientService = {
   async generateStrategyAdvice(
     brandId: string,
     objective: string,
-    customNotes?: string
+    customNotes?: string,
+    filters?: {
+      goals?: string[];
+      platforms?: string[];
+      periodMode?: 'all' | 'month' | 'range';
+      periodMonth?: string;
+      startDate?: string;
+      endDate?: string;
+    }
   ): Promise<StrategyResponse> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -202,6 +210,12 @@ export const aiClientService = {
         brandId,
         objective,
         customNotes,
+        goals: filters?.goals,
+        platforms: filters?.platforms,
+        periodMode: filters?.periodMode || 'all',
+        periodMonth: filters?.periodMonth,
+        startDate: filters?.startDate,
+        endDate: filters?.endDate,
       }),
     });
 

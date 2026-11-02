@@ -9,15 +9,17 @@ interface TopContentCardProps {
   onSelectPost?: (postId: string) => void;
 }
 
-function formatPostedAt(value: string | null): string {
-  if (!value) return 'Tanggal posting belum diisi';
+function formatScheduledAt(value: string | null): string {
+  if (!value) return 'Jadwal posting belum diisi';
   const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return 'Tanggal posting belum diisi';
+  if (!Number.isFinite(date.getTime())) return 'Jadwal posting belum diisi';
 
   return new Intl.DateTimeFormat('id-ID', {
     day: 'numeric',
     month: 'short',
     year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date);
 }
 
@@ -138,7 +140,7 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
                     ))}
                     <span className="flex items-center gap-1 text-[10px] text-slate-400">
                       <CalendarDays className="w-3 h-3" />
-                      {formatPostedAt(item.postedAt)}
+                      {formatScheduledAt(item.scheduledAt)}
                     </span>
                   </div>
                 </div>

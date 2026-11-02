@@ -37,7 +37,6 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
   const [caption, setCaption] = useState('');
   const [brief, setBrief] = useState('');
   const [postUrl, setPostUrl] = useState('');
-  const [postedAt, setPostedAt] = useState('');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
@@ -97,18 +96,6 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         }
       } else {
         setProductionDate('');
-      }
-
-      if (post.posted_at) {
-        try {
-          const d = new Date(post.posted_at);
-          const tzOffset = d.getTimezoneOffset() * 60000;
-          setPostedAt(new Date(d.getTime() - tzOffset).toISOString().slice(0, 16));
-        } catch {
-          setPostedAt('');
-        }
-      } else {
-        setPostedAt('');
       }
 
       setUploadingMedia(false);
@@ -206,8 +193,6 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         pillar,
         status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
-        // Tanggal posting aktual murni input manual: kosong berarti memang dikosongkan.
-        posted_at: postedAt ? new Date(postedAt).toISOString() : null,
         production_date: productionDate ? new Date(productionDate).toISOString() : null,
         post_url: postUrl.trim() || null,
         media_urls: mediaUrls,
@@ -261,8 +246,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         {/* Modal Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between shrink-0">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Edit Rencana Konten</h2>
-            <p className="text-xs text-slate-500">Perbarui detail, status alur kerja, atau jadwal tayang</p>
+            <h2 className="text-base font-bold text-slate-900">Edit Jadwal Konten</h2>
+            <p className="text-xs text-slate-500">Perbarui detail, status alur kerja, atau jadwal posting</p>
           </div>
           <button
             onClick={onClose}
@@ -503,8 +488,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
             </select>
           </div>
 
-          {/* Tanggal Produksi, Jadwal Tayang & Tanggal Posting Aktual */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
+          {/* Tanggal Produksi & Jadwal Posting */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Video className="w-3.5 h-3.5 text-indigo-600" />
@@ -534,7 +519,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                <span>Rencana Tanggal Tayang</span>
+                <span>Jadwal Posting</span>
               </label>
               <div className="relative">
                 <input
@@ -554,34 +539,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
                   </button>
                 )}
               </div>
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Jadwal publikasi postingan</span>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
-                <Calendar className="w-3.5 h-3.5 text-emerald-600" />
-                <span>Tanggal Posting Aktual</span>
-              </label>
-              <div className="relative">
-                <input
-                  type="datetime-local"
-                  value={postedAt}
-                  onChange={(e) => setPostedAt(e.target.value)}
-                  className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
-                />
-                {postedAt && (
-                  <button
-                    type="button"
-                    onClick={() => setPostedAt('')}
-                    className="absolute right-2.5 top-1.5 text-xs text-slate-400 hover:text-slate-600"
-                    title="Kosongkan Tanggal Posting"
-                  >
-                    Hapus
-                  </button>
-                )}
-              </div>
               <span className="text-[10px] text-slate-400 mt-0.5 block">
-                Diisi manual saat konten benar-benar tayang
+                Tanggal & jam posting, dibaca AI untuk analisis tren
               </span>
             </div>
           </div>

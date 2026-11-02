@@ -153,7 +153,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
 
     const headers = [
       'Waktu Snapshot',
-      'Tanggal Posting',
+      'Jadwal Posting',
       'Saluran Platform',
       'Judul Postingan',
       'Link Postingan',
@@ -179,11 +179,11 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
       const wt = m.watch_time || raw.watch_time || '';
       const dor = m.drop_off_rate ?? raw.drop_off_rate ?? '';
       const rep = m.reposts ?? raw.reposts ?? 0;
-      const postedAt = resolvePostDate(m.post);
+      const scheduledAt = resolvePostDate(m.post);
 
       return [
         `"${new Date(m.recorded_at).toLocaleString('id-ID')}"`,
-        `"${postedAt ? postedAt.toLocaleDateString('id-ID') : '-'}"`,
+        `"${scheduledAt ? scheduledAt.toLocaleString('id-ID') : '-'}"`,
         `"${m.channel}"`,
         `"${(m.post?.title || '-').replace(/"/g, '""')}"`,
         `"${(m.post?.post_url || '').replace(/"/g, '""')}"`,
@@ -284,10 +284,10 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({ brand }) => {
     // Sheet 2: Riwayat Snapshot Lengkap
     const snapshotRows = reportData.recentSnapshots.map((m) => {
       const raw = (m.raw_ai_analysis || {}) as Record<string, any>;
-      const postedAt = resolvePostDate(m.post);
+      const scheduledAt = resolvePostDate(m.post);
       return {
         'Waktu Snapshot': new Date(m.recorded_at).toLocaleString('id-ID'),
-        'Tanggal Posting': postedAt ? postedAt.toLocaleDateString('id-ID') : '-',
+        'Jadwal Posting': scheduledAt ? scheduledAt.toLocaleString('id-ID') : '-',
         'Saluran': m.channel.toUpperCase(),
         'Judul Postingan': m.post?.title || '-',
         'Link Postingan': m.post?.post_url || '',

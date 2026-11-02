@@ -445,7 +445,7 @@ export const ContentKanbanView: React.FC<ContentKanbanViewProps> = ({
                             {post.scheduled_at && (
                               <span className="flex items-center gap-1 text-purple-700 font-medium bg-purple-50/80 px-1.5 py-0.5 rounded">
                                 <Calendar className="w-3 h-3 text-purple-500 shrink-0" />
-                                <span>Tayang: {formatScheduledTime(post.scheduled_at)}</span>
+                                <span>Posting: {formatScheduledTime(post.scheduled_at)}</span>
                               </span>
                             )}
                           </div>

@@ -87,8 +87,7 @@ CREATE TABLE IF NOT EXISTS public.content_posts (
     format TEXT NOT NULL DEFAULT 'single_image' CHECK (format IN ('single_image', 'carousel', 'reel_short', 'video', 'story', 'text_thread')),
     pillar TEXT NOT NULL DEFAULT 'Edukatif', -- Kustom per brand
     status TEXT NOT NULL DEFAULT 'idea', -- Dinamis mengikuti status alur kerja kanban brand
-    scheduled_at TIMESTAMPTZ,
-    posted_at TIMESTAMPTZ, -- Tanggal aktual konten diposting
+    scheduled_at TIMESTAMPTZ, -- Jadwal posting (tanggal & jam) — acuan analitik
     production_date TIMESTAMPTZ, -- Tanggal dan waktu produksi / shooting
     post_url TEXT, -- URL postingan publik
     media_urls TEXT[] NOT NULL DEFAULT '{}',
@@ -183,7 +182,6 @@ CREATE INDEX IF NOT EXISTS idx_brand_members_brand ON public.brand_members(brand
 CREATE INDEX IF NOT EXISTS idx_content_posts_brand ON public.content_posts(brand_id);
 CREATE INDEX IF NOT EXISTS idx_content_posts_status ON public.content_posts(status);
 CREATE INDEX IF NOT EXISTS idx_content_posts_scheduled ON public.content_posts(scheduled_at);
-CREATE INDEX IF NOT EXISTS idx_content_posts_brand_posted_at ON public.content_posts(brand_id, posted_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_posts_brand_scheduled_at ON public.content_posts(brand_id, scheduled_at DESC);
 CREATE INDEX IF NOT EXISTS idx_content_metrics_brand ON public.content_metrics(brand_id);
 CREATE INDEX IF NOT EXISTS idx_content_metrics_post_channel_recorded

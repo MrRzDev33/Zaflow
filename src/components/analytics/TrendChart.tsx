@@ -36,7 +36,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
         <div>
           <div className="flex items-center gap-2">
             <TrendingUp className="w-4 h-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-900">Tren Metrik Berdasarkan Tanggal Posting</h2>
+            <h2 className="text-sm font-bold text-slate-900">Tren Metrik Berdasarkan Jadwal Posting</h2>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Total {total.toLocaleString('id-ID')} {metricConfigs[metricKey].label} dari postingan pada

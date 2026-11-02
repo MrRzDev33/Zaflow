@@ -262,7 +262,7 @@ export const ContentCalendarView: React.FC<ContentCalendarViewProps> = ({ brand,
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Drag-and-drop konten antar tanggal untuk mengatur jadwal tayang otomatis
+              Drag-and-drop konten antar tanggal untuk mengatur jadwal posting otomatis
             </p>
           </div>
         </div>

@@ -1,15 +1,16 @@
 import type { ContentPost } from '../types/database.ts';
 
-type PostDateSource = Pick<ContentPost, 'posted_at' | 'scheduled_at' | 'created_at'>;
+type PostDateSource = Pick<ContentPost, 'scheduled_at' | 'created_at'>;
 
 /**
- * Tanggal acuan laporan: tanggal tayang, lalu jadwal, lalu tanggal dibuat.
+ * Tanggal acuan laporan: jadwal posting, lalu tanggal dibuat.
+ * Jam pada jadwal posting ikut terbaca agar AI tahu kapan konten tayang.
  * Semua agregasi analitik memakai tanggal ini, bukan tanggal snapshot.
  */
 export function resolvePostDate(post?: PostDateSource | null): Date | null {
   if (!post) return null;
 
-  for (const value of [post.posted_at, post.scheduled_at, post.created_at]) {
+  for (const value of [post.scheduled_at, post.created_at]) {
     if (!value) continue;
     const date = new Date(value);
     if (Number.isFinite(date.getTime())) return date;

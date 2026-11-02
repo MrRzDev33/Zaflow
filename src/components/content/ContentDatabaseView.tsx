@@ -255,7 +255,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
               <th className="py-3 px-3">Pilar</th>
               <th className="py-3 px-3">Status</th>
               <th className="py-3 px-3">Tgl Produksi</th>
-              <th className="py-3 px-3">Jadwal Tayang</th>
+              <th className="py-3 px-3">Jadwal Posting</th>
               <th className="py-3 px-4 text-right">Aksi</th>
             </tr>
           </thead>
@@ -360,7 +360,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
                   )}
                 </td>
 
-                {/* Kolom Jadwal Tayang */}
+                {/* Kolom Jadwal Posting */}
                 <td className="py-3 px-3 whitespace-nowrap">
                   {post.scheduled_at ? (
                     <div className="flex items-center gap-1.5 text-purple-700 bg-purple-50/80 px-2 py-1 rounded-md text-[11px] font-medium inline-flex">
@@ -496,7 +496,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
               </span>
             </div>
 
-            {/* Indikator Tanggal Produksi & Tanggal Tayang */}
+            {/* Indikator Tanggal Produksi & Jadwal Posting */}
             <div className="pt-2 border-t border-slate-100 space-y-1">
               {post.production_date && (
                 <div className="flex items-center gap-1.5 text-indigo-700 bg-indigo-50/70 px-2 py-0.5 rounded text-[11px] font-medium">
@@ -507,7 +507,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
               {post.scheduled_at && (
                 <div className="flex items-center gap-1.5 text-purple-700 bg-purple-50/70 px-2 py-0.5 rounded text-[11px] font-medium">
                   <Calendar className="w-3 h-3 text-purple-500 shrink-0" />
-                  <span>Tayang: {formatDateTime(post.scheduled_at)}</span>
+                  <span>Posting: {formatDateTime(post.scheduled_at)}</span>
                 </div>
               )}
               {!post.production_date && !post.scheduled_at && (
@@ -573,7 +573,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Kelola arsip konten, jadwal produksi, jadwal tayang, pilar, dan tahapan alur kerja untuk <strong>{brand.name}</strong>
+            Kelola arsip konten, jadwal produksi, jadwal posting, pilar, dan tahapan alur kerja untuk <strong>{brand.name}</strong>
           </p>
         </div>
 
@@ -600,7 +600,7 @@ export const ContentDatabaseView: React.FC<ContentDatabaseViewProps> = ({
               className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-700 text-xs font-medium cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500"
               title="Dasar tanggal pengelompokan bulan"
             >
-              <option value="scheduled">Bulan Tayang</option>
+              <option value="scheduled">Bulan Posting</option>
               <option value="production">Bulan Produksi</option>
             </select>
           )}

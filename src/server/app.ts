@@ -3652,12 +3652,59 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
 
 app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (req: Request, res: Response) => {
   const user = (req as any).user;
-  const { brandId, objective, customNotes } = req.body;
+  const {
+    brandId,
+    objective,
+    customNotes,
+    goals,
+    platforms,
+    periodMode = 'all',
+    periodMonth,
+    startDate,
+    endDate,
+  } = req.body;
 
   if (!brandId) {
     res.status(400).json({ error: 'Brand ID wajib diisi.' });
     return;
   }
+
+  const goalList: string[] = Array.isArray(goals)
+    ? goals.map((goal: unknown) => String(goal).trim()).filter(Boolean)
+    : [];
+  const objectiveText = goalList.length > 0 ? goalList.join('; ') : String(objective || '').trim();
+  const platformFilter: string[] = Array.isArray(platforms)
+    ? platforms.map((platform: unknown) => String(platform).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const platformSet = new Set(platformFilter);
+
+  // Periode analisis:
+  // - all   : seluruh data
+  // - month : satu bulan kalender (periodMonth = YYYY-MM)
+  // - range : rentang tanggal inklusif (startDate & endDate = YYYY-MM-DD)
+  const monthPattern = /^\d{4}-\d{2}$/;
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const validMonth = typeof periodMonth === 'string' && monthPattern.test(periodMonth);
+  const validStart = typeof startDate === 'string' && datePattern.test(startDate);
+  const validEnd = typeof endDate === 'string' && datePattern.test(endDate);
+
+  let periodStartKey: string | null = null;
+  let periodEndKey: string | null = null;
+  let periodLabel = 'Semua periode';
+
+  if (periodMode === 'month' && validMonth) {
+    const [year, month] = periodMonth.split('-').map(Number);
+    const lastDay = new Date(year, month, 0).getDate();
+    periodStartKey = `${periodMonth}-01`;
+    periodEndKey = `${periodMonth}-${String(lastDay).padStart(2, '0')}`;
+    periodLabel = `Bulan ${periodMonth}`;
+  } else if (periodMode === 'range' && (validStart || validEnd)) {
+    periodStartKey = validStart ? startDate : null;
+    periodEndKey = validEnd ? endDate : null;
+    periodLabel = `${validStart ? startDate : 'awal'} s/d ${validEnd ? endDate : 'sekarang'}`;
+  }
+
+  const hasPeriodFilter = periodStartKey !== null || periodEndKey !== null;
 
   if (!hasGeminiKey) {
     res.status(503).json({ error: 'Layanan AI belum tersedia. Silakan coba lagi nanti.' });
@@ -3674,7 +3721,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
     user.id,
     brandId,
     'strategy_assistant',
-    `Strategi AI: ${objective || 'Engagement'}`
+    `Strategi AI: ${objectiveText || 'Engagement'}`
   );
   if (!quotaRes.allowed) {
     res.status(403).json({ error: quotaRes.error });
@@ -3688,6 +3735,37 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
     let recentMetrics: any[] = [];
     let accountMetrics: any[] = [];
 
+    // Tanggal acuan analitik: jadwal posting (termasuk jam), fallback tanggal dibuat.
+    const postDateOf = (post: any): number | null => {
+      for (const value of [post?.scheduled_at, post?.created_at]) {
+        if (!value) continue;
+        const time = new Date(value).getTime();
+        if (Number.isFinite(time)) return time;
+      }
+      return null;
+    };
+
+    // Kunci tanggal kalender WIB agar filter bulan/rentang tidak bergeser
+    // akibat zona waktu server (produksi biasanya UTC).
+    const jakartaDateFormatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Jakarta',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    });
+    const postDateKeyOf = (post: any): string | null => {
+      for (const value of [post?.scheduled_at, post?.created_at]) {
+        if (!value) continue;
+        const date = new Date(value);
+        if (!Number.isFinite(date.getTime())) continue;
+        const parts = jakartaDateFormatter.formatToParts(date);
+        const pick = (type: string) =>
+          parts.find((part) => part.type === type)?.value || '';
+        return `${pick('year')}-${pick('month')}-${pick('day')}`;
+      }
+      return null;
+    };
+
     if (supabaseAdmin) {
       const { data: bData } = await supabaseAdmin
         .from('brands')
@@ -3696,32 +3774,62 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         .maybeSingle();
       brandInfo = bData;
 
+      // Seluruh postingan brand diambil agar filter platform & periode berlaku
+      // pada basis jadwal posting, bukan hanya 20 postingan terbaru.
       const { data: pData } = await supabaseAdmin
         .from('content_posts')
-        .select('*')
+        .select('id, title, pillar, format, channels, status, scheduled_at, created_at, post_url')
         .eq('brand_id', brandId)
         .order('created_at', { ascending: false })
-        .limit(20);
-      recentPosts = pData || [];
+        .limit(1000);
+      const allPosts = pData || [];
 
-      // Indeks postingan untuk memberi judul pada detail metrik per konten.
-      const { data: allPosts } = await supabaseAdmin
-        .from('content_posts')
-        .select('id, title, pillar, format, channels, status, posted_at, scheduled_at, created_at, post_url')
-        .eq('brand_id', brandId)
-        .order('created_at', { ascending: false })
-        .limit(200);
-      postIndex = allPosts || [];
+      postIndex = allPosts.filter((post) => {
+        if (platformSet.size > 0) {
+          const channels = Array.isArray(post.channels) ? post.channels : [];
+          const matchesPlatform = channels.some((channel: string) =>
+            platformSet.has(String(channel).toLowerCase())
+          );
+          if (!matchesPlatform) return false;
+        }
 
-      const { data: mData } = await supabaseAdmin
+        if (hasPeriodFilter) {
+          const key = postDateKeyOf(post);
+          if (!key) return false;
+          if (periodStartKey !== null && key < periodStartKey) return false;
+          if (periodEndKey !== null && key > periodEndKey) return false;
+        }
+
+        return true;
+      });
+
+      recentPosts = [...postIndex]
+        .sort((a, b) => (postDateOf(b) || 0) - (postDateOf(a) || 0))
+        .slice(0, 20);
+
+      const allowedPostIds = new Set(postIndex.map((post) => post.id));
+
+      let metricsQuery = supabaseAdmin
         .from('content_metrics')
         .select(
           'post_id, channel, impressions, reach, likes, comments, shares, saves, clicks, reposts, profile_visits, follows, content_type, insights_detail, traffic_sources, audience_breakdown, watch_time, drop_off_rate, recorded_at'
         )
         .eq('brand_id', brandId)
         .order('recorded_at', { ascending: false })
-        .limit(200);
-      recentMetrics = mData || [];
+        .limit(2000);
+
+      if (platformSet.size > 0) {
+        metricsQuery = metricsQuery.in('channel', Array.from(platformSet));
+      }
+
+      const { data: mData } = await metricsQuery;
+      recentMetrics = (mData || []).filter((metric) => {
+        // Snapshot hanya dihitung jika postingannya masuk cakupan periode.
+        if (hasPeriodFilter) {
+          return Boolean(metric.post_id) && allowedPostIds.has(metric.post_id);
+        }
+        return true;
+      });
 
       const { data: aData } = await supabaseAdmin
         .from('account_metrics')
@@ -3730,8 +3838,27 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         )
         .eq('brand_id', brandId)
         .order('period_month', { ascending: false })
-        .limit(12);
-      accountMetrics = aData || [];
+        .limit(24);
+
+      accountMetrics = (aData || []).filter((account) => {
+        if (platformSet.size > 0 && !platformSet.has(String(account.channel || '').toLowerCase())) {
+          return false;
+        }
+
+        if (hasPeriodFilter) {
+          const monthValue = String(account.period_month || '').slice(0, 7);
+          if (!monthPattern.test(monthValue)) return false;
+          if (periodMode === 'month') return monthValue === periodMonth;
+
+          const [year, month] = monthValue.split('-').map(Number);
+          const monthStartKey = `${monthValue}-01`;
+          const monthEndKey = `${monthValue}-${String(new Date(year, month, 0).getDate()).padStart(2, '0')}`;
+          if (periodStartKey !== null && monthEndKey < periodStartKey) return false;
+          if (periodEndKey !== null && monthStartKey > periodEndKey) return false;
+        }
+
+        return true;
+      });
     }
 
     // Satu angka per postingan + saluran: snapshot terbaru saja.
@@ -3890,7 +4017,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
           channels: agg.channels,
           channel: agg.channels[0],
           content_type: m.content_type || null,
-          posted_at: post ? post.posted_at || post.scheduled_at || post.created_at || null : null,
+          scheduled_at: post ? post.scheduled_at || post.created_at || null : null,
           recorded_at: m.recorded_at,
           impressions: agg.impressions,
           reach: agg.reach,
@@ -3969,13 +4096,20 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
       industry: brandInfo?.industry || 'Umum',
       description: brandInfo?.description || 'Tidak ada deskripsi',
       social_accounts: brandInfo?.social_accounts || {},
-      total_recorded_posts: recentPosts.length,
+      filter_analisis: {
+        platform: platformFilter.length > 0 ? platformFilter : ['semua platform'],
+        periode: periodLabel,
+        catatan:
+          'Seluruh angka di bawah sudah difilter sesuai platform dan periode ini. Jangan mengasumsikan data di luar cakupan.',
+      },
+      total_posts_in_scope: postIndex.length,
       sample_recent_posts: recentPosts.slice(0, 10).map((p) => ({
         title: p.title,
         pillar: p.pillar,
         format: p.format,
         channels: p.channels,
         status: p.status,
+        scheduled_at: p.scheduled_at || p.created_at || null,
       })),
       dua_sumber_total: {
         catatan:
@@ -3984,7 +4118,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
         tren_akun_bulanan: accountTrend,
         akumulasi_konten: {
           catatan:
-            'Satu angka per postingan + saluran memakai snapshot terbaru. Periode mengikuti tanggal posting, bukan tanggal snapshot.',
+            'Satu angka per postingan + saluran memakai snapshot terbaru. Periode mengikuti JADWAL POSTING (scheduled_at), bukan tanggal snapshot.',
           samples_count: uniqueMetrics.length,
           average_engagement_rate: `${avgER}%`,
           total_sample_impressions: totalImpressions,
@@ -4003,8 +4137,11 @@ DATA HISTORIS BRAND:
 ${JSON.stringify(historicalContext, null, 2)}
 
 FOKUS / TUJUAN STRATEGIS YANG DIMINTA PENGGUNA:
-"${objective || 'Meningkatkan Engagement Rate & Pertumbuhan Akun'}"
+${goalList.length > 0 ? goalList.map((goal, index) => `${index + 1}. ${goal}`).join('\n') : `"${objectiveText || 'Meningkatkan Engagement Rate & Pertumbuhan Akun'}"`}
 Catatan Tambahan Pengguna: "${customNotes || 'Gunakan gaya komunikasi relevan audiens Indonesia'}"
+FILTER ANALISIS YANG DIPAKAI:
+- Platform: ${platformFilter.length > 0 ? platformFilter.join(', ') : 'semua platform'}
+- Periode: ${periodLabel}
 
 PRINSIP WAJIB:
 1. PISAHKAN SECARA TEGAS antara FAKTA HISTORIS DATA (Data-Backed Facts) dan REKOMENDASI STRATEGIS (Actionable AI Recommendations).
@@ -4012,11 +4149,13 @@ PRINSIP WAJIB:
 3. Rencana konten harus konkret untuk kreator/tim pemasaran di Indonesia.
 4. Gunakan "ringkasan_akun_bulanan" sebagai total resmi akun. "akumulasi_konten" hanya untuk membandingkan performa antar postingan dan saluran; JANGAN menjumlahkan keduanya.
 5. Total Engagements = likes + komentar + share + simpan + repost. Kunjungan profil, klik link eksternal, dan follow baru BUKAN bagian dari engagement.
-6. Basis waktu laporan adalah TANGGAL POSTING (posted_at, lalu scheduled_at, lalu created_at), bukan tanggal snapshot (recorded_at). Gunakan "posted_at" pada detail per postingan untuk menyebut kapan konten tayang. Jangan menyimpulkan tren berdasarkan tanggal snapshot.
+6. Basis waktu laporan adalah JADWAL POSTING (scheduled_at, lalu created_at), bukan tanggal posting aktual dan bukan tanggal snapshot (recorded_at). Gunakan "scheduled_at" pada detail per postingan untuk menyebut kapan konten dijadwalkan tayang, termasuk JAM-nya. Jangan menyimpulkan tren berdasarkan tanggal snapshot.
 7. Angka pada "akumulasi_konten" dan "detail_per_postingan" sudah memakai snapshot terbaru per postingan + saluran. Jangan menjumlahkan ulang snapshot berulang atau menganggapnya sebagai pertumbuhan periode.
 8. Manfaatkan "detail_per_postingan": sumber tayangan enam kategori (cerita, profil, beranda/feed, tab reels, jelajahi/explore, lainnya), faktor tayangan berurutan (jumlah lewati, bagikan, suka, simpan, repost, komentar), demografi pemirsa (usia, negara, jenis kelamin), serta deret grafik. Jelaskan sebab performa berdasarkan data ini, bukan asumsi umum.
 9. Jika "series.approximate" bernilai true atau data grafik kosong, sebut sebagai perkiraan/tidak tersedia. JANGAN mengarang angka yang tidak ada di data.
-10. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
+10. Seluruh data sudah difilter sesuai platform dan periode pada "filter_analisis". Jangan mencampurkan data platform/periode lain, dan sebutkan cakupan analisis secara eksplisit di ringkasan.
+11. Jika data pada cakupan filter kosong atau terlalu sedikit, katakan terus terang bahwa bukti belum cukup. Jangan memaksakan tren.
+12. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
 
 {
   "brand_overview": "Analisis singkat posisi brand saat ini berdasarkan data",

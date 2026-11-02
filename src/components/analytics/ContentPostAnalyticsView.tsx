@@ -72,7 +72,7 @@ function currentMonthValue(): string {
 }
 
 function getPostDate(post: ContentPost): string | null {
-  return post.posted_at || post.scheduled_at || post.created_at || null;
+  return post.scheduled_at || post.created_at || null;
 }
 
 function getPostTimestamp(post: ContentPost): number {
@@ -537,7 +537,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                   <th className="px-4 py-3">Konten</th>
-                  <th className="px-4 py-3">Tanggal Posting</th>
+                  <th className="px-4 py-3">Jadwal Posting</th>
                   <th className="px-4 py-3">Channel</th>
                   <th className="px-4 py-3 text-right">Impressions</th>
                   <th className="px-4 py-3 text-right">Reach</th>

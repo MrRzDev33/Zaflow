@@ -17,6 +17,7 @@ import {
 } from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost } from '../../types/database.ts';
 import { aiClientService, StrategyResultData, ContentActionPlanItem } from '../../services/ai/aiClientService.ts';
+import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
 
 interface AiStrategyAssistantViewProps {
   brand: Brand | null;
@@ -26,6 +27,21 @@ interface AiStrategyAssistantViewProps {
   onSelectActionPlanItem: (item: ContentActionPlanItem) => void;
 }
 
+const DEFAULT_OBJECTIVES = [
+  'Tingkatkan Engagement Rate & Diskusi Komentar',
+  'Perbanyak Saves / Bookmark (Konten Edukatif & Evergreen)',
+  'Perluas Reach Organik & Jangkauan Audiens Baru',
+  'Optimasi Frekuensi & Format Konten (Carousel vs Reels)',
+  'Konversi Penjualan & Promosi Halus (Soft Selling)',
+];
+
+type PeriodMode = 'all' | 'month' | 'range';
+
+function currentMonthValue(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = ({
   brand,
   posts,
@@ -33,24 +49,80 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
   onRefreshLicense,
   onSelectActionPlanItem,
 }) => {
-  const [objective, setObjective] = useState('Tingkatkan Engagement Rate & Diskusi Komentar');
+  const [selectedGoals, setSelectedGoals] = useState<string[]>([DEFAULT_OBJECTIVES[0]]);
+  const [goalOptions, setGoalOptions] = useState<string[]>(DEFAULT_OBJECTIVES);
+  const [customGoalInput, setCustomGoalInput] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [periodMode, setPeriodMode] = useState<PeriodMode>('all');
+  const [periodMonth, setPeriodMonth] = useState(currentMonthValue());
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [customNotes, setCustomNotes] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [strategyResult, setStrategyResult] = useState<StrategyResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
 
-  const objectiveOptions = [
-    'Tingkatkan Engagement Rate & Diskusi Komentar',
-    'Perbanyak Saves / Bookmark (Konten Edukatif & Evergreen)',
-    'Perluas Reach Organik & Jangkauan Audiens Baru',
-    'Optimasi Frekuensi & Format Konten (Carousel vs Reels)',
-    'Konversi Penjualan & Promosi Halus (Soft Selling)',
-  ];
+  const brandPlatforms = getBrandPlatforms(brand);
+  const effectivePlatforms = selectedPlatforms.length > 0 ? selectedPlatforms : brandPlatforms;
+
+  const toggleGoal = (goal: string) => {
+    setSelectedGoals((prev) =>
+      prev.includes(goal) ? prev.filter((item) => item !== goal) : [...prev, goal]
+    );
+  };
+
+  const addCustomGoal = () => {
+    const value = customGoalInput.trim();
+    if (!value) return;
+
+    setGoalOptions((prev) => (prev.includes(value) ? prev : [...prev, value]));
+    setSelectedGoals((prev) => (prev.includes(value) ? prev : [...prev, value]));
+    setCustomGoalInput('');
+  };
+
+  const togglePlatform = (platform: string) => {
+    setSelectedPlatforms((prev) =>
+      prev.includes(platform) ? prev.filter((item) => item !== platform) : [...prev, platform]
+    );
+  };
 
   const handleGenerate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!brand) return;
+
+    const pendingGoal = customGoalInput.trim();
+    const goalsForRequest =
+      pendingGoal && !selectedGoals.includes(pendingGoal)
+        ? [...selectedGoals, pendingGoal]
+        : selectedGoals;
+
+    if (goalsForRequest.length === 0) {
+      setError('Pilih minimal satu fokus sasaran strategi, atau tambahkan sasaran sendiri.');
+      return;
+    }
+
+    if (pendingGoal) {
+      setGoalOptions((prev) => (prev.includes(pendingGoal) ? prev : [...prev, pendingGoal]));
+      setSelectedGoals(goalsForRequest);
+      setCustomGoalInput('');
+    }
+
+    if (periodMode === 'month' && !periodMonth) {
+      setError('Pilih bulan analisis terlebih dahulu.');
+      return;
+    }
+
+    if (periodMode === 'range') {
+      if (!startDate || !endDate) {
+        setError('Lengkapi tanggal awal dan tanggal akhir untuk periode rentang.');
+        return;
+      }
+      if (startDate > endDate) {
+        setError('Tanggal awal tidak boleh melewati tanggal akhir.');
+        return;
+      }
+    }
 
     if (aiCreditsRemaining <= 0) {
       setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Paket & Kuota.');
@@ -64,8 +136,16 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
     try {
       const response = await aiClientService.generateStrategyAdvice(
         brand.id,
-        objective,
-        customNotes.trim() || undefined
+        goalsForRequest.join('; '),
+        customNotes.trim() || undefined,
+        {
+          goals: goalsForRequest,
+          platforms: effectivePlatforms,
+          periodMode,
+          periodMonth: periodMode === 'month' ? periodMonth : undefined,
+          startDate: periodMode === 'range' ? startDate : undefined,
+          endDate: periodMode === 'range' ? endDate : undefined,
+        }
       );
 
       setStrategyResult(response.strategy);
@@ -156,20 +236,169 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
             <h2 className="text-sm font-bold text-slate-900">Konfigurasi Tujuan Analisis</h2>
 
             <div>
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Fokus Sasaran Strategi *
+                </label>
+                <span className="text-[10px] text-slate-400">
+                  {selectedGoals.length} dipilih
+                </span>
+              </div>
+              <p className="mb-2 text-[10px] leading-relaxed text-slate-500">
+                Pilih satu atau beberapa sasaran. Anda juga bisa menambahkan sasaran sendiri.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                {goalOptions.map((goal) => {
+                  const active = selectedGoals.includes(goal);
+                  return (
+                    <button
+                      key={goal}
+                      type="button"
+                      onClick={() => toggleGoal(goal)}
+                      aria-pressed={active}
+                      className={`rounded-lg border px-2 py-1 text-left text-[11px] transition ${
+                        active
+                          ? 'border-blue-300 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-blue-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {active ? '✓ ' : ''}
+                      {goal}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-2 flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={customGoalInput}
+                  onChange={(e) => setCustomGoalInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      addCustomGoal();
+                    }
+                  }}
+                  placeholder="Tambah sasaran sendiri, mis. naikkan CTR link bio"
+                  className="min-w-0 flex-1 rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={addCustomGoal}
+                  disabled={!customGoalInput.trim()}
+                  className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-[11px] font-semibold text-blue-700 transition hover:bg-blue-100 disabled:opacity-40"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Tambah
+                </button>
+              </div>
+            </div>
+
+            <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Fokus Sasaran Strategi *
+                Platform yang Dianalisis
               </label>
-              <select
-                value={objective}
-                onChange={(e) => setObjective(e.target.value)}
-                className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 bg-white"
-              >
-                {objectiveOptions.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
+              <p className="mb-2 text-[10px] leading-relaxed text-slate-500">
+                Kosongkan pilihan untuk menganalisis semua platform yang terhubung ke brand.
+              </p>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlatforms([])}
+                  className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+                    selectedPlatforms.length === 0
+                      ? 'border-blue-300 bg-blue-50 text-blue-700'
+                      : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  Semua Platform
+                </button>
+                {brandPlatforms.map((platform) => {
+                  const active = selectedPlatforms.includes(platform);
+                  return (
+                    <button
+                      key={platform}
+                      type="button"
+                      onClick={() => togglePlatform(platform)}
+                      aria-pressed={active}
+                      className={`rounded-lg border px-2.5 py-1 text-[11px] font-medium transition ${
+                        active
+                          ? 'border-blue-300 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                      }`}
+                    >
+                      {getPlatformName(platform)}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[10px] text-slate-400">
+                Cakupan: {effectivePlatforms.map((platform) => getPlatformName(platform)).join(', ')}
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">
+                Periode Analisis
+              </label>
+              <div className="grid grid-cols-3 gap-1.5">
+                {([
+                  ['all', 'Semua'],
+                  ['month', 'Bulan'],
+                  ['range', 'Rentang'],
+                ] as Array<[PeriodMode, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setPeriodMode(mode)}
+                    aria-pressed={periodMode === mode}
+                    className={`rounded-lg border px-2 py-1.5 text-[11px] font-semibold transition ${
+                      periodMode === mode
+                        ? 'border-blue-300 bg-blue-50 text-blue-700'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {label}
+                  </button>
                 ))}
-              </select>
+              </div>
+
+              {periodMode === 'month' && (
+                <input
+                  type="month"
+                  value={periodMonth}
+                  onChange={(e) => setPeriodMonth(e.target.value)}
+                  className="mt-2 w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              )}
+
+              {periodMode === 'range' && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="mb-0.5 block text-[10px] text-slate-500">Dari tanggal</span>
+                    <input
+                      type="date"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <span className="mb-0.5 block text-[10px] text-slate-500">Sampai tanggal</span>
+                    <input
+                      type="date"
+                      value={endDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-[11px] focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+                Analisis mengikuti jadwal posting (tanggal & jam), bukan tanggal snapshot metrik.
+              </p>
             </div>
 
             <div>

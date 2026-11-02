@@ -153,7 +153,7 @@ export interface TopPostItem {
   /** Snapshot terbaru per saluran untuk postingan ini. */
   metrics: ContentMetric[];
   channels: string[];
-  postedAt: string | null;
+  scheduledAt: string | null;
   impressions: number;
   reach: number;
   saves: number;
@@ -882,7 +882,7 @@ export const metricsService = {
           post,
           metrics: [m],
           channels: [m.channel],
-          postedAt: resolvePostDate(post)?.toISOString() || null,
+          scheduledAt: resolvePostDate(post)?.toISOString() || null,
           impressions: m.impressions || 0,
           reach: m.reach || 0,
           saves: m.saves || 0,

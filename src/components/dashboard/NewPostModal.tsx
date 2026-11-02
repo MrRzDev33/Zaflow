@@ -189,8 +189,8 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
               <PlusCircle className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Rencanakan Konten Baru</h2>
-              <p className="text-xs text-slate-500">Catat ide, jadwal produksi, draf caption, atau tanggal tayang</p>
+              <h2 className="text-base font-bold text-slate-900">Jadwalkan Konten Baru</h2>
+              <p className="text-xs text-slate-500">Catat ide, tanggal produksi, draf caption, dan jadwal posting</p>
             </div>
           </div>
           <button
@@ -430,7 +430,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
             </select>
           </div>
 
-          {/* Jadwal Produksi & Jadwal Tayang */}
+          {/* Tanggal Produksi & Jadwal Posting */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200/80 rounded-xl">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
@@ -449,7 +449,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center gap-1.5">
                 <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                <span>Rencana Tanggal Tayang</span>
+                <span>Jadwal Posting</span>
               </label>
               <input
                 type="datetime-local"
@@ -457,7 +457,9 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
                 onChange={(e) => setScheduledAt(e.target.value)}
                 className="w-full px-3 py-1.5 text-xs border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-600 bg-white"
               />
-              <span className="text-[10px] text-slate-400 mt-0.5 block">Jadwal publikasi postingan</span>
+              <span className="text-[10px] text-slate-400 mt-0.5 block">
+                Tanggal & jam posting, dibaca AI untuk analisis tren
+              </span>
             </div>
           </div>
 

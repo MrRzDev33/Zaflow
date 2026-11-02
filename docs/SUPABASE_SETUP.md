@@ -28,6 +28,7 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 10 | `src/services/database/migrations/20261025_01_six_month_plans.sql` | Paket 6 bulan (180 hari), kuota total 6 bulan, kode aktivasi wajib email pembeli, data pembeli pada `activation_codes`, dan harga baru tanpa promo |
 | 11 | `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql` | Metrik tindakan pengguna, jenis konten, detail insight per postingan, dan tabel `account_metrics` untuk ringkasan akun bulanan |
 | 12 | `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql` | Menghapus permanen snapshot umum (`post_id IS NULL`), menjadikan `post_id` wajib, dan menambah index snapshot terbaru per postingan + saluran |
+| 13 | `src/services/database/migrations/20261102_01_drop_posted_at.sql` | Menghapus kolom `posted_at` dan index terkait; analitik memakai jadwal posting (`scheduled_at`) sebagai acuan waktu |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
@@ -37,7 +38,9 @@ Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaks
 
 > **Wajib:** migrasi 12 harus dijalankan **sebelum** memakai versi aplikasi ini. Migrasi ini **menghapus permanen** semua snapshot tanpa postingan (`post_id IS NULL`) di seluruh brand, lalu menjadikan `content_metrics.post_id` wajib. Tanpa migrasi ini, penyimpanan snapshot tanpa postingan masih bisa lolos dan laporan bisa salah hitung.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 12 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Wajib:** migrasi 13 harus dijalankan **sebelum** memakai versi aplikasi ini. Migrasi ini menghapus kolom `posted_at` yang sudah tidak dipakai. Setelah migrasi, satu-satunya acuan waktu konten adalah **Jadwal Posting** (`scheduled_at`, termasuk jam) dengan fallback `created_at`.
+
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 13 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -84,11 +87,11 @@ SELECT tgname FROM pg_trigger
 WHERE tgrelid = 'auth.users'::regclass
   AND tgname = 'on_auth_user_created';
 
--- Kolom brief, link posting, dan tanggal posting aktual
+-- Kolom brief, link posting, dan jadwal posting
 SELECT column_name FROM information_schema.columns
 WHERE table_schema = 'public'
   AND table_name = 'content_posts'
-  AND column_name IN ('brief', 'post_url', 'posted_at');
+  AND column_name IN ('brief', 'post_url', 'scheduled_at', 'production_date');
 
 -- Kolom langganan dan status akun
 SELECT table_name, column_name FROM information_schema.columns
@@ -272,9 +275,9 @@ Sejak migrasi 12, setiap snapshot **wajib** terhubung ke satu postingan (`post_i
 
 Aturan periode dan agregasi:
 
-- **Tanggal acuan laporan** adalah tanggal posting: `posted_at`, lalu `scheduled_at`, lalu `created_at`. Tanggal snapshot (`recorded_at`) hanya dipakai untuk memilih snapshot terbaru dan menampilkan riwayat.
+- **Tanggal acuan laporan** adalah **Jadwal Posting**: `scheduled_at` (tanggal + jam), lalu `created_at` untuk konten lama yang belum dijadwalkan. Tanggal snapshot (`recorded_at`) hanya dipakai untuk memilih snapshot terbaru dan menampilkan riwayat.
 - **Satu angka per postingan + saluran**: jika satu postingan punya beberapa snapshot, laporan memakai snapshot **terbaru** untuk kombinasi tersebut. Snapshot berulang tidak dijumlahkan.
-- Filter 7/30/90 hari dan rentang kustom menyaring **postingan yang tanggal posting-nya** berada di rentang tersebut. Postingan tanpa tanggal valid tidak masuk periode mana pun.
+- Filter 7/30/90 hari dan rentang kustom menyaring **postingan yang jadwal posting-nya** berada di rentang tersebut. Postingan tanpa tanggal valid tidak masuk periode mana pun.
 
 Rumus dan aturan:
 
@@ -294,7 +297,7 @@ Rumus dan aturan:
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 12. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 13. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -336,7 +339,8 @@ Rumus dan aturan:
 | Form Catat Snapshot atau AI Extractor menolak menyimpan karena postingan kosong | Versi aplikasi baru mewajibkan setiap snapshot terhubung ke satu postingan | Pilih bulan lalu pilih postingan pada pemilih postingan. Snapshot umum memang tidak lagi diizinkan |
 | `null value in column "post_id" ... violates not-null constraint` | Migrasi 12 belum dijalankan, atau ada klien lama yang masih mengirim snapshot tanpa postingan | Jalankan `20261101_01_require_post_on_content_metrics.sql`, lalu muat ulang aplikasi versi terbaru |
 | Snapshot umum lama masih muncul di laporan | Migrasi 12 belum dijalankan | Jalankan `20261101_01_require_post_on_content_metrics.sql`. Migrasi ini menghapus permanen snapshot `post_id IS NULL` untuk semua brand |
-| Filter 7/30/90 hari terasa tidak berubah | Versi lama memfilter berdasarkan `recorded_at` snapshot, bukan tanggal posting | Perbarui aplikasi ke versi terbaru. Tren dan filter sekarang memakai tanggal posting (`posted_at` → `scheduled_at` → `created_at`) dan snapshot terbaru per postingan + saluran |
+| Filter 7/30/90 hari terasa tidak berubah | Versi lama memfilter berdasarkan `recorded_at` snapshot, bukan jadwal posting | Perbarui aplikasi ke versi terbaru. Tren dan filter sekarang memakai **Jadwal Posting** (`scheduled_at` → `created_at`) dan snapshot terbaru per postingan + saluran |
+| `column content_posts.posted_at does not exist` setelah migrasi 13 | Masih ada klien lama yang meminta `posted_at` | Muat ulang aplikasi versi terbaru. Kolom tersebut sudah dihapus dan tidak dipakai lagi |
 
 ## 10. Catatan Keamanan
 
