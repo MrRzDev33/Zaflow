@@ -11,7 +11,7 @@ import {
   ShoppingBag,
   Ticket,
   Zap,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { supabase, isConfigured } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { accessService, type AccessStatus } from '../../services/access/accessService.ts';

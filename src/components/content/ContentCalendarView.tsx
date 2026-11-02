@@ -8,7 +8,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Filter,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost } from '../../types/database.ts';
 import { contentService } from '../../services/database/contentService.ts';
 import { EditPostModal } from './EditPostModal.tsx';

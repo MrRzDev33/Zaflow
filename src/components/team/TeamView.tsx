@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, UserPlus, Shield, Mail, Trash2, CheckCircle, AlertCircle, RefreshCw, Copy, Check, Clock, Link as LinkIcon } from 'lucide-react';
+import { Users, UserPlus, Shield, Mail, Trash2, CheckCircle, AlertCircle, RefreshCw, Copy, Check, Clock, Link as LinkIcon } from '../common/icons/lucide-compat.tsx';
 import { Brand, BrandMember } from '../../types/database.ts';
 import { teamService, BrandInvitation } from '../../services/database/teamService.ts';
 

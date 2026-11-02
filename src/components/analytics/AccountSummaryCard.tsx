@@ -10,7 +10,7 @@ import {
   Plus,
   Info,
   MousePointerClick,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import type { AccountSummary } from '../../services/database/metricsService.ts';
 import { TrafficSourceBars } from './insights/TrafficSourceBars.tsx';
 import { formatCount, formatPercent } from '../../utils/number.ts';

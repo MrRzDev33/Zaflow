@@ -11,7 +11,7 @@ import {
   Trash2,
   Edit,
   Sliders,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost, ContentStatus, WorkflowStatusConfig } from '../../types/database.ts';
 import { contentService } from '../../services/database/contentService.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';

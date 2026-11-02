@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Image as ImageIcon, Loader2 } from '../common/icons/lucide-compat.tsx';
 import { mediaService } from '../../services/storage/mediaService.ts';
 
 interface ContentThumbnailProps {

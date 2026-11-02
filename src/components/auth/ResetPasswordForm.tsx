@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, CheckCircle2, Loader2, LockKeyhole } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, LockKeyhole } from '../common/icons/lucide-compat.tsx';
 import { authService } from '../../services/auth/authService.ts';
 
 interface ResetPasswordFormProps {

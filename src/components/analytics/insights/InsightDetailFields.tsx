@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Trash2, Info } from 'lucide-react';
+import { Plus, Trash2, Info } from '../../common/icons/lucide-compat.tsx';
 import type { ContentInsightsDetail } from '../../../types/database.ts';
 import {
   AGE_RANGES,

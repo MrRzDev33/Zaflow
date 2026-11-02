@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { HelpCircle, ChevronDown, ChevronUp, Calculator, ShieldCheck } from 'lucide-react';
+import { HelpCircle, ChevronDown, ChevronUp, Calculator, ShieldCheck } from '../common/icons/lucide-compat.tsx';
 
 export const FormulaExplanationCard: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);

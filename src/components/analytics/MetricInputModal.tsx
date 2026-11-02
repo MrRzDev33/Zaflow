@@ -8,7 +8,7 @@ import {
   AlertCircle,
   Video,
   MousePointerClick,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import {
   ContentInsightsDetail,
   ContentMetric,

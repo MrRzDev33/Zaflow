@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, PlusCircle, Loader2, Calendar, Video, ImagePlus, Link2, Trash2, FileText } from 'lucide-react';
+import { X, PlusCircle, Loader2, Calendar, Video, ImagePlus, Link2, Trash2, FileText } from '../common/icons/lucide-compat.tsx';
 import { CreatePostInput } from '../../services/database/contentService.ts';
 import { ContentFormat, ContentStatus, Brand, WorkflowStatusConfig } from '../../types/database.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';

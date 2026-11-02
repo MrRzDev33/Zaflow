@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MessageCircle } from 'lucide-react';
+import { MessageCircle } from './icons/lucide-compat.tsx';
 import { accessService, type PublicCustomerServiceInfo } from '../../services/access/accessService.ts';
 
 interface SupportContactProps {

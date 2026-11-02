@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Layers, Calendar, BarChart3, Users, Info } from 'lucide-react';
+import { Layers, Calendar, BarChart3, Users, Info } from '../common/icons/lucide-compat.tsx';
 import { LoginForm } from './LoginForm.tsx';
 import { RegisterForm } from './RegisterForm.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';

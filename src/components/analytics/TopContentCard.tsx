@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Award, Bookmark, CalendarDays, ExternalLink, Share2 } from 'lucide-react';
+import { Award, Bookmark, CalendarDays, ExternalLink, Share2 } from '../common/icons/lucide-compat.tsx';
 import { TopPostItem } from '../../services/database/metricsService.ts';
 import { FormatBadge } from '../common/Badges.tsx';
 import { formatCount, formatPercent } from '../../utils/number.ts';

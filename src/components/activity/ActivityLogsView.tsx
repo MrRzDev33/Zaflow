@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { History, Search, Filter, RefreshCw } from 'lucide-react';
+import { History, Search, Filter, RefreshCw } from '../common/icons/lucide-compat.tsx';
 import { Brand, ActivityLog } from '../../types/database.ts';
 import { activityService } from '../../services/database/activityService.ts';
 import { Pagination } from '../common/Pagination.tsx';

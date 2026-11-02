@@ -17,7 +17,7 @@ import {
   Calendar,
   BarChart2,
   UserPlus,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { metricFormulas } from '../../services/database/metricsService.ts';
 import { buildTrafficSourceItems } from '../../config/insights.ts';

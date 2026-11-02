@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Trash2, Loader2, Building2, AlertCircle, Check } from 'lucide-react';
+import { X, Save, Trash2, Loader2, Building2, AlertCircle, Check } from '../common/icons/lucide-compat.tsx';
 import { Brand } from '../../types/database.ts';
 import { brandsService, UpdateBrandInput } from '../../services/database/brandsService.ts';
 import {

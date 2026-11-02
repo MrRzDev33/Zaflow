@@ -9,7 +9,7 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { PeriodComparison } from '../../services/database/metricsService.ts';
 
 interface PerformanceComparisonCardsProps {

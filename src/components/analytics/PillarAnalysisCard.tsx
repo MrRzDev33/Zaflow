@@ -1,5 +1,5 @@
 import React from 'react';
-import { PieChart } from 'lucide-react';
+import { PieChart } from '../common/icons/lucide-compat.tsx';
 import { PillarPerformance } from '../../services/database/metricsService.ts';
 
 interface PillarAnalysisCardProps {

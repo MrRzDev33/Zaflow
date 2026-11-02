@@ -8,7 +8,7 @@ import {
   MousePointerClick,
   UserPlus,
   FileStack,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import type { ContentAggregateSummary } from '../../services/database/metricsService.ts';
 import { TrafficSourceBars } from './insights/TrafficSourceBars.tsx';
 import { formatCount, formatPercent } from '../../utils/number.ts';

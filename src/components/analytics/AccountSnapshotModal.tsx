@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X, Save, Loader2, UserRound, AlertCircle, CalendarRange } from 'lucide-react';
+import { X, Save, Loader2, UserRound, AlertCircle, CalendarRange } from '../common/icons/lucide-compat.tsx';
 import { AccountMetric, TrafficSourceBreakdown } from '../../types/database.ts';
 import { metricsService, metricFormulas } from '../../services/database/metricsService.ts';
 import { getPlatformName } from '../../config/platforms.ts';

@@ -12,7 +12,7 @@ import {
   Trash2,
   RefreshCw,
   Sparkles,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { brandsService } from '../../services/database/brandsService.ts';
 import { contentService } from '../../services/database/contentService.ts';
 import { Brand } from '../../types/database.ts';

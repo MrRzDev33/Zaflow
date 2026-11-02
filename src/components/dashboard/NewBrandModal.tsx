@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2 } from '../common/icons/lucide-compat.tsx';
 import {
   IconBuilding,
   IconCheck,

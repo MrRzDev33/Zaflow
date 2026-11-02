@@ -13,7 +13,7 @@ import {
   Ticket,
   Users,
   Zap,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { useAppBranding } from '../../hooks/useAppBranding.ts';
 import { accessService, type AccessStatus } from '../../services/access/accessService.ts';
 import { getApiErrorMessage } from '../../services/http/apiClient.ts';

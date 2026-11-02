@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { History, Eye, Edit, Trash2 } from 'lucide-react';
+import { History, Eye, Edit, Trash2 } from '../common/icons/lucide-compat.tsx';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { MetricDetailModal } from './MetricDetailModal.tsx';
 import { Pagination } from '../common/Pagination.tsx';

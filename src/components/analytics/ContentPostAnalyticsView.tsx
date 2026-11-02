@@ -18,7 +18,7 @@ import {
   Users,
   BarChart2,
   AlertCircle,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentMetric, ContentPost } from '../../types/database.ts';
 import { isPublishedStatus } from '../../services/database/contentService.ts';
 import { metricsService, metricFormulas } from '../../services/database/metricsService.ts';

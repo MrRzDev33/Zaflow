@@ -22,7 +22,7 @@ import {
   UserCog,
   Users,
   X,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { supabase } from '../../config/supabase.ts';
 import { apiFetchJson, getApiErrorMessage } from '../../services/http/apiClient.ts';
 import { PLAN_DURATION_DAYS, PURCHASABLE_PLANS, formatIDR } from '../../config/plans.ts';

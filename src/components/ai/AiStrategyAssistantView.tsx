@@ -14,7 +14,7 @@ import {
   BookmarkCheck,
   Calendar,
   Layers,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost } from '../../types/database.ts';
 import { aiClientService, StrategyResultData, ContentActionPlanItem } from '../../services/ai/aiClientService.ts';
 

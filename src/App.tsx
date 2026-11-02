@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Loader2, Sparkles, BarChart3, ScanEye, BrainCircuit, Users, History, Key, ShieldAlert } from 'lucide-react';
+import { Loader2, Sparkles, BarChart3, ScanEye, BrainCircuit, Users, History, Key, ShieldAlert } from './components/common/icons/lucide-compat.tsx';
 import { useAuth } from './hooks/useAuth.ts';
 import { useBrands } from './hooks/useBrands.ts';
 import { useLicense } from './hooks/useLicense.ts';

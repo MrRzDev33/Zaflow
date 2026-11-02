@@ -12,7 +12,7 @@ import {
   FileSpreadsheet,
   FileText,
   ChevronDown,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import * as XLSX from 'xlsx';
 import { Brand, ContentPost, ContentMetric } from '../../types/database.ts';
 import { metricsService, AnalyticsReportData } from '../../services/database/metricsService.ts';

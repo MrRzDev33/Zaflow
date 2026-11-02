@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { TrendingUp, Calendar } from 'lucide-react';
+import { TrendingUp, Calendar } from '../common/icons/lucide-compat.tsx';
 import { DailyTrendPoint } from '../../services/database/metricsService.ts';
 
 interface TrendChartProps {

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { CheckCircle2, ImagePlus, Link2, RotateCcw, Upload } from 'lucide-react';
+import { CheckCircle2, ImagePlus, Link2, RotateCcw, Upload } from '../common/icons/lucide-compat.tsx';
 import { useAppBranding } from '../../hooks/useAppBranding.ts';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 

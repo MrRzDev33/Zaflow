@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogIn, Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { LogIn, Loader2, AlertCircle, Eye, EyeOff } from '../common/icons/lucide-compat.tsx';
 import { authService } from '../../services/auth/authService.ts';
 import { SupportContact } from '../common/SupportContact.tsx';
 

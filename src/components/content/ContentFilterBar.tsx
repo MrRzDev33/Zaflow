@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, Filter, X, RotateCcw } from 'lucide-react';
+import { Search, Filter, X, RotateCcw } from '../common/icons/lucide-compat.tsx';
 import { ContentFormat, ContentStatus } from '../../types/database.ts';
 import { getPlatformName } from '../../config/platforms.ts';
 

@@ -24,7 +24,7 @@ import {
   Users,
   Wallet,
   Zap,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import {
   PURCHASABLE_PLANS,
   PLAN_DURATION_DAYS,

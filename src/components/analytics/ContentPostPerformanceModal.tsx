@@ -23,7 +23,7 @@ import {
   Activity,
   PlayCircle,
   ChevronDown,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { ContentMetric, ContentPost } from '../../types/database.ts';
 import { metricFormulas } from '../../services/database/metricsService.ts';
 import { ContentThumbnail } from '../content/ContentThumbnail.tsx';

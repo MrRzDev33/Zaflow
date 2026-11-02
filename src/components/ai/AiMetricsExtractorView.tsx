@@ -12,7 +12,7 @@ import {
   Zap,
   UserRound,
   FileBarChart2,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import {
   Brand,
   ContentInsightsDetail,

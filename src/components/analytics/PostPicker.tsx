@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { CalendarDays, Check, ChevronDown, Search } from 'lucide-react';
+import { CalendarDays, Check, ChevronDown, Search } from '../common/icons/lucide-compat.tsx';
 import type { ContentPost } from '../../types/database.ts';
 import {
   currentMonthKey,

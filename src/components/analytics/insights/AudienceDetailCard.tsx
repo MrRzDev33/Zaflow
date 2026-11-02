@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, MapPin } from 'lucide-react';
+import { Users, MapPin } from '../../common/icons/lucide-compat.tsx';
 import type { AudienceDetails } from '../../../types/database.ts';
 import { formatPercent } from '../../../utils/number.ts';
 

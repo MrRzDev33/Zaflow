@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle } from './icons/lucide-compat.tsx';
 import { isConfigured } from '../../config/supabase.ts';
 
 /**

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3 } from '../../common/icons/lucide-compat.tsx';
 import type { TrafficSourceItem } from '../../../config/insights.ts';
 import { formatPercent } from '../../../utils/number.ts';
 

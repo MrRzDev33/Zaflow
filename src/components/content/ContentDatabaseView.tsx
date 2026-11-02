@@ -19,7 +19,7 @@ import {
   ChevronRight,
   ExternalLink,
   Link2,
-} from 'lucide-react';
+} from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost, WorkflowStatusConfig } from '../../types/database.ts';
 import { contentService, isPublishedStatus } from '../../services/database/contentService.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';

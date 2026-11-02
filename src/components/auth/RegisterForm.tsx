@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { UserPlus, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from 'lucide-react';
+import { UserPlus, Loader2, AlertCircle, CheckCircle2, Eye, EyeOff } from '../common/icons/lucide-compat.tsx';
 import { authService } from '../../services/auth/authService.ts';
 
 interface RegisterFormProps {
