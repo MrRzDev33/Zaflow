@@ -47,9 +47,9 @@ app.use((req, _res, next) => {
 });
 
 // Simpan raw body untuk verifikasi webhook generik, tanpa mengganggu parser JSON.
-// 4.5mb disesuaikan dengan batas request body Vercel Functions.
+// 8mb agar file AI maksimal 5 MB (base64 membesar ~33%) masih muat di body JSON.
 app.use(express.json({
-  limit: '4.5mb',
+  limit: '8mb',
   verify: (req, _res, buf) => {
     (req as any).rawBody = buf;
   },
@@ -3424,9 +3424,9 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
   }
 
   const estimatedBytes = Buffer.byteLength(base64Data, 'base64');
-  if (estimatedBytes > 3 * 1024 * 1024) {
+  if (estimatedBytes > 5 * 1024 * 1024) {
     res.status(413).json({
-      error: 'Ukuran file terlalu besar. Maksimal 3 MB. Kompres file sebelum mengunggah.',
+      error: 'Ukuran file terlalu besar. Maksimal 5 MB. Kompres file sebelum mengunggah.',
     });
     return;
   }

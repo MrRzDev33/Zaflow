@@ -255,7 +255,7 @@ Langkah deploy:
 
 Catatan Vercel:
 
-- Request body Vercel Functions dibatasi **4.5 MB**. Karena itu upload AI dibatasi 3 MB (base64 ~4 MB).
+- Request body Vercel Functions dibatasi **4.5 MB**. Di server Node/VPS, upload AI menerima file hingga **5 MB** dan gambar yang lebih besar dikompres otomatis di browser. Pada Vercel, file mendekati 5 MB masih dapat ditolak platform karena base64 membesar ~33%; gunakan kompresi lebih kecil atau deploy Node/VPS.
 - Durasi fungsi di `vercel.json` diset 60 detik. `GEMINI_TIMEOUT_MS` otomatis dibatasi 55 detik di Vercel agar tidak kena 504.
 - Rate limiter bersifat per-instance di serverless. Untuk perlindungan global, gunakan Vercel WAF/Upstash Redis.
 - Jangan mengandalkan `express.static()` di Vercel; aset frontend disajikan oleh Vercel dari folder `dist`.

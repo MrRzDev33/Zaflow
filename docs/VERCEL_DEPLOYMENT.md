@@ -178,7 +178,7 @@ Panduan key Midtrans: `docs/MIDTRANS_SETUP.md`.
 
 | Batasan | Dampak | Penanganan di ZaFlow |
 |---|---|---|
-| Request body 4.5 MB | Upload AI gagal jika terlalu besar | Upload dibatasi 3 MB (base64 ~4 MB) |
+| Request body 4.5 MB | Upload AI gagal jika terlalu besar | Server Node menerima file hingga 5 MB; gambar >5 MB dikompres otomatis. Di Vercel, file mendekati 5 MB masih bisa ditolak platform (base64 ~6,7 MB), jadi gunakan file lebih kecil atau deploy Node/VPS. |
 | Durasi function | AI bisa 504 | `maxDuration: 60`, timeout Gemini otomatis dibatasi 55 detik di Vercel |
 | Rate limit per instance | Tidak global | Gunakan Vercel WAF/Upstash untuk produksi serius |
 | `express.static()` tidak melayani aset | Frontend harus statis | Vercel menyajikan `dist` |
@@ -199,7 +199,7 @@ Untuk AI berdurasi lebih lama, gunakan Vercel Pro lalu naikkan `maxDuration` di 
 | `supabaseConfigured: false` | Env salah nama / belum redeploy | Isi `VITE_SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY`, redeploy tanpa cache |
 | `MIDTRANS belum dikonfigurasi` | Server key kosong | Isi `MIDTRANS_SERVER_KEY`, redeploy |
 | `Signature Midtrans tidak valid` | Sandbox vs production tercampur | Samakan key dengan `MIDTRANS_IS_PRODUCTION` |
-| `413 Payload Too Large` | File AI > 3 MB / body > 4.5 MB | Kompres file |
+| `413 Payload Too Large` | File AI > 5 MB / body > batas platform | Kompres file atau gunakan video/gambar lebih kecil |
 | `504 Gateway Timeout` | AI melebihi durasi function | Turunkan `GEMINI_TIMEOUT_MS` atau naikkan `maxDuration` |
 | Webhook 401 | Server key salah | Salin ulang dari dashboard Midtrans |
 | Perubahan env tidak berpengaruh | Build cache / belum redeploy | Redeploy dan kosongkan cache |

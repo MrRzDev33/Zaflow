@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ScanEye,
   UploadCloud,
@@ -47,6 +47,87 @@ interface AiMetricsExtractorViewProps {
 
 type ExtractorMode = 'post' | 'account';
 
+/** Batas file yang dikirim ke AI. */
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+/** Batas input gambar sebelum dikompres (agar canvas tidak kehabisan memori). */
+const MAX_IMAGE_INPUT_BYTES = 40 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('File tidak dapat dibaca.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('Gambar tidak dapat diproses.'));
+    image.src = dataUrl;
+  });
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement, quality: number): Promise<Blob | null> {
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality));
+}
+
+/**
+ * Kompresi gambar di browser (tanpa upload ke storage) memakai canvas.
+ * Ukuran dan kualitas diturunkan bertahap sampai berada di bawah 5 MB.
+ */
+async function compressImageFile(file: File): Promise<File> {
+  const dataUrl = await readFileAsDataUrl(file);
+  const image = await loadImage(dataUrl);
+  const naturalWidth = image.naturalWidth || image.width;
+  const naturalHeight = image.naturalHeight || image.height;
+  if (!naturalWidth || !naturalHeight) throw new Error('Dimensi gambar tidak terbaca.');
+
+  let maxDimension = Math.min(2560, Math.max(naturalWidth, naturalHeight));
+  let quality = 0.9;
+  let blob: Blob | null = null;
+
+  for (let attempt = 0; attempt < 14; attempt += 1) {
+    const scale = Math.min(1, maxDimension / Math.max(naturalWidth, naturalHeight));
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Browser tidak mendukung kompresi gambar.');
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = 'high';
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, width, height);
+    context.drawImage(image, 0, 0, width, height);
+
+    blob = await canvasToBlob(canvas, quality);
+    if (blob && blob.size <= MAX_FILE_BYTES) break;
+
+    if (quality > 0.6) {
+      quality = Math.max(0.6, Number((quality - 0.1).toFixed(2)));
+    } else {
+      maxDimension = Math.round(maxDimension * 0.75);
+      quality = 0.8;
+    }
+  }
+
+  if (!blob) throw new Error('Kompresi gambar gagal.');
+  if (blob.size > MAX_FILE_BYTES) {
+    throw new Error('Gambar masih melebihi 5 MB setelah dikompres. Coba potong area pentingnya.');
+  }
+
+  const baseName = file.name.replace(/\.[^.]+$/, '') || 'screenshot';
+  return new File([blob], `${baseName}-compressed.jpg`, {
+    type: 'image/jpeg',
+    lastModified: Date.now(),
+  });
+}
+
 function currentMonth(): string {
   return new Date().toISOString().slice(0, 7);
 }
@@ -93,9 +174,30 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [isPreparingFile, setIsPreparingFile] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+
+  const previewUrlRef = useRef<string | null>(null);
+  const fileRequestRef = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) {
+        URL.revokeObjectURL(previewUrlRef.current);
+        previewUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  const releasePreviewUrl = () => {
+    if (previewUrlRef.current) {
+      URL.revokeObjectURL(previewUrlRef.current);
+      previewUrlRef.current = null;
+    }
+    setPreviewUrl(null);
+  };
 
   const [extractedData, setExtractedData] = useState<ExtractedMetricsData | null>(null);
   const [insightDetail, setInsightDetail] = useState<ContentInsightsDetail>(
@@ -123,9 +225,10 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
     setSuccessNotice(null);
   };
 
-  const handleFileChange = (file: File) => {
+  const handleFileChange = async (file: File) => {
     setError(null);
     setSuccessNotice(null);
+    setIsPreparingFile(false);
     resetResults();
 
     let detectedType = (file.type || '').toLowerCase();
@@ -154,20 +257,67 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
       return;
     }
 
-    const maxSize = 3 * 1024 * 1024;
-    if (file.size > maxSize) {
+    const requestId = fileRequestRef.current + 1;
+    fileRequestRef.current = requestId;
+
+    let preparedFile = file;
+    const originalSize = file.size;
+
+    if (isImage && file.size > MAX_FILE_BYTES) {
+      if (file.size > MAX_IMAGE_INPUT_BYTES) {
+        setError(
+          `Ukuran gambar ${(file.size / (1024 * 1024)).toFixed(1)} MB terlalu besar untuk dikompres. Maksimal input gambar 40 MB.`
+        );
+        return;
+      }
+
+      setIsPreparingFile(true);
+      try {
+        preparedFile = await compressImageFile(file);
+      } catch (err: unknown) {
+        if (fileRequestRef.current === requestId) {
+          setError(err instanceof Error ? err.message : 'Gambar gagal dikompres otomatis.');
+        }
+        return;
+      } finally {
+        if (fileRequestRef.current === requestId) setIsPreparingFile(false);
+      }
+
+      if (fileRequestRef.current !== requestId) return;
+    }
+
+    if (preparedFile.size > MAX_FILE_BYTES) {
       setError(
-        `Ukuran file ${(file.size / (1024 * 1024)).toFixed(1)} MB melebihi batas maksimal 3 MB.`
+        isVideo
+          ? `Ukuran video ${(preparedFile.size / (1024 * 1024)).toFixed(1)} MB melebihi 5 MB. Kompres atau potong video terlebih dahulu; kompresi otomatis saat ini hanya untuk gambar.`
+          : `Ukuran file ${(preparedFile.size / (1024 * 1024)).toFixed(1)} MB melebihi batas maksimal 5 MB.`
       );
       return;
     }
 
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    releasePreviewUrl();
+    setFileBase64(null);
+    const objectUrl = URL.createObjectURL(preparedFile);
+    previewUrlRef.current = objectUrl;
+    setPreviewUrl(objectUrl);
+    setSelectedFile(preparedFile);
 
-    const reader = new FileReader();
-    reader.onloadend = () => setFileBase64(reader.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const dataUrl = await readFileAsDataUrl(preparedFile);
+      if (fileRequestRef.current !== requestId) return;
+      setFileBase64(dataUrl);
+      if (isImage && preparedFile.size < originalSize) {
+        setSuccessNotice(
+          `Gambar dikompres otomatis dari ${(originalSize / (1024 * 1024)).toFixed(1)} MB ke ${(
+            preparedFile.size /
+            (1024 * 1024)
+          ).toFixed(1)} MB. File hanya diproses di memori dan tidak disimpan.`
+        );
+      }
+    } catch (err: unknown) {
+      if (fileRequestRef.current !== requestId) return;
+      setError(err instanceof Error ? err.message : 'File gagal dibaca.');
+    }
   };
 
   const handleDrop = (e: React.DragEvent) => {
@@ -582,8 +732,8 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                       type="button"
                       onClick={() => {
                         setSelectedFile(null);
-                        setPreviewUrl(null);
                         setFileBase64(null);
+                        releasePreviewUrl();
                         resetResults();
                       }}
                       className="font-medium text-red-600 hover:underline"
@@ -613,7 +763,8 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                     </label>
                     <span className="text-xs text-slate-500"> atau seret ke sini</span>
                     <p className="mt-1 text-[11px] text-slate-400">
-                      Gambar (JPG, PNG, WEBP) & video (MP4, WEBM, MOV) maksimal 3 MB
+                      Gambar (JPG, PNG, WEBP) & video (MP4, WEBM, MOV) maksimal 5 MB. Gambar lebih
+                      dari 5 MB dikompres otomatis; video perlu dikompres manual.
                     </p>
                   </div>
                 </div>
@@ -622,10 +773,15 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
 
             <button
               onClick={handleRunAiExtraction}
-              disabled={isProcessing || !fileBase64 || aiCreditsRemaining <= 0}
+              disabled={isPreparingFile || isProcessing || !fileBase64 || aiCreditsRemaining <= 0}
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-purple-700 disabled:opacity-50"
             >
-              {isProcessing ? (
+              {isPreparingFile ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Mengompres gambar otomatis...</span>
+                </>
+              ) : isProcessing ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
                   <span>Membaca Insight dengan AI...</span>
@@ -649,6 +805,11 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
                 Ambil screenshot pada halaman insight yang menampilkan angka dan grafik secara
                 utuh. Jika grafik tidak terbaca, AI akan menandainya sebagai perkiraan atau
                 mengosongkannya.
+              </p>
+              <p className="leading-relaxed text-amber-700">
+                File gambar/video hanya dikirim ke AI untuk dibaca dan tidak disimpan ke database
+                atau storage. Pratinjau file juga dilepas dari memori saat diganti atau halaman
+                ditutup.
               </p>
             </div>
           </div>

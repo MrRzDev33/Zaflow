@@ -777,7 +777,7 @@ export const metricsService = {
       sharesPercent: metricFormulas.percentageChange(currentAgg.totalShares, prevAgg.totalShares),
     };
 
-    // Tren harian berdasarkan tanggal posting (bukan tanggal snapshot)
+    // Tren harian berdasarkan jadwal posting (fallback tanggal dibuat), bukan tanggal snapshot
     const trendMap = new Map<string, DailyTrendPoint>();
     for (
       let cursor = new Date(currentStart);
@@ -910,9 +910,27 @@ export const metricsService = {
       );
     }
 
-    const topPosts = Array.from(topPostsMap.values())
-      .sort((a, b) => b.totalEngagements - a.totalEngagements)
-      .slice(0, 5);
+    // Kandidat Top Content: ambil 5 teratas untuk tiap metrik agar filter
+    // "Urutkan" di UI tetap akurat, bukan hanya 5 besar berdasarkan engagements.
+    const rankedPosts = Array.from(topPostsMap.values());
+    const candidateIds = new Set<string>();
+    const rankingKeys: (keyof TopPostItem)[] = [
+      'impressions',
+      'reach',
+      'engagementRate',
+      'saves',
+      'shares',
+    ];
+    for (const key of rankingKeys) {
+      [...rankedPosts]
+        .sort((a, b) => Number(b[key] || 0) - Number(a[key] || 0))
+        .slice(0, 5)
+        .forEach((item) => candidateIds.add(item.post.id));
+    }
+
+    const topPosts = rankedPosts
+      .filter((item) => candidateIds.has(item.post.id))
+      .sort((a, b) => b.impressions - a.impressions);
 
     // Kalkulasi Metrik Mendalam (Deep Insights) dari data nyata snapshot
     let watchTimeCount = 0;

@@ -23,15 +23,21 @@ function formatScheduledAt(value: string | null): string {
   }).format(date);
 }
 
-export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSelectPost }) => {
-  const [sortBy, setSortBy] = useState<'er' | 'reach' | 'saves' | 'shares'>('er');
+type TopContentSortKey = 'impressions' | 'er' | 'reach' | 'saves' | 'shares';
 
-  const sortedPosts = [...topPosts].sort((a, b) => {
-    if (sortBy === 'er') return b.engagementRate - a.engagementRate;
-    if (sortBy === 'reach') return b.reach - a.reach;
-    if (sortBy === 'saves') return b.saves - a.saves;
-    return b.shares - a.shares;
-  });
+export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSelectPost }) => {
+  // Metrik utama = awareness (impressions). ER tetap tampil sebagai metrik pendukung.
+  const [sortBy, setSortBy] = useState<TopContentSortKey>('impressions');
+
+  const sortedPosts = [...topPosts]
+    .sort((a, b) => {
+      if (sortBy === 'er') return b.engagementRate - a.engagementRate;
+      if (sortBy === 'reach') return b.reach - a.reach;
+      if (sortBy === 'saves') return b.saves - a.saves;
+      if (sortBy === 'shares') return b.shares - a.shares;
+      return b.impressions - a.impressions;
+    })
+    .slice(0, 5);
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs space-y-4">
@@ -41,15 +47,16 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
           <div>
             <h2 className="text-sm font-bold text-slate-900">Konten Berkinerja Terbaik (Top Content)</h2>
             <p className="text-xs text-slate-500">
-              Peringkat postingan pada periode ini berdasarkan snapshot terbaru
+              Metrik utama awareness (impressions); Engagement Rate tetap ditampilkan
             </p>
           </div>
         </div>
 
         {/* Sort selector */}
-        <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 self-start sm:self-auto text-xs">
+        <div className="flex flex-wrap items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 self-start sm:self-auto text-xs">
           <span className="text-[10px] text-slate-400 uppercase font-bold px-1.5">Urutkan:</span>
           {[
+            { id: 'impressions', label: 'Impressions' },
             { id: 'er', label: 'ER (%)' },
             { id: 'reach', label: 'Reach' },
             { id: 'saves', label: 'Saves' },
@@ -57,7 +64,7 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setSortBy(tab.id as 'er' | 'reach' | 'saves' | 'shares')}
+              onClick={() => setSortBy(tab.id as TopContentSortKey)}
               className={`px-2 py-1 rounded-md font-medium transition cursor-pointer ${
                 sortBy === tab.id
                   ? 'bg-white shadow-2xs font-semibold text-slate-900'
@@ -147,10 +154,17 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
               </div>
 
               {/* Metric stats pill */}
-              <div className="flex items-center gap-3 text-xs shrink-0 self-end sm:self-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-200/60 w-full sm:w-auto justify-between sm:justify-end">
+              <div className="grid grid-cols-2 sm:flex sm:items-center gap-3 text-xs shrink-0 self-end sm:self-auto border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-200/60 w-full sm:w-auto sm:justify-end">
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 block">Impressions (Awareness)</span>
+                  <span className="font-extrabold text-blue-700 text-sm">
+                    {formatCount(item.impressions)}
+                  </span>
+                </div>
+
                 <div className="text-right">
                   <span className="text-[10px] text-slate-400 block">Engagement Rate</span>
-                  <span className="font-extrabold text-purple-700 text-sm">
+                  <span className="font-bold text-purple-700">
                     {formatPercent(item.engagementRate)}
                   </span>
                 </div>
@@ -160,7 +174,7 @@ export const TopContentCard: React.FC<TopContentCardProps> = ({ topPosts, onSele
                   <span className="font-bold text-slate-700">{formatCount(item.reach)}</span>
                 </div>
 
-                <div className="flex items-center gap-2 text-slate-600 text-[11px] pl-2 border-l border-slate-200">
+                <div className="flex items-center justify-end gap-2 text-slate-600 text-[11px] sm:pl-2 sm:border-l border-slate-200">
                   <span className="flex items-center gap-0.5" title="Saves">
                     <Bookmark className="w-3 h-3 text-amber-500" />
                     {formatCount(item.saves)}
