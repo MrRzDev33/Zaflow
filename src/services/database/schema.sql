@@ -155,10 +155,31 @@ CREATE TABLE IF NOT EXISTS public.ai_usage_logs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     brand_id UUID REFERENCES public.brands(id) ON DELETE CASCADE,
-    action_type TEXT NOT NULL CHECK (action_type IN ('metrics_extractor', 'strategy_assistant', 'caption_writer')),
+    action_type TEXT NOT NULL CHECK (action_type IN ('metrics_extractor', 'strategy_assistant', 'caption_writer', 'ai_chat')),
     tokens_consumed INT NOT NULL DEFAULT 0,
     credits_deducted INT NOT NULL DEFAULT 1,
     prompt_summary TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7b. TABEL AI_CHAT_CONVERSATIONS (Riwayat percakapan chat per brand & pengguna)
+CREATE TABLE IF NOT EXISTS public.ai_chat_conversations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    brand_id UUID NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL DEFAULT 'Konsultasi Baru',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 7c. TABEL AI_CHAT_MESSAGES (Pesan pada percakapan chat)
+CREATE TABLE IF NOT EXISTS public.ai_chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES public.ai_chat_conversations(id) ON DELETE CASCADE,
+    role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+    mode TEXT CHECK (mode IN ('data', 'consultation')),
+    content TEXT NOT NULL,
+    tokens_consumed INT NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -188,6 +209,10 @@ CREATE INDEX IF NOT EXISTS idx_content_metrics_post_channel_recorded
     ON public.content_metrics(post_id, channel, recorded_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_brand ON public.activity_logs(brand_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_usage_logs_user ON public.ai_usage_logs(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_chat_conversations_owner
+    ON public.ai_chat_conversations(brand_id, user_id, updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_conversation
+    ON public.ai_chat_messages(conversation_id, created_at ASC);
 
 -- ==============================================================================
 -- FUNGSI SECURITY DEFINER (Mencegah Rekursi RLS)
@@ -259,6 +284,8 @@ ALTER TABLE public.content_posts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.content_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.account_metrics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ai_usage_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_chat_conversations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ai_chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.activity_logs ENABLE ROW LEVEL SECURITY;
 
 -- 1. PROFILES POLICIES
@@ -429,6 +456,59 @@ DROP POLICY IF EXISTS "Pengguna dapat melihat riwayat kuota AI miliknya" ON publ
 CREATE POLICY "Pengguna dapat melihat riwayat kuota AI miliknya"
     ON public.ai_usage_logs FOR SELECT
     USING (user_id = auth.uid());
+
+-- 8b. AI_CHAT_CONVERSATIONS POLICIES
+DROP POLICY IF EXISTS "Pengguna dapat melihat percakapan AI miliknya" ON public.ai_chat_conversations;
+CREATE POLICY "Pengguna dapat melihat percakapan AI miliknya"
+    ON public.ai_chat_conversations FOR SELECT
+    USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Pengguna dapat membuat percakapan AI miliknya" ON public.ai_chat_conversations;
+CREATE POLICY "Pengguna dapat membuat percakapan AI miliknya"
+    ON public.ai_chat_conversations FOR INSERT
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Pengguna dapat memperbarui percakapan AI miliknya" ON public.ai_chat_conversations;
+CREATE POLICY "Pengguna dapat memperbarui percakapan AI miliknya"
+    ON public.ai_chat_conversations FOR UPDATE
+    USING (auth.uid() = user_id)
+    WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Pengguna dapat menghapus percakapan AI miliknya" ON public.ai_chat_conversations;
+CREATE POLICY "Pengguna dapat menghapus percakapan AI miliknya"
+    ON public.ai_chat_conversations FOR DELETE
+    USING (auth.uid() = user_id);
+
+-- 8c. AI_CHAT_MESSAGES POLICIES
+DROP POLICY IF EXISTS "Pengguna dapat melihat pesan pada percakapannya" ON public.ai_chat_messages;
+CREATE POLICY "Pengguna dapat melihat pesan pada percakapannya"
+    ON public.ai_chat_messages FOR SELECT
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.ai_chat_conversations c
+            WHERE c.id = conversation_id AND c.user_id = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Pengguna dapat menulis pesan pada percakapannya" ON public.ai_chat_messages;
+CREATE POLICY "Pengguna dapat menulis pesan pada percakapannya"
+    ON public.ai_chat_messages FOR INSERT
+    WITH CHECK (
+        EXISTS (
+            SELECT 1 FROM public.ai_chat_conversations c
+            WHERE c.id = conversation_id AND c.user_id = auth.uid()
+        )
+    );
+
+DROP POLICY IF EXISTS "Pengguna dapat menghapus pesan pada percakapannya" ON public.ai_chat_messages;
+CREATE POLICY "Pengguna dapat menghapus pesan pada percakapannya"
+    ON public.ai_chat_messages FOR DELETE
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.ai_chat_conversations c
+            WHERE c.id = conversation_id AND c.user_id = auth.uid()
+        )
+    );
 
 -- 9. TABEL TRANSACTIONS (Pencatatan Transaksi Pembayaran Lisensi Sekali Bayar)
 CREATE TABLE IF NOT EXISTS public.transactions (

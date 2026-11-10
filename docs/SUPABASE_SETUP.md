@@ -29,6 +29,7 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 11 | `src/services/database/migrations/20261027_01_content_insights_and_account_metrics.sql` | Metrik tindakan pengguna, jenis konten, detail insight per postingan, dan tabel `account_metrics` untuk ringkasan akun bulanan |
 | 12 | `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql` | Menghapus permanen snapshot umum (`post_id IS NULL`), menjadikan `post_id` wajib, dan menambah index snapshot terbaru per postingan + saluran |
 | 13 | `src/services/database/migrations/20261102_01_drop_posted_at.sql` | Menghapus kolom `posted_at` dan index terkait; analitik memakai jadwal posting (`scheduled_at`) sebagai acuan waktu |
+| 14 | `src/services/database/migrations/20261110_01_ai_chat_and_quota.sql` | Tabel `ai_chat_conversations` & `ai_chat_messages`, action type `ai_chat`, dan pembaruan RPC `consume_ai_credit` |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
@@ -40,7 +41,9 @@ Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaks
 
 > **Wajib:** migrasi 13 harus dijalankan **sebelum** memakai versi aplikasi ini. Migrasi ini menghapus kolom `posted_at` yang sudah tidak dipakai. Setelah migrasi, satu-satunya acuan waktu konten adalah **Jadwal Posting** (`scheduled_at`, termasuk jam) dengan fallback `created_at`.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 13 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Wajib:** migrasi 14 harus dijalankan **sebelum** memakai tab **Chat Konsultasi**. Migrasi ini membuat tabel riwayat chat dan menambahkan `ai_chat` ke constraint `ai_usage_logs.action_type` serta RPC `consume_ai_credit`. Tanpa migrasi ini, chat akan gagal menyimpan riwayat dan pemotongan kuota dapat ditolak.
+
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 14 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -297,7 +300,7 @@ Rumus dan aturan:
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 13. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 14. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |
@@ -341,6 +344,7 @@ Rumus dan aturan:
 | Snapshot umum lama masih muncul di laporan | Migrasi 12 belum dijalankan | Jalankan `20261101_01_require_post_on_content_metrics.sql`. Migrasi ini menghapus permanen snapshot `post_id IS NULL` untuk semua brand |
 | Filter 7/30/90 hari terasa tidak berubah | Versi lama memfilter berdasarkan `recorded_at` snapshot, bukan jadwal posting | Perbarui aplikasi ke versi terbaru. Tren dan filter sekarang memakai **Jadwal Posting** (`scheduled_at` → `created_at`) dan snapshot terbaru per postingan + saluran |
 | `column content_posts.posted_at does not exist` setelah migrasi 13 | Masih ada klien lama yang meminta `posted_at` | Muat ulang aplikasi versi terbaru. Kolom tersebut sudah dihapus dan tidak dipakai lagi |
+| Chat menampilkan “Gagal mengirim pesan chat” / kuota tidak terpotong | Migrasi 14 belum dijalankan | Jalankan `20261110_01_ai_chat_and_quota.sql`, lalu muat ulang aplikasi |
 
 ## 10. Catatan Keamanan
 

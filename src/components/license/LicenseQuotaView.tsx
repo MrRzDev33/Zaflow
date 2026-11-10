@@ -37,6 +37,7 @@ const aiActionLabel: Record<string, string> = {
   metrics_extractor: 'Ekstrak Metrik',
   strategy_assistant: 'Asisten Strategi',
   caption_writer: 'Penulisan Caption',
+  ai_chat: 'Chat Konsultasi',
 };
 
 function transactionStatusLabel(status: string): string {

@@ -14,10 +14,12 @@ import {
   BookmarkCheck,
   Calendar,
   Layers,
+  MessageCircle,
 } from '../common/icons/lucide-compat.tsx';
 import { Brand, ContentPost } from '../../types/database.ts';
 import { aiClientService, StrategyResultData, ContentActionPlanItem } from '../../services/ai/aiClientService.ts';
 import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
+import { AiChatPanel } from './AiChatPanel.tsx';
 
 interface AiStrategyAssistantViewProps {
   brand: Brand | null;
@@ -62,6 +64,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
   const [strategyResult, setStrategyResult] = useState<StrategyResultData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'generator' | 'chat'>('generator');
 
   const brandPlatforms = getBrandPlatforms(brand);
   const effectivePlatforms = selectedPlatforms.length > 0 ? selectedPlatforms : brandPlatforms;
@@ -197,6 +200,44 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
         </div>
       </div>
 
+      {/* Tab: Generator Strategi | Chat Konsultasi */}
+      <div className="flex w-fit items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 text-xs shadow-xs">
+        <button
+          type="button"
+          onClick={() => setActiveTab('generator')}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold transition cursor-pointer ${
+            activeTab === 'generator'
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+          }`}
+          aria-pressed={activeTab === 'generator'}
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          Generator Strategi
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('chat')}
+          className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 font-semibold transition cursor-pointer ${
+            activeTab === 'chat'
+              ? 'bg-blue-50 text-blue-700'
+              : 'text-slate-500 hover:bg-slate-50 hover:text-slate-800'
+          }`}
+          aria-pressed={activeTab === 'chat'}
+        >
+          <MessageCircle className="w-3.5 h-3.5" />
+          Chat Konsultasi
+        </button>
+      </div>
+
+      {activeTab === 'chat' ? (
+        <AiChatPanel
+          brand={brand}
+          aiCreditsRemaining={aiCreditsRemaining}
+          onRefreshLicense={onRefreshLicense}
+        />
+      ) : (
+        <>
       {/* Notifications */}
       {successNotice && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-2 text-xs text-emerald-800 animate-in fade-in">
@@ -581,6 +622,8 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 };

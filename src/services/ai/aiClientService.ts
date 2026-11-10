@@ -1,6 +1,9 @@
 import { supabase } from '../../config/supabase.ts';
 import { apiRequest } from '../http/apiClient.ts';
 import type {
+  AiChatConversation,
+  AiChatMessage,
+  AiChatMode,
   AudienceDetails,
   ContentInsightType,
   InsightSeriesPoint,
@@ -102,6 +105,22 @@ export interface StrategyResponse {
   strategy: StrategyResultData;
   remainingCredits: number;
   totalCredits?: number;
+}
+
+export interface ChatConversationDetail {
+  conversation: AiChatConversation;
+  messages: AiChatMessage[];
+}
+
+export interface SendChatMessageResponse {
+  success: boolean;
+  conversationId: string;
+  conversation: AiChatConversation;
+  messages: AiChatMessage[];
+  reply: AiChatMessage;
+  remainingCredits: number;
+  totalCredits?: number;
+  modelUsed?: string;
 }
 
 export const aiClientService = {
@@ -224,6 +243,113 @@ export const aiClientService = {
     }
 
     return result as StrategyResponse;
+  },
+
+  /**
+   * Daftar riwayat percakapan chat milik pengguna pada brand tertentu.
+   */
+  async listChatConversations(brandId: string): Promise<AiChatConversation[]> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
+    }
+
+    const { ok, status, data } = await apiRequest<any>(
+      `/api/ai/chat/conversations?brandId=${encodeURIComponent(brandId)}`,
+      {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }
+    );
+
+    if (!ok) {
+      throw new Error(data?.error || data?.message || `Gagal memuat riwayat chat (HTTP ${status}).`);
+    }
+
+    return Array.isArray(data?.conversations) ? data.conversations : [];
+  },
+
+  /**
+   * Detail satu percakapan beserta seluruh pesannya.
+   */
+  async getChatConversation(conversationId: string): Promise<ChatConversationDetail> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
+    }
+
+    const { ok, status, data } = await apiRequest<any>(
+      `/api/ai/chat/conversations/${encodeURIComponent(conversationId)}`,
+      {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }
+    );
+
+    if (!ok) {
+      throw new Error(data?.error || data?.message || `Gagal memuat percakapan (HTTP ${status}).`);
+    }
+
+    return {
+      conversation: data.conversation,
+      messages: Array.isArray(data.messages) ? data.messages : [],
+    };
+  },
+
+  /**
+   * Menghapus satu percakapan milik pengguna.
+   */
+  async deleteChatConversation(conversationId: string): Promise<void> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
+    }
+
+    const { ok, status, data } = await apiRequest<any>(
+      `/api/ai/chat/conversations/${encodeURIComponent(conversationId)}`,
+      {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      }
+    );
+
+    if (!ok) {
+      throw new Error(data?.error || data?.message || `Gagal menghapus percakapan (HTTP ${status}).`);
+    }
+  },
+
+  /**
+   * Mengirim pesan konsultasi. Server memotong 1 kredit AI per pesan dan
+   * mengembalikannya otomatis jika pemanggilan model gagal.
+   */
+  async sendChatMessage(params: {
+    brandId: string;
+    conversationId?: string | null;
+    message: string;
+    mode: AiChatMode;
+  }): Promise<SendChatMessageResponse> {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      throw new Error('Anda harus masuk untuk menggunakan fitur AI.');
+    }
+
+    const { ok, status, data } = await apiRequest<any>('/api/ai/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        brandId: params.brandId,
+        conversationId: params.conversationId || undefined,
+        message: params.message,
+        mode: params.mode,
+      }),
+    });
+
+    if (!ok) {
+      throw new Error(data?.error || data?.message || `Gagal mengirim pesan chat (HTTP ${status}).`);
+    }
+
+    return data as SendChatMessageResponse;
   },
 
   /**

@@ -85,7 +85,8 @@ function getPostTimestamp(post: ContentPost): number {
 function getLatestPerChannel(metrics: ContentMetric[]): ContentMetric[] {
   const map = new Map<string, ContentMetric>();
   for (const metric of metrics) {
-    const key = metric.channel || 'lainnya';
+    // Samakan kapitalisasi agar "Instagram" dan "instagram" tidak dihitung dua kali.
+    const key = (metric.channel || 'lainnya').toLowerCase();
     const existing = map.get(key);
     if (!existing || new Date(metric.recorded_at).getTime() > new Date(existing.recorded_at).getTime()) {
       map.set(key, metric);
@@ -166,20 +167,33 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
     };
   }, [rangeMode, month, startDate, endDate]);
 
-  const channelOptions = useMemo(
-    () => Array.from(new Set(posts.flatMap((post) => post.channels || []))).sort(),
-    [posts]
-  );
+  const channelOptions = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const post of posts) {
+      for (const item of post.channels || []) {
+        const value = String(item || '').trim();
+        if (!value) continue;
+        const key = value.toLowerCase();
+        if (!seen.has(key)) seen.set(key, value);
+      }
+    }
+    return Array.from(seen.values()).sort((a, b) => a.localeCompare(b));
+  }, [posts]);
 
   const filteredPosts = useMemo(() => {
     const query = search.trim().toLowerCase();
+    const selectedChannel = channel.toLowerCase();
     return posts
       .filter((post) => isPublishedStatus(post.status))
       .filter((post) => {
         const timestamp = getPostTimestamp(post);
         return timestamp > 0 && timestamp >= resolvedRange.start && timestamp <= resolvedRange.end;
       })
-      .filter((post) => channel === 'all' || (post.channels || []).includes(channel))
+      .filter(
+        (post) =>
+          channel === 'all' ||
+          (post.channels || []).some((item) => String(item || '').toLowerCase() === selectedChannel)
+      )
       .filter((post) => {
         if (!query) return true;
         return (
@@ -221,7 +235,12 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
     setError(null);
     try {
       const postIds = postIdsKey.split(',');
-      const rows = await metricsService.getMetrics(brand.id, { postIds });
+      const rows = await metricsService.getMetrics(brand.id, {
+        postIds,
+        // Tanpa filter channel, metrik dari semua platform pada postingan
+        // multi-channel akan ikut terjumlah saat pengguna memilih satu channel.
+        channel: channel !== 'all' ? channel : undefined,
+      });
       setMetrics(rows);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Gagal memuat data performa konten.');
@@ -229,7 +248,7 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
     } finally {
       setLoadingMetrics(false);
     }
-  }, [brand, postIdsKey]);
+  }, [brand, postIdsKey, channel]);
 
   useEffect(() => {
     void loadMetrics();
@@ -261,8 +280,10 @@ export const ContentPostAnalyticsView: React.FC<ContentPostAnalyticsViewProps> =
     for (const list of metricsByPost.values()) {
       all.push(...getLatestPerChannel(list));
     }
-    return all;
-  }, [metricsByPost]);
+    if (channel === 'all') return all;
+    const selected = channel.toLowerCase();
+    return all.filter((metric) => (metric.channel || '').toLowerCase() === selected);
+  }, [metricsByPost, channel]);
 
   const summary = useMemo(() => {
     const impressions = latestMetrics.reduce((total, item) => total + (item.impressions || 0), 0);

@@ -250,10 +250,33 @@ export interface AiUsageLog {
   id: string;
   user_id: string;
   brand_id?: string | null;
-  action_type: 'metrics_extractor' | 'strategy_assistant' | 'caption_writer';
+  action_type: 'metrics_extractor' | 'strategy_assistant' | 'caption_writer' | 'ai_chat';
   tokens_consumed: number;
   credits_deducted: number;
   prompt_summary?: string | null;
+  created_at: string;
+}
+
+export type AiChatMode = 'data' | 'consultation';
+
+export interface AiChatConversation {
+  id: string;
+  brand_id: string;
+  user_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  last_message?: string | null;
+  message_count?: number;
+}
+
+export interface AiChatMessage {
+  id: string;
+  conversation_id: string;
+  role: 'user' | 'assistant';
+  mode?: AiChatMode | null;
+  content: string;
+  tokens_consumed?: number;
   created_at: string;
 }
 

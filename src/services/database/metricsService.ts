@@ -509,7 +509,10 @@ export const metricsService = {
       .eq('brand_id', brandId)
       .order('period_month', { ascending: false });
 
-    if (filter?.channel) query = query.eq('channel', filter.channel);
+    if (filter?.channel && filter.channel !== 'all') {
+      // Nama channel dapat tersimpan dengan kapitalisasi berbeda (Instagram vs instagram).
+      query = query.ilike('channel', filter.channel);
+    }
     if (filter?.startMonth) query = query.gte('period_month', filter.startMonth);
     if (filter?.endMonth) query = query.lte('period_month', filter.endMonth);
 
@@ -582,7 +585,7 @@ export const metricsService = {
       .order('recorded_at', { ascending: false });
 
     if (filter?.channel && filter.channel !== 'all') {
-      query = query.eq('channel', filter.channel);
+      query = query.ilike('channel', filter.channel);
     }
     if (filter?.postId) {
       query = query.eq('post_id', filter.postId);
@@ -1064,28 +1067,45 @@ export const metricsService = {
       return monthEnd.getTime() >= currentStart.getTime() && monthStart.getTime() <= currentEnd.getTime();
     });
     const latestAccount = accountInPeriod[0] || null;
+    const accountRows = latestAccount
+      ? channel !== 'all'
+        ? [latestAccount]
+        : accountInPeriod.filter((item) => item.period_month === latestAccount.period_month)
+      : [];
+
+    const sumAccountField = (
+      field: 'views' | 'reach' | 'interactions_total' | 'profile_visits' | 'follows' | 'followers_total'
+    ) => accountRows.reduce((total, item) => total + (Number(item[field]) || 0), 0);
+
+    const accountAudience = accountRows.reduce(
+      (acc, item) => {
+        acc.followers += Number(item.audience_breakdown?.followers || 0);
+        acc.nonFollowers += Number(item.audience_breakdown?.non_followers || 0);
+        return acc;
+      },
+      { followers: 0, nonFollowers: 0 }
+    );
 
     const accountSummary: AccountSummary = latestAccount
       ? {
           hasData: true,
           periodMonth: latestAccount.period_month,
-          channel: latestAccount.channel,
-          views: Number(latestAccount.views) || 0,
-          reach: Number(latestAccount.reach) || 0,
-          interactions: Number(latestAccount.interactions_total) || 0,
-          profileVisits: Number(latestAccount.profile_visits) || 0,
-          follows: Number(latestAccount.follows) || 0,
-          followersTotal: Number(latestAccount.followers_total) || 0,
+          // Saat filter "semua channel", angka total adalah gabungan channel
+          // pada bulan terbaru agar tidak hanya mewakili satu platform.
+          channel: channel !== 'all' ? latestAccount.channel : 'all',
+          views: sumAccountField('views'),
+          reach: sumAccountField('reach'),
+          interactions: sumAccountField('interactions_total'),
+          profileVisits: sumAccountField('profile_visits'),
+          follows: sumAccountField('follows'),
+          followersTotal: sumAccountField('followers_total'),
           engagementRate: metricFormulas.engagementRate(
-            Number(latestAccount.interactions_total) || 0,
-            Number(latestAccount.reach) || 0,
-            Number(latestAccount.views) || 0
+            sumAccountField('interactions_total'),
+            sumAccountField('reach'),
+            sumAccountField('views')
           ),
           trafficSources: buildTrafficSourceItems(latestAccount.traffic_sources),
-          audienceBreakdown: {
-            followers: Number(latestAccount.audience_breakdown?.followers || 0),
-            nonFollowers: Number(latestAccount.audience_breakdown?.non_followers || 0),
-          },
+          audienceBreakdown: accountAudience,
           updatedAt: latestAccount.updated_at,
         }
       : EMPTY_ACCOUNT_SUMMARY;
