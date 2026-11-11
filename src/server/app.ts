@@ -944,6 +944,29 @@ function isMissingRpcError(error: any): boolean {
   );
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as any).message || '');
+  }
+  return String(error || '');
+}
+
+const CHAT_STORAGE_MISSING_ERROR =
+  'Fitur chat belum siap: tabel riwayat chat belum dibuat di Supabase. ' +
+  'Jalankan migrasi src/services/database/migrations/20261110_01_ai_chat_and_quota.sql, lalu coba lagi.';
+
+function isMissingChatStorageError(error: unknown): boolean {
+  const code = (error as any)?.code;
+  if (code === 'PGRST205') return true;
+  const message = getErrorMessage(error);
+  return (
+    /could not find the table 'public\.ai_chat/i.test(message) ||
+    /relation .*ai_chat_(conversations|messages).*does not exist/i.test(message) ||
+    /ai_chat_(conversations|messages).*(does not exist|not found)/i.test(message)
+  );
+}
+
 async function checkAndDeductQuota(
   userId: string,
   brandId: string | null,
@@ -4469,7 +4492,9 @@ app.get('/api/ai/chat/conversations', authenticateUser, async (req: Request, res
     });
   } catch (err) {
     console.error('Gagal memuat riwayat chat AI:', err);
-    res.status(500).json({ error: 'Gagal memuat riwayat chat.' });
+    res.status(isMissingChatStorageError(err) ? 503 : 500).json({
+      error: isMissingChatStorageError(err) ? CHAT_STORAGE_MISSING_ERROR : 'Gagal memuat riwayat chat.',
+    });
   }
 });
 
@@ -4509,7 +4534,9 @@ app.get('/api/ai/chat/conversations/:id', authenticateUser, async (req: Request,
     res.json({ success: true, conversation, messages: messages || [] });
   } catch (err) {
     console.error('Gagal memuat detail percakapan AI:', err);
-    res.status(500).json({ error: 'Gagal memuat percakapan.' });
+    res.status(isMissingChatStorageError(err) ? 503 : 500).json({
+      error: isMissingChatStorageError(err) ? CHAT_STORAGE_MISSING_ERROR : 'Gagal memuat percakapan.',
+    });
   }
 });
 
@@ -4534,7 +4561,9 @@ app.delete('/api/ai/chat/conversations/:id', authenticateUser, async (req: Reque
     res.json({ success: true });
   } catch (err) {
     console.error('Gagal menghapus percakapan AI:', err);
-    res.status(500).json({ error: 'Gagal menghapus percakapan.' });
+    res.status(isMissingChatStorageError(err) ? 503 : 500).json({
+      error: isMissingChatStorageError(err) ? CHAT_STORAGE_MISSING_ERROR : 'Gagal menghapus percakapan.',
+    });
   }
 });
 
@@ -4593,7 +4622,9 @@ app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, r
 
     if (error) {
       console.error('Gagal memeriksa percakapan AI:', error);
-      res.status(500).json({ error: 'Gagal memeriksa percakapan.' });
+      res.status(isMissingChatStorageError(error) ? 503 : 500).json({
+        error: isMissingChatStorageError(error) ? CHAT_STORAGE_MISSING_ERROR : 'Gagal memeriksa percakapan.',
+      });
       return;
     }
     if (!data) {
@@ -4734,8 +4765,6 @@ ${JSON.stringify(brandContext.historicalContext, null, 2)}`;
     console.error('Gemini AI Chat error:', err);
 
     // Jika percakapan baru gagal dibuatkan balasan, jangan tinggalkan sesi kosong.
-
-    // Jika percakapan baru gagal dibuatkan balasan, jangan tinggalkan sesi kosong.
     if (createdConversationId) {
       await supabaseAdmin
         .from('ai_chat_conversations')
@@ -4744,16 +4773,21 @@ ${JSON.stringify(brandContext.historicalContext, null, 2)}`;
         .eq('user_id', user.id);
     }
 
-    const errMessage = err instanceof Error ? err.message : String(err);
+    const errMessage = getErrorMessage(err);
     const isOverloaded =
       errMessage.includes('503') ||
       errMessage.includes('high demand') ||
       errMessage.includes('UNAVAILABLE');
 
+    if (isMissingChatStorageError(err)) {
+      res.status(503).json({ error: CHAT_STORAGE_MISSING_ERROR });
+      return;
+    }
+
     res.status(500).json({
       error: isOverloaded
-        ? 'Layanan AI sedang mengalami lonjakan antrian sementara. Kredit AI Anda telah dikembalikan otomatis. Silakan coba lagi.'
-        : 'Gagal mengirim pesan chat. Kredit AI Anda telah dikembalikan secara otomatis.',
+        ? 'Layanan AI sedang mengalami lonjakan antrian sementara. Silakan coba lagi.'
+        : 'Gagal mengirim pesan chat. Silakan coba lagi.',
     });
   }
 });
