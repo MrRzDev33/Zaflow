@@ -13,6 +13,7 @@ import {
 } from '../common/icons/lucide-compat.tsx';
 import { AiChatConversation, AiChatMessage, AiChatMode, Brand } from '../../types/database.ts';
 import { aiClientService } from '../../services/ai/aiClientService.ts';
+import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
 
 interface AiChatPanelProps {
   brand: Brand | null;
@@ -43,7 +44,7 @@ const DATA_SUGGESTIONS = [
 const CONSULTATION_SUGGESTIONS = [
   'Buat ide konten untuk 1 minggu ke depan.',
   'Bagaimana cara menaikkan jumlah saves?',
-  'Susun 5 hook untuk Reels edukatif.',
+  'Susun 5 hook untuk Reels yang mendorong saves.',
   'Buat kerangka carousel tentang tips praktis.',
 ];
 
@@ -197,6 +198,7 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
         conversationId: activeConversationId,
         message: text,
         mode,
+        pillars: brand ? workflowSettingsService.getConfiguredPillars(brand) : [],
       });
 
       setActiveConversationId(response.conversationId);

@@ -201,7 +201,7 @@ export const contentService = {
         hashtags: input.hashtags || [],
         channels: input.channels && input.channels.length > 0 ? input.channels : ['instagram'],
         format: input.format || 'single_image',
-        pillar: input.pillar || 'Edukatif',
+        pillar: input.pillar?.trim() || '',
         status,
         scheduled_at: input.scheduled_at || null,
         production_date: input.production_date || null,

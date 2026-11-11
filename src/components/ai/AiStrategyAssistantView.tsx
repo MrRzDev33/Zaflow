@@ -19,6 +19,7 @@ import {
 import { Brand, ContentPost } from '../../types/database.ts';
 import { aiClientService, StrategyResultData, ContentActionPlanItem } from '../../services/ai/aiClientService.ts';
 import { getBrandPlatforms, getPlatformName } from '../../config/platforms.ts';
+import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
 import { AiChatPanel } from './AiChatPanel.tsx';
 
 interface AiStrategyAssistantViewProps {
@@ -31,7 +32,7 @@ interface AiStrategyAssistantViewProps {
 
 const DEFAULT_OBJECTIVES = [
   'Tingkatkan Engagement Rate & Diskusi Komentar',
-  'Perbanyak Saves / Bookmark (Konten Edukatif & Evergreen)',
+  'Perbanyak Saves / Bookmark (Konten Bernilai Simpan Tinggi)',
   'Perluas Reach Organik & Jangkauan Audiens Baru',
   'Optimasi Frekuensi & Format Konten (Carousel vs Reels)',
   'Konversi Penjualan & Promosi Halus (Soft Selling)',
@@ -67,6 +68,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
   const [activeTab, setActiveTab] = useState<'generator' | 'chat'>('generator');
 
   const brandPlatforms = getBrandPlatforms(brand);
+  const brandPillars = workflowSettingsService.getPillars(brand);
   const effectivePlatforms = selectedPlatforms.length > 0 ? selectedPlatforms : brandPlatforms;
 
   const toggleGoal = (goal: string) => {
@@ -144,6 +146,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
         {
           goals: goalsForRequest,
           platforms: effectivePlatforms,
+          pillars: workflowSettingsService.getConfiguredPillars(brand),
           periodMode,
           periodMonth: periodMode === 'month' ? periodMonth : undefined,
           startDate: periodMode === 'range' ? startDate : undefined,
@@ -268,6 +271,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
             <div className="text-xs space-y-1 text-slate-600 border-t border-slate-100 pt-2.5">
               <p>Workspace: <strong className="text-slate-900">{brand.name}</strong></p>
               <p>Industri: <strong className="text-slate-900">{brand.industry || 'Umum'}</strong></p>
+              <p>Pilar aktif: <strong className="text-slate-900">{brandPillars.join(', ') || 'Belum diatur'}</strong></p>
               <p>Postingan di koleksi konten: <strong className="text-slate-900">{posts.length} post</strong></p>
             </div>
           </div>

@@ -12,6 +12,7 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Setiap snapshot metrik wajib terhubung ke satu postingan; snapshot umum tanpa postingan tidak lagi didukung.
 - Detail insight Instagram per postingan: sumber tayangan enam kategori, faktor tayangan berurutan, demografi pemirsa (usia/negara/jenis kelamin), dan deret grafik dengan penanda perkiraan AI.
 - AI Strategy Assistant berbasis data historis brand, termasuk detail per postingan dan kedua sumber total.
+- Rencana aksi AI memakai **nama pilar resmi brand** (mis. `Edutaiment`), bukan pilar contoh/default.
 - Chat AI & Konsultasi di dalam Asisten Strategi: mode **Data Brand** (berbasis angka) dan **Konsultasi** (saran umum berlabel), riwayat per brand & pengguna, 1 kredit AI per pesan.
 - Langganan 6 bulan dengan kuota kredit AI total, batas brand/anggota, dan trial 3 hari yang diajukan ke customer service.
 - Pembelian pertama hanya lewat kode aktivasi yang dibuat admin setelah pembayaran via Meta Ads/WhatsApp; kode terikat email pembeli, sekali pakai, dan berlaku 30 hari.
@@ -76,6 +77,7 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 12. `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql`
 13. `src/services/database/migrations/20261102_01_drop_posted_at.sql`
 14. `src/services/database/migrations/20261110_01_ai_chat_and_quota.sql`
+15. `src/services/database/migrations/20261111_01_content_pillar_default.sql`
 
 > Jangan berhenti di langkah 1. Migrasi memperbaiki kerentanan RLS, menambahkan RPC kuota atomik, menegakkan batas paket, mengunci kode aktivasi sekali pakai, memilih platform per brand, membersihkan trial otomatis lama, menjadikan trial hanya lewat customer service, mengubah paket menjadi 6 bulan dengan data pembeli pada kode aktivasi, audit admin, batas bucket 1 MB, detail insight per postingan, tabel `account_metrics`, serta mewajibkan setiap snapshot metrik terhubung ke postingan.
 
@@ -86,6 +88,8 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 > **Wajib:** jalankan migrasi 12 **sebelum** memakai versi aplikasi ini. Migrasi ini **menghapus permanen** snapshot tanpa postingan (`post_id IS NULL`) di seluruh brand, lalu menjadikan `post_id` wajib. Laporan sekarang memakai tanggal posting dan snapshot terbaru per postingan + saluran.
 
 > **Wajib:** jalankan migrasi 13 dan 14 **sebelum** memakai versi aplikasi ini. Migrasi 13 menghapus `posted_at`; migrasi 14 membuat tabel riwayat **Chat Konsultasi** dan menambahkan action type `ai_chat` pada kuota AI.
+
+> **Wajib:** jalankan migrasi 15 agar postingan tanpa pilar tidak otomatis memakai pilar default `Edukatif`. Aplikasi sekarang mengisi pilar dari daftar pilar aktif brand.
 
 ### Tautan email Supabase (konfirmasi & reset kata sandi)
 

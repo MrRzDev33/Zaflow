@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS public.content_posts (
     hashtags TEXT[] NOT NULL DEFAULT '{}',
     channels TEXT[] NOT NULL DEFAULT '{"instagram"}'::TEXT[], -- 'instagram', 'tiktok', 'reels', 'linkedin', 'facebook', 'youtube'
     format TEXT NOT NULL DEFAULT 'single_image' CHECK (format IN ('single_image', 'carousel', 'reel_short', 'video', 'story', 'text_thread')),
-    pillar TEXT NOT NULL DEFAULT 'Edukatif', -- Kustom per brand
+    pillar TEXT NOT NULL DEFAULT '', -- Kustom per brand; diisi dari pilar aktif brand
     status TEXT NOT NULL DEFAULT 'idea', -- Dinamis mengikuti status alur kerja kanban brand
     scheduled_at TIMESTAMPTZ, -- Jadwal posting (tanggal & jam) — acuan analitik
     production_date TIMESTAMPTZ, -- Tanggal dan waktu produksi / shooting

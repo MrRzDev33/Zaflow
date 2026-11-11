@@ -37,16 +37,7 @@ export const ContentFilterBar: React.FC<ContentFilterBarProps> = ({
       : []),
   ];
 
-  const defaultPillars = [
-    'Edukatif',
-    'Promosi',
-    'Interaktif',
-    'Inspiratif',
-    'Behind The Scenes',
-    'Hiburan',
-  ];
-
-  const pillars = customPillars && customPillars.length > 0 ? customPillars : defaultPillars;
+  const pillars = customPillars && customPillars.length > 0 ? customPillars : [];
 
   const hasActiveFilter =
     filters.search.trim().length > 0 ||

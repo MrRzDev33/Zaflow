@@ -1158,6 +1158,18 @@ export const metricsService = {
 
     // Jika belum ada post, buat 3 post contoh dulu
     if (targetPosts.length === 0) {
+      // Gunakan pilar resmi brand agar data contoh tidak memunculkan pilar
+      // yang tidak pernah diinput pengguna.
+      const { data: brandRow } = await supabase
+        .from('brands')
+        .select('content_pillars')
+        .eq('id', brandId)
+        .maybeSingle();
+      const brandPillars: string[] = Array.isArray(brandRow?.content_pillars)
+        ? brandRow.content_pillars.map((pillar: unknown) => String(pillar || '').trim()).filter(Boolean)
+        : [];
+      const samplePillar = brandPillars[0] || '';
+
       const sampleTitles = [
         '5 Rahasia Meningkatkan Omzet Bisnis Tanpa Iklan',
         'Review Produk: Cara Pakai yang Benar',
@@ -1171,7 +1183,7 @@ export const metricsService = {
             title: t,
             channels: ['instagram'],
             format: 'carousel',
-            pillar: 'Edukatif',
+            pillar: samplePillar,
             status: 'published',
           })
           .select('id, channels, pillar, title')

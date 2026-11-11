@@ -41,7 +41,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const [hashtagsText, setHashtagsText] = useState('');
-  const [pillar, setPillar] = useState('Edukatif');
+  const [pillar, setPillar] = useState('');
   const [format, setFormat] = useState<ContentFormat>('carousel');
   const [status, setStatus] = useState<ContentStatus>('draft');
   const [channels, setChannels] = useState<string[]>(['instagram']);
@@ -57,7 +57,8 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
   useEffect(() => {
     if (post) {
       const platforms = getBrandPlatforms(brand);
-      setAvailablePillars(workflowSettingsService.getPillars(brand));
+      const loadedPillars = workflowSettingsService.getPillars(brand);
+      setAvailablePillars(loadedPillars);
       setAvailableStatuses(workflowSettingsService.getWorkflowStatuses(brand));
 
       setTitle(post.title || '');
@@ -66,7 +67,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
       setPostUrl(post.post_url || '');
       setMediaUrls([...(post.media_urls || [])]);
       setHashtagsText((post.hashtags || []).join(' '));
-      setPillar(post.pillar || 'Edukatif');
+      setPillar(post.pillar || loadedPillars[0] || '');
       setFormat(post.format || 'single_image');
       setStatus(post.status || 'draft');
       const selectedChannels = (post.channels || []).filter((channel) => platforms.includes(channel as PlatformId));
@@ -190,7 +191,7 @@ export const EditPostModal: React.FC<EditPostModalProps> = ({
         hashtags,
         channels: channels.filter((channel): channel is PlatformId => availablePlatforms.includes(channel as PlatformId)),
         format,
-        pillar,
+        pillar: pillar || availablePillars[0] || '',
         status,
         scheduled_at: scheduledAt ? new Date(scheduledAt).toISOString() : null,
         production_date: productionDate ? new Date(productionDate).toISOString() : null,

@@ -30,6 +30,7 @@ Buka **SQL Editor**, lalu jalankan satu per satu (jangan digabung dalam satu kli
 | 12 | `src/services/database/migrations/20261101_01_require_post_on_content_metrics.sql` | Menghapus permanen snapshot umum (`post_id IS NULL`), menjadikan `post_id` wajib, dan menambah index snapshot terbaru per postingan + saluran |
 | 13 | `src/services/database/migrations/20261102_01_drop_posted_at.sql` | Menghapus kolom `posted_at` dan index terkait; analitik memakai jadwal posting (`scheduled_at`) sebagai acuan waktu |
 | 14 | `src/services/database/migrations/20261110_01_ai_chat_and_quota.sql` | Tabel `ai_chat_conversations` & `ai_chat_messages`, action type `ai_chat`, dan pembaruan RPC `consume_ai_credit` |
+| 15 | `src/services/database/migrations/20261111_01_content_pillar_default.sql` | Menghapus default `Edukatif` pada `content_posts.pillar` agar tidak muncul pilar yang tidak diinput |
 
 Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaksi akan di-rollback seluruhnya.
 
@@ -43,7 +44,9 @@ Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaks
 
 > **Wajib:** migrasi 14 harus dijalankan **sebelum** memakai tab **Chat Konsultasi**. Migrasi ini membuat tabel riwayat chat dan menambahkan `ai_chat` ke constraint `ai_usage_logs.action_type` serta RPC `consume_ai_credit`. Tanpa migrasi ini, chat akan gagal menyimpan riwayat dan pemotongan kuota dapat ditolak.
 
-> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 14 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
+> **Wajib:** jalankan migrasi 15 agar postingan baru tanpa pilar tidak otomatis memakai default `Edukatif`. Aplikasi mengisi pilar dari daftar pilar aktif brand; laporan AI juga memakai daftar pilar resmi tersebut.
+
+> **Jika `schema.sql` pernah gagal di tengah jalan:** jangan lanjut ke migrasi berikutnya. Jalankan ulang **seluruh** `schema.sql` (sekarang idempoten), lalu ulangi seluruh migrasi 1 → 15 dari awal. Urutan ini penting karena `schema.sql` memuat policy RLS dasar yang kemudian diperketat oleh migrasi 1.
 
 ### Bucket Storage `content-media`
 
@@ -300,7 +303,7 @@ Rumus dan aturan:
 | Gejala | Penyebab umum | Solusi |
 |---|---|---|
 | `policy ... already exists` | `schema.sql` dijalankan ulang saat policy lama masih ada | Versi terbaru `schema.sql` sudah memakai `DROP POLICY IF EXISTS`. Jalankan ulang seluruh `schema.sql`. |
-| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 14. |
+| `relation "public.transactions" does not exist` | `schema.sql` berhenti sebelum membuat tabel `transactions` | Jalankan ulang seluruh `schema.sql` sampai sukses, lalu ulangi migrasi 1 → 15. |
 | `syntax error at or near "line"` | Potongan SQL yang ditempel tidak lengkap/tercampur teks lain | Salin **seluruh isi file** dari folder migrasi, jangan potong manual. |
 | `Could not find the function public.consume_ai_credit` | Migrasi 4 belum dijalankan | Jalankan `20261020_01_...sql` |
 | `Batas brand paket Anda telah tercapai` | Batas paket aktif | Upgrade paket atau arsipkan brand lama |

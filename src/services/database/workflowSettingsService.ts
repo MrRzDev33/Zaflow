@@ -83,7 +83,33 @@ function writeStoredWorkflowValue<T>(key: string, values: T): void {
   }
 }
 
+function resolveConfiguredPillars(brand: Brand | null): string[] {
+  if (!brand) return [];
+
+  const stored = readStoredWorkflowValue<string[]>(`zaflow_pillars_${brand.id}`);
+  const brandPillars = brand.content_pillars && Array.isArray(brand.content_pillars) && brand.content_pillars.length > 0
+    ? brand.content_pillars
+    : null;
+
+  if (stored && isStoredValueNewerThanBrand(stored.savedAt, brand.updated_at)) {
+    return stored.values;
+  }
+  if (brandPillars) return brandPillars;
+  if (stored) return stored.values;
+
+  return [];
+}
+
 export const workflowSettingsService = {
+  /**
+   * Pilar yang benar-benar dikonfigurasi brand/perangkat, tanpa fallback daftar
+   * contoh. Dipakai saat mengirim konteks ke AI agar pilar bawaan tidak dianggap
+   * sebagai pilar yang diinput pengguna.
+   */
+  getConfiguredPillars(brand: Brand | null): string[] {
+    return resolveConfiguredPillars(brand);
+  },
+
   /**
    * Mengambil daftar pilar konten aktif untuk brand.
    *
@@ -92,20 +118,8 @@ export const workflowSettingsService = {
    * database kembali menjadi acuan.
    */
   getPillars(brand: Brand | null): string[] {
-    if (!brand) return DEFAULT_CONTENT_PILLARS;
-
-    const stored = readStoredWorkflowValue<string[]>(`zaflow_pillars_${brand.id}`);
-    const brandPillars = brand.content_pillars && Array.isArray(brand.content_pillars) && brand.content_pillars.length > 0
-      ? brand.content_pillars
-      : null;
-
-    if (stored && isStoredValueNewerThanBrand(stored.savedAt, brand.updated_at)) {
-      return stored.values;
-    }
-    if (brandPillars) return brandPillars;
-    if (stored) return stored.values;
-
-    return DEFAULT_CONTENT_PILLARS;
+    const configured = resolveConfiguredPillars(brand);
+    return configured.length > 0 ? configured : DEFAULT_CONTENT_PILLARS;
   },
 
   /**

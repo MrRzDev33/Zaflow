@@ -66,7 +66,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
       setAvailableStatuses(loadedStatuses);
 
       setTitle(initialTitle);
-      setPillar(initialPillar || (loadedPillars[0] || 'Edukatif'));
+      setPillar(initialPillar || (loadedPillars[0] || ''));
       setFormat(initialFormat);
       setCaption(initialCaption);
       setBrief('');
@@ -163,7 +163,7 @@ export const NewPostModal: React.FC<NewPostModalProps> = ({
         caption: caption.trim() || undefined,
         brief: brief.trim() || undefined,
         hashtags: parsedHashtags,
-        pillar: pillar || availablePillars[0] || 'Edukatif',
+        pillar: pillar || availablePillars[0] || '',
         format,
         status,
         channels: channels.filter((channel): channel is PlatformId => availablePlatforms.includes(channel as PlatformId)),

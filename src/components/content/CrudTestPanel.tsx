@@ -15,6 +15,7 @@ import {
 } from '../common/icons/lucide-compat.tsx';
 import { brandsService } from '../../services/database/brandsService.ts';
 import { contentService } from '../../services/database/contentService.ts';
+import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
 import { Brand } from '../../types/database.ts';
 
 interface TestStep {
@@ -144,7 +145,7 @@ export const CrudTestPanel: React.FC<CrudTestPanelProps> = ({
             hashtags: ['#zaflow', '#ujicrud', '#otomatisasi'],
             channels: ['instagram', 'tiktok'],
             format: 'carousel',
-            pillar: 'Edukatif',
+            pillar: workflowSettingsService.getPillars(currentBrand)[0] || '',
             status: 'idea',
             scheduled_at: null,
           });

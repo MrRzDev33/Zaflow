@@ -1241,6 +1241,75 @@ function parseJsonSafely(text: string): any {
   }
 }
 
+function normalizePillarKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+/** Label tampilan untuk postingan tanpa pilar, bukan pilar resmi brand. */
+function isPlaceholderPillar(value: string): boolean {
+  return /^tanpa\s*pilar$/i.test(value.trim());
+}
+
+/** Skor kemiripan sederhana untuk memetakan pilar AI ke pilar resmi brand. */
+function pillarSimilarityScore(a: string, b: string): number {
+  const left = normalizePillarKey(a);
+  const right = normalizePillarKey(b);
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.9;
+
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= left.length; i++) {
+    const current = [i];
+    for (let j = 1; j <= right.length; j++) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (left[i - 1] === right[j - 1] ? 0 : 1)
+      );
+    }
+    previous = current;
+  }
+
+  return 1 - previous[right.length] / Math.max(left.length, right.length);
+}
+
+/**
+ * Memastikan seluruh pilar pada rencana aksi berasal dari daftar pilar resmi
+ * brand. Pilar yang tidak dikenal dipetakan ke pilar resmi paling mirip agar
+ * laporan tidak menampilkan pilar yang tidak pernah diinput pengguna.
+ */
+function normalizeStrategyPillars(strategy: any, pillarCatalog: string[]): any {
+  if (!strategy || !Array.isArray(strategy.content_action_plan) || pillarCatalog.length === 0) {
+    return strategy;
+  }
+
+  const canonical = new Map(
+    pillarCatalog.map((pillar) => [normalizePillarKey(pillar), pillar] as const)
+  );
+
+  return {
+    ...strategy,
+    content_action_plan: strategy.content_action_plan.map((item: any) => {
+      if (!item || typeof item !== 'object') return item;
+      const rawValue = String(item?.pillar || '').trim();
+      const exact = canonical.get(normalizePillarKey(rawValue));
+      if (exact) return { ...item, pillar: exact };
+
+      let bestMatch = pillarCatalog[0];
+      let bestScore = -1;
+      for (const candidate of pillarCatalog) {
+        const score = pillarSimilarityScore(rawValue, candidate);
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = candidate;
+        }
+      }
+      return { ...item, pillar: bestMatch };
+    }),
+  };
+}
+
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 function aiRateLimiter(req: Request, res: Response, next: () => void) {
   const user = (req as any).user;
@@ -3400,6 +3469,7 @@ interface BrandAnalyticsContextOptions {
   periodStartKey: string | null;
   periodEndKey: string | null;
   periodLabel: string;
+  pillars?: string[];
 }
 
 /**
@@ -3418,6 +3488,12 @@ async function buildBrandAnalyticsContext(
     periodEndKey,
     periodLabel,
   } = options;
+  const providedPillars = Array.isArray(options.pillars)
+    ? options.pillars
+        .map((pillar) => String(pillar || '').trim())
+        .filter((pillar) => Boolean(pillar) && !isPlaceholderPillar(pillar))
+        .slice(0, 50)
+    : [];
   const platformSet = new Set(platformFilter);
   const hasPeriodFilter = periodStartKey !== null || periodEndKey !== null;
   const monthPattern = /^\d{4}-\d{2}$/;
@@ -3687,6 +3763,25 @@ async function buildBrandAnalyticsContext(
   const postMeta = new Map<string, any>();
   for (const p of postIndex) postMeta.set(p.id, p);
 
+  // Pilar resmi brand diprioritaskan. Postingan hanya menjadi fallback jika
+  // brand belum pernah menyimpan daftar pilar kustom.
+  const brandPillars: string[] = providedPillars.length > 0
+    ? providedPillars
+    : Array.isArray(brandInfo?.content_pillars)
+      ? brandInfo.content_pillars
+          .map((pillar: unknown) => String(pillar || '').trim())
+          .filter((pillar: string) => Boolean(pillar) && !isPlaceholderPillar(pillar))
+      : [];
+  const postPillars: string[] = postIndex
+    .map((post) => String(post?.pillar || '').trim())
+    .filter((pillar: string) => Boolean(pillar) && !isPlaceholderPillar(pillar));
+  const pillarSource: string[] = brandPillars.length > 0 ? brandPillars : postPillars;
+  const pillarCatalog: string[] = Array.from(
+    new Map<string, string>(
+      pillarSource.map((pillar) => [pillar.toLowerCase(), pillar] as [string, string])
+    ).values()
+  );
+
   const downsampleSeries = (points: any, max = 8) => {
     if (!Array.isArray(points) || points.length === 0) return [];
     if (points.length <= max) return points;
@@ -3794,6 +3889,9 @@ async function buildBrandAnalyticsContext(
       catatan:
         'Seluruh angka di bawah sudah difilter sesuai platform dan periode ini. Jangan mengasumsikan data di luar cakupan.',
     },
+    pilar_konten_resmi: pillarCatalog,
+    pilar_catatan:
+      'Field "pillar" pada rencana aksi WAJIB ditulis PERSIS salah satu nilai di pilar_konten_resmi. Jangan membuat, menerjemahkan, atau mengganti nama pilar.',
     total_posts_in_scope: postIndex.length,
     sample_recent_posts: recentPosts.slice(0, 10).map((p) => ({
       title: p.title,
@@ -3822,7 +3920,7 @@ async function buildBrandAnalyticsContext(
     detail_per_postingan: topContentDetails,
   };
 
-  return { brandInfo, historicalContext };
+  return { brandInfo, historicalContext, pillarCatalog };
 }
 
 app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (req: Request, res: Response) => {
@@ -4090,11 +4188,19 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
     customNotes,
     goals,
     platforms,
+    pillars,
     periodMode = 'all',
     periodMonth,
     startDate,
     endDate,
   } = req.body;
+
+  const providedPillars: string[] = Array.isArray(pillars)
+    ? pillars
+        .map((pillar: unknown) => String(pillar || '').trim())
+        .filter((pillar: string) => Boolean(pillar) && !isPlaceholderPillar(pillar))
+        .slice(0, 50)
+    : [];
 
   if (!brandId) {
     res.status(400).json({ error: 'Brand ID wajib diisi.' });
@@ -4161,14 +4267,20 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
   }
 
   try {
-    const { historicalContext } = await buildBrandAnalyticsContext(brandId, {
+    const { historicalContext, pillarCatalog } = await buildBrandAnalyticsContext(brandId, {
       platformFilter,
       periodMode,
       periodMonth,
       periodStartKey,
       periodEndKey,
       periodLabel,
+      pillars: providedPillars,
     });
+
+    const examplePillars =
+      pillarCatalog.length > 0 ? pillarCatalog : ['Tanpa pilar'];
+    const pillarExample = (index: number) =>
+      examplePillars[Math.min(index, examplePillars.length - 1)];
 
     const prompt = `Anda adalah Senior Social Media Strategist untuk pasar Indonesia.
 Tugas Anda adalah merumuskan rencana strategi konten yang tajam berdasarkan DATA HISTORIS NYATA brand berikut:
@@ -4183,6 +4295,15 @@ FILTER ANALISIS YANG DIPAKAI:
 - Platform: ${platformFilter.length > 0 ? platformFilter.join(', ') : 'semua platform'}
 - Periode: ${periodLabel}
 
+PILAR KONTEN RESMI BRAND (WAJIB DIPATUHI):
+${pillarCatalog.length > 0 ? pillarCatalog.map((pillar: string, index: number) => `${index + 1}. ${pillar}`).join('\n') : '(Brand belum mendefinisikan pilar. Gunakan "Tanpa pilar".)'}
+
+ATURAN PILAR:
+- Field "pillar" pada "content_action_plan" WAJIB ditulis PERSIS salah satu pilar pada daftar di atas, termasuk ejaan dan kapitalisasinya.
+- DILARANG membuat, menerjemahkan, menyingkat, atau mengganti nama pilar. Contoh: jika daftar berisi "Edutaiment", jangan menulis "Edukatif".
+- Jangan memakai pilar dari contoh format JSON jika tidak ada di daftar resmi.
+- Jika tidak ada pilar yang cocok, gunakan pilar yang paling relevan dari daftar resmi.
+
 PRINSIP WAJIB:
 1. PISAHKAN SECARA TEGAS antara FAKTA HISTORIS DATA (Data-Backed Facts) dan REKOMENDASI STRATEGIS (Actionable AI Recommendations).
 2. Jangan membuat klaim bahwa AI menjamin 100% viralitas atau pertumbuhan pasti.
@@ -4195,7 +4316,8 @@ PRINSIP WAJIB:
 9. Jika "series.approximate" bernilai true atau data grafik kosong, sebut sebagai perkiraan/tidak tersedia. JANGAN mengarang angka yang tidak ada di data.
 10. Seluruh data sudah difilter sesuai platform dan periode pada "filter_analisis". Jangan mencampurkan data platform/periode lain, dan sebutkan cakupan analisis secara eksplisit di ringkasan.
 11. Jika data pada cakupan filter kosong atau terlalu sedikit, katakan terus terang bahwa bukti belum cukup. Jangan memaksakan tren.
-12. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
+12. Field "pillar" pada "content_action_plan" WAJIB berasal dari "PILAR KONTEN RESMI BRAND" di atas dan ditulis persis. Dilarang mengarang pilar baru atau memakai contoh pilar yang tidak terdaftar.
+13. Kembalikan HANYA JSON murni tanpa markdown dengan format berikut:
 
 {
   "brand_overview": "Analisis singkat posisi brand saat ini berdasarkan data",
@@ -4215,21 +4337,21 @@ PRINSIP WAJIB:
   "content_action_plan": [
     {
       "hook": "Contoh kalimat judul/hook konten yang memikat",
-      "pillar": "Edukatif",
+      "pillar": ${JSON.stringify(pillarExample(0))},
       "format": "carousel",
       "channel": "instagram",
       "rationale": "Alasan mengapa ide ini relevan"
     },
     {
       "hook": "Contoh hook kedua",
-      "pillar": "Promosi",
+      "pillar": ${JSON.stringify(pillarExample(1))},
       "format": "reel_short",
       "channel": "tiktok",
       "rationale": "Alasan rekomendasi"
     },
     {
       "hook": "Contoh hook ketiga",
-      "pillar": "Interaktif",
+      "pillar": ${JSON.stringify(pillarExample(2))},
       "format": "story",
       "channel": "instagram",
       "rationale": "Alasan rekomendasi"
@@ -4246,7 +4368,7 @@ PRINSIP WAJIB:
     });
 
     const responseText = response.text?.trim() || '';
-    const parsedStrategy = parseJsonSafely(responseText);
+    const parsedStrategy = normalizeStrategyPillars(parseJsonSafely(responseText), pillarCatalog);
 
     const tokensConsumed = Number((response as any)?.usageMetadata?.totalTokenCount) || 0;
     if (quotaRes.logId) {
@@ -4423,6 +4545,12 @@ app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, r
   const message = String(req.body?.message || '').trim();
   const mode: 'data' | 'consultation' =
     req.body?.mode === 'consultation' ? 'consultation' : 'data';
+  const providedPillars: string[] = Array.isArray(req.body?.pillars)
+    ? req.body.pillars
+        .map((pillar: unknown) => String(pillar || '').trim())
+        .filter((pillar: string) => Boolean(pillar) && !isPlaceholderPillar(pillar))
+        .slice(0, 50)
+    : [];
 
   if (!brandId) {
     res.status(400).json({ error: 'Brand ID wajib diisi.' });
@@ -4515,6 +4643,7 @@ app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, r
       periodStartKey: null,
       periodEndKey: null,
       periodLabel: 'Semua periode',
+      pillars: providedPillars,
     });
 
     const modeInstruction =
@@ -4538,6 +4667,7 @@ ATURAN UMUM:
 6. Basis waktu analitik adalah JADWAL POSTING (scheduled_at, fallback created_at), bukan tanggal snapshot metrik.
 7. Jangan menjumlahkan "Ringkasan Akun" dengan "Akumulasi Konten"; keduanya sumber berbeda.
 8. Jika pengguna meminta analisis mendalam yang butuh laporan terstruktur, sarankan memakai tab "Generator Strategi".
+9. Jika menyebut pilar konten, gunakan nama PERSIS dari "pilar_konten_resmi" pada konteks. Jangan membuat, menerjemahkan, atau mengganti nama pilar.
 
 KONTEKS DATA BRAND (JSON):
 ${JSON.stringify(brandContext.historicalContext, null, 2)}`;

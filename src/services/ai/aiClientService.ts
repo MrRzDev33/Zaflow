@@ -208,6 +208,7 @@ export const aiClientService = {
     filters?: {
       goals?: string[];
       platforms?: string[];
+      pillars?: string[];
       periodMode?: 'all' | 'month' | 'range';
       periodMonth?: string;
       startDate?: string;
@@ -231,6 +232,7 @@ export const aiClientService = {
         customNotes,
         goals: filters?.goals,
         platforms: filters?.platforms,
+        pillars: filters?.pillars,
         periodMode: filters?.periodMode || 'all',
         periodMonth: filters?.periodMonth,
         startDate: filters?.startDate,
@@ -325,6 +327,7 @@ export const aiClientService = {
     conversationId?: string | null;
     message: string;
     mode: AiChatMode;
+    pillars?: string[];
   }): Promise<SendChatMessageResponse> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
@@ -342,6 +345,7 @@ export const aiClientService = {
         conversationId: params.conversationId || undefined,
         message: params.message,
         mode: params.mode,
+        pillars: params.pillars,
       }),
     });
 
