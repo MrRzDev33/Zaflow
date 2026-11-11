@@ -42,7 +42,7 @@ Setiap migrasi diawali `BEGIN;` dan diakhiri `COMMIT;`. Jika ada error, transaks
 
 > **Wajib:** migrasi 13 harus dijalankan **sebelum** memakai versi aplikasi ini. Migrasi ini menghapus kolom `posted_at` yang sudah tidak dipakai. Setelah migrasi, satu-satunya acuan waktu konten adalah **Jadwal Posting** (`scheduled_at`, termasuk jam) dengan fallback `created_at`.
 
-> **Wajib:** migrasi 14 harus dijalankan **sebelum** memakai tab **Chat Konsultasi**. Migrasi ini membuat tabel riwayat chat dan menambahkan `ai_chat` ke constraint `ai_usage_logs.action_type` serta RPC `consume_ai_credit`. Tanpa migrasi ini, chat akan gagal menyimpan riwayat dan pemotongan kuota dapat ditolak.
+> **Wajib:** migrasi 14 harus dijalankan **sebelum** memakai tab **Chat Konsultasi**. Migrasi ini membuat tabel riwayat chat. Chat konsultasi gratis dan tidak memotong kredit AI, jadi kuota tidak perlu tersedia untuk memakai tab ini.
 
 > **Wajib:** jalankan migrasi 15 agar postingan baru tanpa pilar tidak otomatis memakai default `Edukatif`. Aplikasi mengisi pilar dari daftar pilar aktif brand; laporan AI juga memakai daftar pilar resmi tersebut.
 

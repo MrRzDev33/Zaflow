@@ -13,7 +13,7 @@ Platform perencanaan konten, kalender editorial, analitik metrik, dan lisensi Sa
 - Detail insight Instagram per postingan: sumber tayangan enam kategori, faktor tayangan berurutan, demografi pemirsa (usia/negara/jenis kelamin), dan deret grafik dengan penanda perkiraan AI.
 - AI Strategy Assistant berbasis data historis brand, termasuk detail per postingan dan kedua sumber total.
 - Rencana aksi AI memakai **nama pilar resmi brand** (mis. `Edutaiment`), bukan pilar contoh/default.
-- Chat AI & Konsultasi di dalam Asisten Strategi: mode **Data Brand** (berbasis angka) dan **Konsultasi** (saran umum berlabel), riwayat per brand & pengguna, 1 kredit AI per pesan.
+- Chat AI & Konsultasi di dalam Asisten Strategi: mode **Data Brand** (berbasis angka) dan **Konsultasi** (saran umum berlabel), riwayat per brand & pengguna, **gratis tanpa pemotongan kredit AI**.
 - Langganan 6 bulan dengan kuota kredit AI total, batas brand/anggota, dan trial 3 hari yang diajukan ke customer service.
 - Pembelian pertama hanya lewat kode aktivasi yang dibuat admin setelah pembayaran via Meta Ads/WhatsApp; kode terikat email pembeli, sekali pakai, dan berlaku 30 hari.
 - Pembayaran Midtrans (Snap) dengan webhook terverifikasi, khusus untuk perpanjangan paket yang sudah pernah berbayar.
@@ -87,7 +87,7 @@ Buka **Supabase Dashboard → SQL Editor**, lalu jalankan berkas berikut satu pe
 
 > **Wajib:** jalankan migrasi 12 **sebelum** memakai versi aplikasi ini. Migrasi ini **menghapus permanen** snapshot tanpa postingan (`post_id IS NULL`) di seluruh brand, lalu menjadikan `post_id` wajib. Laporan sekarang memakai tanggal posting dan snapshot terbaru per postingan + saluran.
 
-> **Wajib:** jalankan migrasi 13 dan 14 **sebelum** memakai versi aplikasi ini. Migrasi 13 menghapus `posted_at`; migrasi 14 membuat tabel riwayat **Chat Konsultasi** dan menambahkan action type `ai_chat` pada kuota AI.
+> **Wajib:** jalankan migrasi 13 dan 14 **sebelum** memakai versi aplikasi ini. Migrasi 13 menghapus `posted_at`; migrasi 14 membuat tabel riwayat **Chat Konsultasi**. Chat konsultasi gratis dan tidak memotong kredit AI.
 
 > **Wajib:** jalankan migrasi 15 agar postingan tanpa pilar tidak otomatis memakai pilar default `Edukatif`. Aplikasi sekarang mengisi pilar dari daftar pilar aktif brand.
 

@@ -4538,7 +4538,7 @@ app.delete('/api/ai/chat/conversations/:id', authenticateUser, async (req: Reque
   }
 });
 
-// Kirim pesan chat. Biaya default 1 kredit AI per pesan.
+// Kirim pesan chat. Chat konsultasi gratis dan tidak memotong kredit AI.
 app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const { brandId, conversationId } = req.body;
@@ -4601,12 +4601,6 @@ app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, r
       return;
     }
     conversation = data;
-  }
-
-  const quotaRes = await checkAndDeductQuota(user.id, brandId, 'ai_chat', `Chat AI: ${message}`);
-  if (!quotaRes.allowed) {
-    res.status(403).json({ error: quotaRes.error });
-    return;
   }
 
   let createdConversationId: string | null = null;
@@ -4723,13 +4717,6 @@ ${JSON.stringify(brandContext.historicalContext, null, 2)}`;
       .update({ updated_at: now })
       .eq('id', conversation.id);
 
-    if (quotaRes.logId) {
-      await supabaseAdmin
-        .from('ai_usage_logs')
-        .update({ tokens_consumed: tokensConsumed })
-        .eq('id', quotaRes.logId);
-    }
-
     const savedMessages = insertedMessages || [];
     const replyMessage =
       savedMessages.find((item: any) => item.role === 'assistant') || savedMessages[0] || null;
@@ -4740,14 +4727,13 @@ ${JSON.stringify(brandContext.historicalContext, null, 2)}`;
       conversation: { ...conversation, updated_at: now },
       messages: savedMessages,
       reply: replyMessage,
-      remainingCredits: quotaRes.remaining,
-      totalCredits: quotaRes.total,
       modelUsed,
       tokensConsumed,
     });
   } catch (err: unknown) {
     console.error('Gemini AI Chat error:', err);
-    await refundQuota(user.id, quotaRes.licenseId, quotaRes.logId, 'ai_chat');
+
+    // Jika percakapan baru gagal dibuatkan balasan, jangan tinggalkan sesi kosong.
 
     // Jika percakapan baru gagal dibuatkan balasan, jangan tinggalkan sesi kosong.
     if (createdConversationId) {

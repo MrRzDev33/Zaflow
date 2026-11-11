@@ -17,7 +17,6 @@ import { workflowSettingsService } from '../../services/database/workflowSetting
 
 interface AiChatPanelProps {
   brand: Brand | null;
-  aiCreditsRemaining: number;
   onRefreshLicense: () => void;
 }
 
@@ -72,7 +71,6 @@ function formatConversationDate(value: string): string {
 
 export const AiChatPanel: React.FC<AiChatPanelProps> = ({
   brand,
-  aiCreditsRemaining,
   onRefreshLicense,
 }) => {
   const [mode, setMode] = useState<AiChatMode>('data');
@@ -172,11 +170,6 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
     if (!brand || isSending) return;
     const text = (textOverride ?? input).trim();
     if (!text) return;
-
-    if (aiCreditsRemaining <= 0) {
-      setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Paket & Kuota.');
-      return;
-    }
 
     const optimistic: AiChatMessage = {
       id: `temp-${Date.now()}`,
@@ -330,7 +323,7 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
                 {activeConversation?.title || 'Konsultasi Baru'}
               </h2>
               <p className="text-[11px] text-slate-500 mt-0.5">
-                {aiCreditsRemaining} kredit tersedia • 1 kredit per pesan
+                Chat konsultasi gratis • tidak memotong kredit AI
               </p>
             </div>
 
@@ -456,12 +449,6 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
         </div>
 
         <div className="border-t border-slate-100 p-3">
-          {aiCreditsRemaining <= 0 && (
-            <div className="mb-2 flex items-center gap-1.5 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-800">
-              <AlertCircle className="w-3 h-3 shrink-0" />
-              Kuota kredit AI habis. Tingkatkan paket untuk melanjutkan chat.
-            </div>
-          )}
           <div className="flex items-end gap-2 rounded-xl border border-slate-300 bg-white p-2 focus-within:border-blue-500 focus-within:ring-2 focus-within:ring-blue-500/20">
             <textarea
               ref={textareaRef}
@@ -480,16 +467,16 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
             <button
               type="button"
               onClick={() => void sendMessage()}
-              disabled={!input.trim() || isSending || isLoadingConversation || aiCreditsRemaining <= 0}
+              disabled={!input.trim() || isSending || isLoadingConversation}
               className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-40"
-              title="Kirim pesan (1 kredit)"
+              title="Kirim pesan"
               aria-label="Kirim pesan"
             >
               {isSending ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowUp className="w-4 h-4" />}
             </button>
           </div>
           <div className="mt-1 flex items-center justify-between px-1 text-[9px] text-slate-400">
-            <span>Shift + Enter untuk baris baru • 1 pesan = 1 kredit AI</span>
+            <span>Shift + Enter untuk baris baru • Chat gratis tanpa kredit AI</span>
             <span>{input.length}/4000</span>
           </div>
         </div>

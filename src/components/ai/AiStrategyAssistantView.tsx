@@ -236,7 +236,6 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
       {activeTab === 'chat' ? (
         <AiChatPanel
           brand={brand}
-          aiCreditsRemaining={aiCreditsRemaining}
           onRefreshLicense={onRefreshLicense}
         />
       ) : (

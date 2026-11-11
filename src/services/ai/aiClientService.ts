@@ -118,7 +118,7 @@ export interface SendChatMessageResponse {
   conversation: AiChatConversation;
   messages: AiChatMessage[];
   reply: AiChatMessage;
-  remainingCredits: number;
+  remainingCredits?: number;
   totalCredits?: number;
   modelUsed?: string;
 }
@@ -319,8 +319,8 @@ export const aiClientService = {
   },
 
   /**
-   * Mengirim pesan konsultasi. Server memotong 1 kredit AI per pesan dan
-   * mengembalikannya otomatis jika pemanggilan model gagal.
+   * Mengirim pesan konsultasi. Chat konsultasi gratis dan tidak memotong
+   * kredit AI; riwayat tetap disimpan per brand dan per pengguna.
    */
   async sendChatMessage(params: {
     brandId: string;
