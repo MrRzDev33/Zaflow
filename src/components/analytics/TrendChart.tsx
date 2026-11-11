@@ -1,7 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  ChevronLeft,
-  ChevronRight,
   Minus,
   Plus,
   RotateCcw,
@@ -16,9 +14,15 @@ interface TrendChartProps {
 
 const CHART_HEIGHT = 224;
 const TICK_COUNT = 4;
-// Nilai kecil tetap terlihat tanpa menghilangkan proporsi relatif batang.
-const MIN_BAR_HEIGHT = 10;
-const ZOOM_LEVELS = [1, 1.5, 2, 3, 4] as const;
+// Tinggi minimum agar nilai kecil tetap terlihat.
+const MIN_BAR_HEIGHT = 4;
+
+/**
+ * Tingkat skala vertikal. Nilai > 1 memakai skala pangkat (gamma < 1) sehingga
+ * batang bernilai kecil mendapat porsi tinggi lebih besar dan grafik tidak
+ * terlalu jomplang saat ada satu nilai yang jauh lebih tinggi.
+ */
+const SCALE_LEVELS = [1, 1.5, 2, 3] as const;
 
 /** Membulatkan langkah sumbu Y ke angka yang mudah dibaca (1, 2, 2.5, 5, 10). */
 function niceStep(value: number): number {
@@ -38,16 +42,20 @@ function formatAxisValue(value: number): string {
   return Number.isInteger(value) ? formatCount(value) : formatDecimal(value, 1);
 }
 
-function windowSizeFor(total: number, zoom: number): number {
-  if (zoom <= 1) return total;
-  return Math.min(total, Math.max(4, Math.ceil(total / zoom)));
+/**
+ * Mengubah nilai menjadi rasio tinggi 0..1. Dengan skala 1 hasilnya linear.
+ * Dengan skala > 1, nilai kecil dinaikkan porsinya secara non-linear.
+ */
+function heightRatio(value: number, max: number, gamma: number): number {
+  if (max <= 0 || value <= 0) return 0;
+  const normalized = Math.min(1, value / max);
+  return Math.pow(normalized, gamma);
 }
 
 export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
   const [metricKey, setMetricKey] = useState<'impressions' | 'reach' | 'engagements'>('reach');
   const [hoveredPoint, setHoveredPoint] = useState<DailyTrendPoint | null>(null);
-  const [zoomIndex, setZoomIndex] = useState(0);
-  const [windowStart, setWindowStart] = useState(0);
+  const [scaleIndex, setScaleIndex] = useState(0);
 
   const metricConfigs = {
     reach: { label: 'Jangkauan (Reach)', color: 'bg-purple-600' },
@@ -55,29 +63,19 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
     engagements: { label: 'Keterlibatan (Engagements)', color: 'bg-pink-600' },
   };
 
-  const zoom = ZOOM_LEVELS[zoomIndex];
-  const windowSize = windowSizeFor(data.length, zoom);
-
-  // Pastikan posisi jendela zoom tetap valid saat data/zoom berubah.
-  useEffect(() => {
-    const maxStart = Math.max(0, data.length - windowSize);
-    setWindowStart((prev) => Math.min(Math.max(0, prev), maxStart));
-  }, [data.length, windowSize]);
-
-  const visibleData = useMemo(() => {
-    if (windowSize >= data.length) return data;
-    return data.slice(windowStart, windowStart + windowSize);
-  }, [data, windowSize, windowStart]);
+  const scaleMultiplier = SCALE_LEVELS[scaleIndex];
+  // Skala 2× setara akar kuadrat; nilai kecil naik lebih banyak daripada nilai besar.
+  const gamma = 1 / scaleMultiplier;
 
   const maxValue = useMemo(() => {
     let max = 0;
-    for (const d of visibleData) {
+    for (const d of data) {
       if (d[metricKey] > max) max = d[metricKey];
     }
     return max;
-  }, [visibleData, metricKey]);
+  }, [data, metricKey]);
 
-  // Skala dimulai dari 0 agar tinggi batang benar-benar proporsional terhadap nilai.
+  // Skala dimulai dari 0 agar tinggi batang tetap proporsional.
   const { niceMax, ticks } = useMemo(() => {
     const step = niceStep(Math.max(maxValue, 1) / TICK_COUNT);
     const scaleMax = step * TICK_COUNT;
@@ -87,32 +85,18 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
     };
   }, [maxValue]);
 
-  // Total mengikuti rentang yang sedang ditampilkan agar konsisten dengan grafik.
   const total = useMemo(() => {
-    return visibleData.reduce((acc, curr) => acc + (curr[metricKey] || 0), 0);
-  }, [visibleData, metricKey]);
+    return data.reduce((acc, curr) => acc + (curr[metricKey] || 0), 0);
+  }, [data, metricKey]);
 
-  const applyZoom = (nextIndex: number) => {
-    const clamped = Math.max(0, Math.min(nextIndex, ZOOM_LEVELS.length - 1));
-    const nextZoom = ZOOM_LEVELS[clamped];
-    const nextSize = windowSizeFor(data.length, nextZoom);
-    setZoomIndex(clamped);
-    // Saat memperbesar, tampilkan data terbaru terlebih dahulu.
-    setWindowStart(Math.max(0, data.length - nextSize));
+  const setScale = (nextIndex: number) => {
+    const clamped = Math.max(0, Math.min(nextIndex, SCALE_LEVELS.length - 1));
+    setScaleIndex(clamped);
     setHoveredPoint(null);
   };
 
-  const panWindow = (direction: -1 | 1) => {
-    if (windowSize >= data.length) return;
-    const step = Math.max(1, Math.floor(windowSize / 2));
-    const maxStart = Math.max(0, data.length - windowSize);
-    setWindowStart((prev) => Math.min(Math.max(0, prev + direction * step), maxStart));
-    setHoveredPoint(null);
-  };
-
-  const isZoomed = zoom > 1 && windowSize < data.length;
-  const canPanLeft = isZoomed && windowStart > 0;
-  const canPanRight = isZoomed && windowStart + windowSize < data.length;
+  const bottomPercent = (value: number) => heightRatio(value, niceMax, gamma) * 100;
+  const isScaled = scaleIndex > 0;
 
   return (
     <div className="bg-white border border-slate-200/80 rounded-xl p-5 shadow-xs space-y-4">
@@ -125,7 +109,7 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Total {formatCount(total)} {metricConfigs[metricKey].label} dari{' '}
-            {isZoomed ? `${visibleData.length} tanggal yang ditampilkan` : 'postingan pada periode yang dipilih'}
+            {data.length} tanggal pada periode yang dipilih
           </p>
         </div>
 
@@ -146,62 +130,43 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
             ))}
           </div>
 
-          {/* Zoom controls */}
+          {/* Skala vertikal: menaikkan porsi tinggi nilai kecil, bukan menggeser tanggal */}
           <div className="flex items-center gap-1 border border-slate-200 rounded-lg p-0.5 bg-slate-50 text-xs">
+            <span className="px-1 text-[10px] font-semibold text-slate-500">Skala</span>
             <button
               type="button"
-              onClick={() => panWindow(-1)}
-              disabled={!canPanLeft}
-              aria-label="Geser rentang ke kiri"
-              title="Geser ke kiri"
-              className="rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => applyZoom(zoomIndex - 1)}
-              disabled={zoomIndex === 0}
-              aria-label="Perkecil zoom"
-              title="Zoom out"
+              onClick={() => setScale(scaleIndex - 1)}
+              disabled={scaleIndex === 0}
+              aria-label="Kurangi skala vertikal"
+              title="Kurangi skala vertikal"
               className="rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <Minus className="w-3.5 h-3.5" />
             </button>
             <span
               className={`min-w-[38px] text-center text-[10px] font-bold ${
-                isZoomed ? 'text-blue-600' : 'text-slate-400'
+                isScaled ? 'text-blue-600' : 'text-slate-400'
               }`}
-              title="Tingkat zoom grafik"
+              title="Skala vertikal grafik"
             >
-              {zoom}×
+              {scaleMultiplier}×
             </span>
             <button
               type="button"
-              onClick={() => applyZoom(zoomIndex + 1)}
-              disabled={zoomIndex === ZOOM_LEVELS.length - 1 || data.length <= 4}
-              aria-label="Perbesar zoom"
-              title="Zoom in"
+              onClick={() => setScale(scaleIndex + 1)}
+              disabled={scaleIndex === SCALE_LEVELS.length - 1}
+              aria-label="Perbesar nilai kecil"
+              title="Perbesar nilai kecil"
               className="rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
             <button
               type="button"
-              onClick={() => panWindow(1)}
-              disabled={!canPanRight}
-              aria-label="Geser rentang ke kanan"
-              title="Geser ke kanan"
-              className="rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
-            >
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => applyZoom(0)}
-              disabled={!isZoomed}
-              aria-label="Reset zoom"
-              title="Reset zoom"
+              onClick={() => setScale(0)}
+              disabled={!isScaled}
+              aria-label="Reset skala vertikal"
+              title="Reset skala vertikal"
               className="ml-0.5 rounded-md p-1.5 text-slate-500 transition hover:bg-white hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -232,13 +197,20 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
           )}
 
           <div className="flex gap-3">
-            {/* Y-axis labels */}
+            {/* Y-axis labels: posisi mengikuti skala vertikal yang dipilih */}
             <div
-              className="w-12 shrink-0 flex flex-col justify-between text-right text-[10px] text-slate-400"
+              className="relative w-12 shrink-0 text-right text-[10px] text-slate-400"
               style={{ height: CHART_HEIGHT }}
             >
-              {[...ticks].reverse().map((tick) => (
-                <span key={tick} className="leading-none">
+              {ticks.map((tick) => (
+                <span
+                  key={tick}
+                  className="absolute right-0 leading-none"
+                  style={{
+                    bottom: `${bottomPercent(tick)}%`,
+                    transform: 'translateY(50%)',
+                  }}
+                >
                   {formatAxisValue(tick)}
                 </span>
               ))}
@@ -250,22 +222,22 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
                 className="relative border-b border-slate-300"
                 style={{ height: CHART_HEIGHT }}
               >
-                {/* Grid lines at each Y tick */}
+                {/* Grid lines mengikuti posisi skala vertikal */}
                 <div className="absolute inset-0 pointer-events-none">
                   {ticks.slice(1).map((tick) => (
                     <div
                       key={tick}
                       className="absolute inset-x-0 border-t border-dashed border-slate-200"
-                      style={{ bottom: `${(tick / niceMax) * 100}%` }}
+                      style={{ bottom: `${bottomPercent(tick)}%` }}
                     />
                   ))}
                 </div>
 
                 {/* Columns */}
-                <div className="absolute inset-0 flex items-end gap-[3px] px-1">
-                  {visibleData.map((point) => {
+                <div className="absolute inset-0 flex items-end gap-[2px] px-1">
+                  {data.map((point) => {
                     const val = point[metricKey] || 0;
-                    const heightPx = (val / niceMax) * CHART_HEIGHT;
+                    const heightPx = heightRatio(val, niceMax, gamma) * CHART_HEIGHT;
                     const isZero = val === 0;
 
                     return (
@@ -294,17 +266,17 @@ export const TrendChart: React.FC<TrendChartProps> = ({ data }) => {
 
               {/* Dates bottom label */}
               <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2 px-1">
-                <span>{visibleData[0]?.formattedDate}</span>
+                <span>{data[0]?.formattedDate}</span>
                 <span className="hidden sm:inline-block text-slate-300">• • •</span>
-                <span>{visibleData[Math.floor(visibleData.length / 2)]?.formattedDate}</span>
+                <span>{data[Math.floor(data.length / 2)]?.formattedDate}</span>
                 <span className="hidden sm:inline-block text-slate-300">• • •</span>
-                <span>{visibleData[visibleData.length - 1]?.formattedDate}</span>
+                <span>{data[data.length - 1]?.formattedDate}</span>
               </div>
 
-              {isZoomed && (
+              {isScaled && (
                 <p className="mt-1 text-center text-[10px] text-slate-400">
-                  Menampilkan {visibleData.length} dari {data.length} tanggal. Gunakan panah untuk
-                  menggeser rentang.
+                  Skala vertikal {scaleMultiplier}×: nilai kecil ditinggikan agar perbedaan tidak
+                  terlalu jomplang. Tanggal yang ditampilkan tetap semua.
                 </p>
               )}
             </div>
