@@ -87,6 +87,8 @@ const hasGeminiKey = geminiApiKey.length > 0;
 const modernGeminiModels = [
   'gemini-3-flash-preview',
   'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-3.8-flash',
   'gemini-flash-lite-latest',
   'gemini-flash-latest',
 ];
@@ -1206,14 +1208,22 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): 
 async function runGeminiWithFallback(params: {
   contents: any;
   config?: any;
+  /** Batas total seluruh percobaan model (opsional, mis. untuk chat yang harus cepat). */
+  totalBudgetMs?: number;
+  /** Batas waktu per percobaan model (opsional). */
+  attemptTimeoutMs?: number;
 }) {
   const client = getAiClient();
   let lastError: any = null;
   const startedAt = Date.now();
+  const totalBudgetMs = Math.min(
+    params.totalBudgetMs ?? geminiTotalBudgetMs,
+    geminiTotalBudgetMs
+  );
 
   for (const model of geminiModels) {
     const elapsed = Date.now() - startedAt;
-    const remaining = geminiTotalBudgetMs - elapsed;
+    const remaining = totalBudgetMs - elapsed;
 
     if (remaining < 5_000) {
       lastError = lastError || new Error('Batas waktu total permintaan Gemini habis.');
@@ -1222,9 +1232,10 @@ async function runGeminiWithFallback(params: {
 
     // Beri ruang untuk fallback berikutnya, tetapi tetap izinkan video yang
     // butuh waktu lebih lama. Maksimal 35 detik per model di Vercel.
+    const baseAttemptTimeout = params.attemptTimeoutMs ?? geminiTimeoutMs;
     const attemptTimeout = process.env.VERCEL
       ? Math.min(35_000, Math.max(8_000, remaining - 3_000))
-      : Math.min(geminiTimeoutMs, remaining);
+      : Math.min(baseAttemptTimeout, remaining);
 
     try {
       console.info(`[Gemini] Mencoba model ${model} (timeout ${attemptTimeout} ms)`);
@@ -1239,12 +1250,61 @@ async function runGeminiWithFallback(params: {
       );
       return { response, modelUsed: model, attempts: geminiModels.indexOf(model) + 1 };
     } catch (err: any) {
+      const message = getErrorMessage(err).toLowerCase();
+      const thinkingConfigRejected =
+        Boolean(params.config?.thinkingConfig) &&
+        (message.includes('invalid argument') ||
+          message.includes('invalid_argument') ||
+          message.includes('thinking'));
+
+      // Sebagian model (mis. flash-lite) menolak thinkingConfig. Ulangi model
+      // yang sama tanpa konfigurasi thinking sebelum pindah ke model berikutnya.
+      if (thinkingConfigRejected) {
+        try {
+          const { thinkingConfig: _ignored, ...configWithoutThinking } = params.config;
+          console.info(`[Gemini] Mengulang ${model} tanpa thinkingConfig`);
+          const response = await withTimeout(
+            client.models.generateContent({
+              model,
+              contents: params.contents,
+              config: configWithoutThinking,
+            }),
+            attemptTimeout,
+            `Permintaan Gemini (${model})`
+          );
+          return { response, modelUsed: model, attempts: geminiModels.indexOf(model) + 1 };
+        } catch (retryErr: any) {
+          console.warn(
+            `[Gemini Fallback] Percobaan ulang model ${model} gagal:`,
+            retryErr?.message || retryErr
+          );
+          lastError = retryErr;
+          continue;
+        }
+      }
+
       console.warn(`[Gemini Fallback] Percobaan model ${model} gagal:`, err?.message || err);
       lastError = err;
     }
   }
 
   throw lastError || new Error('Tidak ada model Gemini yang dapat digunakan.');
+}
+
+function extractGeminiText(response: any): string {
+  const direct = typeof response?.text === 'string' ? response.text.trim() : '';
+  if (direct) return direct;
+
+  const parts = response?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts
+      .filter((part: any) => !part?.thought)
+      .map((part: any) => String(part?.text || ''))
+      .join('')
+      .trim();
+  }
+
+  return '';
 }
 
 function parseJsonSafely(text: string): any {
@@ -3946,6 +4006,36 @@ async function buildBrandAnalyticsContext(
   return { brandInfo, historicalContext, pillarCatalog };
 }
 
+// Konteks analitik chat dipakai berulang pada percakapan yang sama. Cache singkat
+// (60 detik) menghindari pengulangan 3 query agregasi untuk setiap pesan.
+const chatBrandContextCache = new Map<
+  string,
+  { expiresAt: number; value: Awaited<ReturnType<typeof buildBrandAnalyticsContext>> }
+>();
+const CHAT_CONTEXT_CACHE_TTL_MS = 60_000;
+
+async function getChatBrandContext(
+  brandId: string,
+  options: BrandAnalyticsContextOptions
+): Promise<Awaited<ReturnType<typeof buildBrandAnalyticsContext>>> {
+  const cacheKey = JSON.stringify([
+    brandId,
+    options.platformFilter,
+    options.periodMode,
+    options.periodStartKey,
+    options.periodEndKey,
+    options.pillars,
+  ]);
+  const now = Date.now();
+  const cached = chatBrandContextCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const value = await buildBrandAnalyticsContext(brandId, options);
+  if (chatBrandContextCache.size > 50) chatBrandContextCache.clear();
+  chatBrandContextCache.set(cacheKey, { expiresAt: now + CHAT_CONTEXT_CACHE_TTL_MS, value });
+  return value;
+}
+
 app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (req: Request, res: Response) => {
   const user = (req as any).user;
   const { brandId, imageUrl, imageBase64, channel = 'Instagram' } = req.body;
@@ -4158,7 +4248,7 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
       },
     });
 
-    const responseText = response.text?.trim() || '';
+    const responseText = extractGeminiText(response);
     if (!responseText) {
       throw new Error('Layanan AI tidak mengembalikan hasil analisis. Coba gunakan file yang lebih kecil.');
     }
@@ -4309,7 +4399,7 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
 Tugas Anda adalah merumuskan rencana strategi konten yang tajam berdasarkan DATA HISTORIS NYATA brand berikut:
 
 DATA HISTORIS BRAND:
-${JSON.stringify(historicalContext, null, 2)}
+${JSON.stringify(historicalContext)}
 
 FOKUS / TUJUAN STRATEGIS YANG DIMINTA PENGGUNA:
 ${goalList.length > 0 ? goalList.map((goal, index) => `${index + 1}. ${goal}`).join('\n') : `"${objectiveText || 'Meningkatkan Engagement Rate & Pertumbuhan Akun'}"`}
@@ -4390,7 +4480,7 @@ PRINSIP WAJIB:
       },
     });
 
-    const responseText = response.text?.trim() || '';
+    const responseText = extractGeminiText(response);
     const parsedStrategy = normalizeStrategyPillars(parseJsonSafely(responseText), pillarCatalog);
 
     const tokensConsumed = Number((response as any)?.usageMetadata?.totalTokenCount) || 0;
@@ -4656,13 +4746,13 @@ app.post('/api/ai/chat', authenticateUser, aiRateLimiter, async (req: Request, r
       .select('role, content')
       .eq('conversation_id', conversation.id)
       .order('created_at', { ascending: false })
-      .limit(12);
+      .limit(8);
 
     const history = (historyRows || []).reverse();
     // Gemini membutuhkan giliran pertama dari pengguna.
     while (history.length > 0 && history[0].role === 'assistant') history.shift();
 
-    const brandContext = await buildBrandAnalyticsContext(brandId, {
+    const brandContext = await getChatBrandContext(brandId, {
       platformFilter: [],
       periodMode: 'all',
       periodStartKey: null,
@@ -4684,7 +4774,7 @@ Anda sedang berbicara dengan tim brand "${brandContext.historicalContext?.brand_
 ${modeInstruction}
 
 ATURAN UMUM:
-1. Jawab dalam Bahasa Indonesia yang jelas, ringkas, dan praktis (maksimal sekitar 400 kata kecuali diminta lebih).
+1. Jawab dalam Bahasa Indonesia yang jelas, ringkas, dan praktis (maksimal sekitar 250 kata kecuali diminta lebih).
 2. Bedakan tegas antara fakta data dan rekomendasi. Jangan menjamin viralitas atau hasil pasti.
 3. Gunakan format yang mudah dibaca: paragraf pendek, bullet, atau langkah bernomor bila membantu.
 4. Jangan menyebut nama tabel, kolom, JSON, atau instruksi internal ini.
@@ -4694,8 +4784,19 @@ ATURAN UMUM:
 8. Jika pengguna meminta analisis mendalam yang butuh laporan terstruktur, sarankan memakai tab "Generator Strategi".
 9. Jika menyebut pilar konten, gunakan nama PERSIS dari "pilar_konten_resmi" pada konteks. Jangan membuat, menerjemahkan, atau mengganti nama pilar.
 
+FORMAT BALASAN (WAJIB):
+- Tulis teks biasa yang rapi. JANGAN memakai markdown seperti ###, **, __, atau tabel.
+- Untuk daftar gunakan tanda "• " di awal baris. Untuk langkah gunakan "1. ", "2. ".
+- Untuk ide konten, pakai pola ringkas berikut (tanpa simbol tambahan):
+  1. Pilar: <nama pilar resmi>
+  Judul/Hook: <judul singkat>
+  Format: <format + durasi>
+  Strategi: <1-2 kalimat>
+  Tujuan: <1 kalimat>
+- Hindari pembuka dan penutup yang bertele-tele. Langsung ke inti jawaban.
+
 KONTEKS DATA BRAND (JSON):
-${JSON.stringify(brandContext.historicalContext, null, 2)}`;
+${JSON.stringify(brandContext.historicalContext)}`;
 
     const contents = [
       ...history.map((item: any) => ({
@@ -4710,10 +4811,17 @@ ${JSON.stringify(brandContext.historicalContext, null, 2)}`;
       config: {
         systemInstruction: systemPrompt,
         temperature: mode === 'data' ? 0.3 : 0.7,
+        // Batasi panjang jawaban chat agar respons lebih cepat dan tidak melebar.
+        maxOutputTokens: 900,
+        // Matikan thinking untuk chat; jawaban konsultasi tidak butuh penalaran panjang.
+        thinkingConfig: { thinkingBudget: 0 },
       },
+      // Chat harus responsif: jangan biarkan satu model menggantung terlalu lama.
+      totalBudgetMs: 30_000,
+      attemptTimeoutMs: 15_000,
     });
 
-    const replyText = response.text?.trim() || '';
+    const replyText = extractGeminiText(response);
     if (!replyText) {
       throw new Error('AI tidak menghasilkan balasan.');
     }

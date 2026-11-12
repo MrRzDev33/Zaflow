@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { Loader2, Sparkles, BarChart3, ScanEye, BrainCircuit, Users, History, Key, ShieldAlert } from './components/common/icons/lucide-compat.tsx';
 import { useAuth } from './hooks/useAuth.ts';
 import { useBrands } from './hooks/useBrands.ts';
@@ -15,24 +15,51 @@ import { AuthPage } from './components/auth/AuthPage.tsx';
 import { ResetPasswordForm } from './components/auth/ResetPasswordForm.tsx';
 import { AppLayout } from './components/layout/AppLayout.tsx';
 import { DashboardOverview } from './components/dashboard/DashboardOverview.tsx';
-import { ContentDatabaseView } from './components/content/ContentDatabaseView.tsx';
-import { ContentCalendarView } from './components/content/ContentCalendarView.tsx';
-import { ContentKanbanView } from './components/content/ContentKanbanView.tsx';
-import { AnalyticsView } from './components/analytics/AnalyticsView.tsx';
-import { ContentPostAnalyticsView } from './components/analytics/ContentPostAnalyticsView.tsx';
-import { AiMetricsExtractorView } from './components/ai/AiMetricsExtractorView.tsx';
-import { AiStrategyAssistantView } from './components/ai/AiStrategyAssistantView.tsx';
 import { NewBrandModal } from './components/dashboard/NewBrandModal.tsx';
 import { NewPostModal } from './components/dashboard/NewPostModal.tsx';
 import { BrandSettingsModal } from './components/brands/BrandSettingsModal.tsx';
-import { TeamView } from './components/team/TeamView.tsx';
-import { ActivityLogsView } from './components/activity/ActivityLogsView.tsx';
-import { LicenseQuotaView } from './components/license/LicenseQuotaView.tsx';
-import { AdminPanelView } from './components/admin/AdminPanelView.tsx';
 import { contentService, CreatePostInput } from './services/database/contentService.ts';
 import { teamService } from './services/database/teamService.ts';
 import { ContentPost, ContentFormat } from './types/database.ts';
 import { ContentActionPlanItem } from './services/ai/aiClientService.ts';
+
+// View berat dimuat sesuai tab agar bundle awal tetap ringan dan tab pertama
+// tidak menunggu seluruh halaman ikut diunduh.
+const ContentDatabaseView = lazy(() =>
+  import('./components/content/ContentDatabaseView.tsx').then((m) => ({ default: m.ContentDatabaseView }))
+);
+const ContentCalendarView = lazy(() =>
+  import('./components/content/ContentCalendarView.tsx').then((m) => ({ default: m.ContentCalendarView }))
+);
+const ContentKanbanView = lazy(() =>
+  import('./components/content/ContentKanbanView.tsx').then((m) => ({ default: m.ContentKanbanView }))
+);
+const AnalyticsView = lazy(() =>
+  import('./components/analytics/AnalyticsView.tsx').then((m) => ({ default: m.AnalyticsView }))
+);
+const ContentPostAnalyticsView = lazy(() =>
+  import('./components/analytics/ContentPostAnalyticsView.tsx').then((m) => ({
+    default: m.ContentPostAnalyticsView,
+  }))
+);
+const AiMetricsExtractorView = lazy(() =>
+  import('./components/ai/AiMetricsExtractorView.tsx').then((m) => ({ default: m.AiMetricsExtractorView }))
+);
+const AiStrategyAssistantView = lazy(() =>
+  import('./components/ai/AiStrategyAssistantView.tsx').then((m) => ({ default: m.AiStrategyAssistantView }))
+);
+const TeamView = lazy(() =>
+  import('./components/team/TeamView.tsx').then((m) => ({ default: m.TeamView }))
+);
+const ActivityLogsView = lazy(() =>
+  import('./components/activity/ActivityLogsView.tsx').then((m) => ({ default: m.ActivityLogsView }))
+);
+const LicenseQuotaView = lazy(() =>
+  import('./components/license/LicenseQuotaView.tsx').then((m) => ({ default: m.LicenseQuotaView }))
+);
+const AdminPanelView = lazy(() =>
+  import('./components/admin/AdminPanelView.tsx').then((m) => ({ default: m.AdminPanelView }))
+);
 
 export default function App() {
   const {
@@ -375,9 +402,17 @@ export default function App() {
     }
   }, [activeBrand]);
 
+  // Posting hanya dibutuhkan oleh tab analitik konten dan fitur AI. Menghindari
+  // fetch daftar posting saat membuka tab lain membuat perpindahan tab lebih ringan.
+  const shouldLoadBrandPosts =
+    currentTab === 'content_posts' ||
+    currentTab === 'ai_extractor' ||
+    currentTab === 'ai_strategy';
+
   useEffect(() => {
-    fetchBrandPosts();
-  }, [fetchBrandPosts]);
+    if (!shouldLoadBrandPosts) return;
+    void fetchBrandPosts();
+  }, [shouldLoadBrandPosts, fetchBrandPosts]);
 
   // Loading screen saat memverifikasi sesi
   if (authLoading) {
@@ -597,6 +632,7 @@ export default function App() {
           label: accessStatus.customerService.label,
         } : null}
       >
+        <Suspense fallback={<ViewLoading />}>
         {currentTab === 'dashboard' && (
           <DashboardOverview
             brand={activeBrand}
@@ -729,6 +765,7 @@ export default function App() {
             onBackToDashboard={() => setCurrentTab('dashboard')}
           />
         )}
+        </Suspense>
       </AppLayout>
 
       {/* Modal Tambah Brand Baru */}
@@ -821,6 +858,15 @@ export default function App() {
         </div>
       )}
     </>
+  );
+}
+
+function ViewLoading() {
+  return (
+    <div className="flex min-h-[280px] items-center justify-center gap-2 text-xs text-slate-400">
+      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+      Memuat halaman...
+    </div>
   );
 }
 

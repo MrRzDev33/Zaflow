@@ -14,6 +14,7 @@ import {
 import { AiChatConversation, AiChatMessage, AiChatMode, Brand } from '../../types/database.ts';
 import { aiClientService } from '../../services/ai/aiClientService.ts';
 import { workflowSettingsService } from '../../services/database/workflowSettingsService.ts';
+import { ChatMessageContent } from './ChatMessageContent.tsx';
 
 interface AiChatPanelProps {
   brand: Brand | null;
@@ -410,13 +411,13 @@ export const AiChatPanel: React.FC<AiChatPanelProps> = ({
                   )}
                   <div className={`max-w-[85%] ${isUser ? 'text-right' : 'text-left'}`}>
                     <div
-                      className={`inline-block whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
+                      className={`inline-block break-words rounded-2xl px-3.5 py-2.5 text-xs leading-relaxed ${
                         isUser
-                          ? 'bg-blue-600 text-white rounded-br-md'
+                          ? 'whitespace-pre-wrap bg-blue-600 text-white rounded-br-md'
                           : 'bg-slate-100 text-slate-800 rounded-bl-md'
                       }`}
                     >
-                      {message.content}
+                      {isUser ? message.content : <ChatMessageContent content={message.content} />}
                     </div>
                     <p className="mt-1 text-[9px] text-slate-400 px-1">
                       {formatChatTime(message.created_at)}
