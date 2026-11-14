@@ -444,6 +444,36 @@ async function isPlatformOwner(userId: string): Promise<boolean> {
   return profile?.system_role === 'super_admin';
 }
 
+/**
+ * Akun dengan kredit AI tanpa batas.
+ *
+ * Default: seluruh super admin dan email yang terdaftar di env
+ * AI_UNLIMITED_EMAILS (dipisah koma). Email dinormalisasi agar spasi/ kapital
+ * tidak membuat pencocokan gagal.
+ */
+const UNLIMITED_AI_EMAILS = new Set(
+  (process.env.AI_UNLIMITED_EMAILS || 'rzmodz8@gmail.com')
+    .split(',')
+    .map((email) => email.trim().toLowerCase().replace(/\s+/g, ''))
+    .filter(Boolean)
+);
+
+const UNLIMITED_CREDITS = 999_999;
+
+function normalizeAccountEmail(email?: string | null): string {
+  return String(email || '').trim().toLowerCase().replace(/\s+/g, '');
+}
+
+async function isUnlimitedAiUser(
+  userId: string,
+  email?: string | null,
+  profile?: any
+): Promise<boolean> {
+  if (email && UNLIMITED_AI_EMAILS.has(normalizeAccountEmail(email))) return true;
+  if (profile) return profile.system_role === 'super_admin';
+  return isPlatformOwner(userId);
+}
+
 async function requirePlatformOwner(req: Request, res: Response): Promise<any | null> {
   const user = (req as any).user;
   if (!user) {
@@ -933,6 +963,7 @@ interface QuotaDeductResult {
   licenseId?: string;
   logId?: string;
   error?: string;
+  unlimited?: boolean;
 }
 
 function isMissingRpcError(error: any): boolean {
@@ -973,7 +1004,9 @@ async function checkAndDeductQuota(
   userId: string,
   brandId: string | null,
   actionType: 'metrics_extractor' | 'strategy_assistant' | 'ai_chat',
-  summary: string
+  summary: string,
+  userEmail?: string | null,
+  profile?: any
 ): Promise<QuotaDeductResult> {
   if (!supabaseAdmin) {
     return {
@@ -987,6 +1020,21 @@ async function checkAndDeductQuota(
 
   // Anggota tim memakai kuota pemilik workspace, bukan kuota pribadi.
   const quotaOwnerId = (brandId ? await getBrandOwnerId(brandId) : null) || userId;
+
+  // Super admin dan email khusus tidak pernah kehabisan kredit AI.
+  let unlimited = await isUnlimitedAiUser(userId, userEmail, profile);
+  if (!unlimited && quotaOwnerId !== userId) {
+    unlimited = await isUnlimitedAiUser(quotaOwnerId);
+  }
+  if (unlimited) {
+    return {
+      allowed: true,
+      remaining: UNLIMITED_CREDITS,
+      total: UNLIMITED_CREDITS,
+      used: 0,
+      unlimited: true,
+    };
+  }
 
   // Jalur utama: RPC atomik dari migrasi 20261020_01.
   const { data: rpcData, error: rpcError } = await supabaseAdmin.rpc('consume_ai_credit', {
@@ -1480,10 +1528,16 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
     ]);
 
     const isSuperAdmin = profile?.system_role === 'super_admin';
+    let aiUnlimited =
+      isSuperAdmin || UNLIMITED_AI_EMAILS.has(normalizeAccountEmail(user.email));
     const accountStatus = profile?.status || 'active';
     const rawOwnLicense = await getActiveLicenseRow(user.id);
     const ownLicense = await resolveGrantedLicense(user.id, rawOwnLicense);
     const workspaceOwner = ownLicense ? null : await getWorkspaceAccessOwner(user.id);
+    // Anggota tim mengikuti status unlimited pemilik workspace.
+    if (!aiUnlimited && workspaceOwner) {
+      aiUnlimited = await isUnlimitedAiUser(workspaceOwner.ownerId);
+    }
     const rawWorkspaceLicense = workspaceOwner ? await getActiveLicenseRow(workspaceOwner.ownerId) : null;
     const workspaceLicense = workspaceOwner
       ? await resolveGrantedLicense(workspaceOwner.ownerId, rawWorkspaceLicense)
@@ -1526,6 +1580,7 @@ app.get('/api/access/status', authenticateUser, async (req: Request, res: Respon
       reason: accessReason,
       accountStatus,
       isSuperAdmin,
+      aiUnlimited,
       license: normalized,
       trial: {
         // Trial tidak lagi diaktifkan sendiri dari aplikasi. Kode trial
@@ -3513,7 +3568,23 @@ app.get('/api/ai/quota', authenticateUser, async (req: Request, res: Response) =
   }
 
   try {
+    const unlimited = await isUnlimitedAiUser(user.id, user.email, (req as any).profile);
     const license = await resolveGrantedLicense(user.id, await getActiveLicenseRow(user.id));
+
+    if (unlimited) {
+      res.json({
+        remaining: UNLIMITED_CREDITS,
+        total: UNLIMITED_CREDITS,
+        used: 0,
+        hasLicense: true,
+        isUnlimited: true,
+        planId: license?.plan_id || 'unlimited',
+        planName: license?.plan_name || 'Unlimited',
+        maxBrands: license?.max_brands || 0,
+        maxTeamMembers: license?.max_team_members || 0,
+      });
+      return;
+    }
 
     if (!license) {
       res.json({
@@ -3521,6 +3592,7 @@ app.get('/api/ai/quota', authenticateUser, async (req: Request, res: Response) =
         total: 0,
         used: 0,
         hasLicense: false,
+        isUnlimited: false,
         planId: null,
         planName: null,
         maxBrands: 1,
@@ -3535,6 +3607,7 @@ app.get('/api/ai/quota', authenticateUser, async (req: Request, res: Response) =
       total: Number(license.ai_quota_total) || 0,
       used: Number(license.ai_quota_used) || 0,
       hasLicense: true,
+      isUnlimited: false,
       planId: license.plan_id || null,
       planName: license.plan_name || null,
       maxBrands: license.max_brands || 1,
@@ -4084,7 +4157,9 @@ app.post('/api/ai/metrics-extractor', authenticateUser, aiRateLimiter, async (re
     user.id,
     brandId,
     'metrics_extractor',
-    `Ekstraksi Metrik ${channel}`
+    `Ekstraksi Metrik ${channel}`,
+    user.email,
+    (req as any).profile
   );
   if (!quotaRes.allowed) {
     res.status(403).json({ error: quotaRes.error });
@@ -4273,6 +4348,7 @@ Pastikan semua nilai numerik adalah angka asli dari gambar/video. Jika informasi
       metrics: parsedMetrics,
       remainingCredits: quotaRes.remaining,
       totalCredits: quotaRes.total,
+      unlimited: Boolean(quotaRes.unlimited),
       tokensConsumed,
     });
   } catch (err: unknown) {
@@ -4372,7 +4448,9 @@ app.post('/api/ai/strategy-assistant', authenticateUser, aiRateLimiter, async (r
     user.id,
     brandId,
     'strategy_assistant',
-    `Strategi AI: ${objectiveText || 'Engagement'}`
+    `Strategi AI: ${objectiveText || 'Engagement'}`,
+    user.email,
+    (req as any).profile
   );
   if (!quotaRes.allowed) {
     res.status(403).json({ error: quotaRes.error });
@@ -4497,6 +4575,7 @@ PRINSIP WAJIB:
       strategy: parsedStrategy,
       remainingCredits: quotaRes.remaining,
       totalCredits: quotaRes.total,
+      unlimited: Boolean(quotaRes.unlimited),
       tokensConsumed,
     });
   } catch (err: unknown) {

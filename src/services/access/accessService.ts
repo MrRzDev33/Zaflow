@@ -54,6 +54,7 @@ export interface AccessStatus {
   reason: 'owner' | 'subscription' | 'trial' | 'workspace' | 'none' | 'suspended' | 'pending_deletion' | string;
   accountStatus: string;
   isSuperAdmin: boolean;
+  aiUnlimited: boolean;
   license: AccessLicense | null;
   trial: {
     available: boolean;

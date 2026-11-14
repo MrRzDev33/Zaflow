@@ -82,6 +82,7 @@ export default function App() {
   const {
     aiCreditsRemaining,
     aiCreditsTotal,
+    aiCreditsUnlimited,
     maxBrands,
     refreshLicense,
   } = useLicense(user?.id);
@@ -618,6 +619,7 @@ export default function App() {
         isSuperAdmin={isSuperAdmin}
         aiCreditsRemaining={aiCreditsRemaining}
         aiCreditsTotal={aiCreditsTotal}
+        aiCreditsUnlimited={aiCreditsUnlimited}
         onSelectBrand={setActiveBrandId}
         onOpenNewBrand={handleOpenNewBrand}
         canCreateBrand={!atBrandLimit}
@@ -637,6 +639,8 @@ export default function App() {
           <DashboardOverview
             brand={activeBrand}
             aiCreditsRemaining={aiCreditsRemaining}
+            aiCreditsTotal={aiCreditsTotal}
+            aiCreditsUnlimited={aiCreditsUnlimited}
             onOpenNewPost={() => {
               setPrefillPost(null);
               setIsNewPostOpen(true);
@@ -698,6 +702,7 @@ export default function App() {
               brand={activeBrand}
               posts={brandPosts}
               aiCreditsRemaining={aiCreditsRemaining}
+              aiCreditsUnlimited={aiCreditsUnlimited}
               initialPostId={aiTargetPostId}
               onRefreshLicense={refreshLicense}
               onSavedMetrics={() => {
@@ -719,6 +724,7 @@ export default function App() {
               brand={activeBrand}
               posts={brandPosts}
               aiCreditsRemaining={aiCreditsRemaining}
+              aiCreditsUnlimited={aiCreditsUnlimited}
               onRefreshLicense={refreshLicense}
               onSelectActionPlanItem={handleSelectActionPlanItem}
             />
@@ -863,9 +869,48 @@ export default function App() {
 
 function ViewLoading() {
   return (
-    <div className="flex min-h-[280px] items-center justify-center gap-2 text-xs text-slate-400">
-      <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-      Memuat halaman...
+    <div className="space-y-5" role="status" aria-live="polite" aria-label="Memuat halaman">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-2">
+          <div className="h-5 w-44 animate-pulse rounded-lg bg-slate-200/80" />
+          <div className="h-3 w-64 animate-pulse rounded-md bg-slate-200/60" />
+        </div>
+        <div className="h-8 w-32 animate-pulse rounded-xl bg-slate-200/70" />
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div
+            key={index}
+            className="rounded-2xl border border-white/70 bg-white/50 p-4 shadow-2xs backdrop-blur-md"
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <div className="h-3 w-24 animate-pulse rounded-md bg-slate-200/70" />
+              <div className="h-6 w-6 animate-pulse rounded-lg bg-slate-200/60" />
+            </div>
+            <div className="h-7 w-16 animate-pulse rounded-lg bg-slate-200/80" />
+            <div className="mt-2 h-2.5 w-32 animate-pulse rounded-md bg-slate-200/50" />
+          </div>
+        ))}
+      </div>
+
+      <div className="rounded-2xl border border-white/70 bg-white/50 p-5 shadow-2xs backdrop-blur-md">
+        <div className="mb-4 h-4 w-40 animate-pulse rounded-lg bg-slate-200/80" />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, index) => (
+            <div key={index} className="flex items-center gap-3">
+              <div className="h-9 w-9 shrink-0 animate-pulse rounded-xl bg-slate-200/60" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-3 w-2/5 animate-pulse rounded-md bg-slate-200/70" />
+                <div className="h-2.5 w-1/4 animate-pulse rounded-md bg-slate-200/50" />
+              </div>
+              <div className="h-6 w-16 animate-pulse rounded-lg bg-slate-200/60" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <span className="sr-only">Memuat halaman...</span>
     </div>
   );
 }

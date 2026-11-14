@@ -26,6 +26,7 @@ interface DashboardOverviewProps {
   brand: Brand | null;
   aiCreditsRemaining: number;
   aiCreditsTotal?: number;
+  aiCreditsUnlimited?: boolean;
   onOpenNewPost: () => void;
   onOpenNewBrand: () => void;
   onSelectTab?: (tab: string) => void;
@@ -35,6 +36,7 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   brand,
   aiCreditsRemaining,
   aiCreditsTotal = 50,
+  aiCreditsUnlimited = false,
   onOpenNewPost,
   onOpenNewBrand,
   onSelectTab,
@@ -258,9 +260,11 @@ export const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
           <div>
             <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-              {aiCreditsRemaining}
+              {aiCreditsUnlimited ? '∞' : aiCreditsRemaining}
             </div>
-            <p className="text-[11px] text-slate-400 mt-1">Dari {aiCreditsTotal} kuota total</p>
+            <p className="text-[11px] text-slate-400 mt-1">
+              {aiCreditsUnlimited ? 'Kredit tanpa batas untuk akun ini' : `Dari ${aiCreditsTotal} kuota total`}
+            </p>
           </div>
         </div>
       </div>

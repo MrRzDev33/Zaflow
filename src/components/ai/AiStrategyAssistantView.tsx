@@ -26,6 +26,7 @@ interface AiStrategyAssistantViewProps {
   brand: Brand | null;
   posts: ContentPost[];
   aiCreditsRemaining: number;
+  aiCreditsUnlimited?: boolean;
   onRefreshLicense: () => void;
   onSelectActionPlanItem: (item: ContentActionPlanItem) => void;
 }
@@ -49,6 +50,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
   brand,
   posts,
   aiCreditsRemaining,
+  aiCreditsUnlimited = false,
   onRefreshLicense,
   onSelectActionPlanItem,
 }) => {
@@ -129,7 +131,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
       }
     }
 
-    if (aiCreditsRemaining <= 0) {
+    if (!aiCreditsUnlimited && aiCreditsRemaining <= 0) {
       setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Paket & Kuota.');
       return;
     }
@@ -199,7 +201,9 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
         <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 shrink-0 self-start md:self-auto text-xs">
           <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
           <span className="text-slate-600">Sisa Kuota AI:</span>
-          <span className="font-bold text-slate-900">{aiCreditsRemaining} Kredit</span>
+          <span className="font-bold text-slate-900">
+            {aiCreditsUnlimited ? '∞ Unlimited' : `${aiCreditsRemaining} Kredit`}
+          </span>
         </div>
       </div>
 
@@ -460,7 +464,7 @@ export const AiStrategyAssistantView: React.FC<AiStrategyAssistantViewProps> = (
 
             <button
               type="submit"
-              disabled={isGenerating || aiCreditsRemaining <= 0}
+              disabled={isGenerating || (!aiCreditsUnlimited && aiCreditsRemaining <= 0)}
               className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold text-xs rounded-xl shadow-xs flex items-center justify-center gap-2 transition cursor-pointer"
             >
               {isGenerating ? (

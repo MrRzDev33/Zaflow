@@ -359,10 +359,16 @@ export const aiClientService = {
   /**
    * Mengambil status saldo kuota kredit AI terkini dari server
    */
-  async getQuota(): Promise<{ remaining: number; total: number; used: number; hasLicense: boolean }> {
+  async getQuota(): Promise<{
+    remaining: number;
+    total: number;
+    used: number;
+    hasLicense: boolean;
+    isUnlimited?: boolean;
+  }> {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
-      return { remaining: 0, total: 0, used: 0, hasLicense: false };
+      return { remaining: 0, total: 0, used: 0, hasLicense: false, isUnlimited: false };
     }
 
     try {
@@ -373,13 +379,13 @@ export const aiClientService = {
       });
 
       if (!ok) {
-        return { remaining: 0, total: 0, used: 0, hasLicense: false };
+        return { remaining: 0, total: 0, used: 0, hasLicense: false, isUnlimited: false };
       }
 
       return data;
     } catch {
       // Backend tidak aktif atau respons tidak valid: jangan hentikan UI.
-      return { remaining: 0, total: 0, used: 0, hasLicense: false };
+      return { remaining: 0, total: 0, used: 0, hasLicense: false, isUnlimited: false };
     }
   },
 };

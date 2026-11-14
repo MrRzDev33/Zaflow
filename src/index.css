@@ -204,3 +204,48 @@
     font-size: 16px !important;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Aksesibilitas & kenyamanan interaksi                                */
+/* ------------------------------------------------------------------ */
+
+/* Cincin fokus yang konsisten untuk navigasi keyboard. */
+:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+  border-radius: 10px;
+}
+
+/* Jangan tampilkan cincin fokus pada klik mouse, cukup keyboard. */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.22);
+  color: #1e293b;
+}
+
+/* Gulir halus hanya jika pengguna tidak meminta gerak minimal. */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Hormati preferensi pengguna yang sensitif terhadap animasi. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Area yang bisa digulir mendapat sedikit ruang napas saat difokuskan. */
+[tabindex]:focus-visible {
+  scroll-margin: 80px;
+}

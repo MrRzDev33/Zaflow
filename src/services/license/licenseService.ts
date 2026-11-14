@@ -10,6 +10,7 @@ const emptyInfo = (): LicenseQuotaInfo => ({
   aiCreditsTotal: 0,
   aiCreditsUsed: 0,
   aiCreditsRemaining: 0,
+  aiCreditsUnlimited: false,
   percentageUsed: 0,
   maxBrands: 1,
   currentBrandCount: 0,
@@ -30,20 +31,24 @@ export const licenseService = {
     try {
       const access = await accessService.getStatus();
       const license = access.license as License | null;
-      if (!license) return emptyInfo();
+      const unlimited = Boolean(access.aiUnlimited);
 
-      const total = Number(license.ai_quota_total) || 0;
-      const used = Number(license.ai_quota_used) || 0;
+      if (!license && !unlimited) return emptyInfo();
+
+      const total = Number(license?.ai_quota_total) || 0;
+      const used = Number(license?.ai_quota_used) || 0;
       const remaining = Math.max(0, total - used);
 
       return {
         hasActiveLicense: access.hasAccess,
         license,
-        aiCreditsTotal: total,
-        aiCreditsUsed: used,
-        aiCreditsRemaining: remaining,
-        percentageUsed: total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0,
-        maxBrands: Number(license.max_brands) || 1,
+        aiCreditsTotal: unlimited ? 0 : total,
+        aiCreditsUsed: unlimited ? 0 : used,
+        aiCreditsRemaining: unlimited ? 0 : remaining,
+        aiCreditsUnlimited: unlimited,
+        percentageUsed:
+          !unlimited && total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0,
+        maxBrands: Number(license?.max_brands) || 1,
         currentBrandCount: 0,
       };
     } catch {

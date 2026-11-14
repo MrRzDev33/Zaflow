@@ -1,30 +1,19 @@
 import React from 'react';
 import {
-  IconAnalytics,
-  IconCalendar,
   IconChat,
   IconClose,
-  IconCollection,
-  IconDashboard,
-  IconHistory,
-  IconKanban,
-  IconLicense,
-  IconPost,
-  IconScanAI,
-  IconShield,
   IconSpark,
-  IconStrategy,
-  IconTeam,
-  type ZaIconProps,
 } from '../common/icons/ZaflowIcons.tsx';
 import { ZaFlowLogo } from '../common/ZaFlowLogo.tsx';
 import { useMediaQuery } from '../../hooks/useMediaQuery.ts';
+import { getVisibleNavSections } from '../../config/navigation.tsx';
 
 interface SidebarProps {
   currentTab: string;
   onSelectTab: (tabId: string) => void;
   aiCreditsRemaining: number;
   aiCreditsTotal: number;
+  aiCreditsUnlimited?: boolean;
   isCollapsed: boolean;
   isSuperAdmin?: boolean;
   whatsappUrl?: string | null;
@@ -34,22 +23,12 @@ interface SidebarProps {
   onCloseMobile?: () => void;
 }
 
-interface NavItem {
-  id: string;
-  label: string;
-  icon: React.ComponentType<ZaIconProps>;
-}
-
-interface NavSection {
-  title: string;
-  items: NavItem[];
-}
-
 export const Sidebar: React.FC<SidebarProps> = ({
   currentTab,
   onSelectTab,
   aiCreditsRemaining,
   aiCreditsTotal,
+  aiCreditsUnlimited = false,
   isCollapsed,
   isSuperAdmin = false,
   whatsappUrl,
@@ -65,37 +44,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onCloseMobile?.();
   };
 
-  const navSections: NavSection[] = [
-    {
-      title: 'Perencanaan',
-      items: [
-        { id: 'dashboard', label: 'Dashboard', icon: IconDashboard },
-        { id: 'content_db', label: 'Koleksi Konten', icon: IconCollection },
-        { id: 'calendar', label: 'Kalender Konten', icon: IconCalendar },
-        { id: 'kanban', label: 'Alur Konten', icon: IconKanban },
-      ],
-    },
-    {
-      title: 'Analitik & Strategi',
-      items: [
-        { id: 'analytics', label: 'Analitik & Laporan', icon: IconAnalytics },
-        { id: 'content_posts', label: 'Konten Post', icon: IconPost },
-        { id: 'ai_extractor', label: 'Ambil Metrik AI', icon: IconScanAI },
-        { id: 'ai_strategy', label: 'Asisten Strategi', icon: IconStrategy },
-      ],
-    },
-    {
-      title: 'Akses & Tim',
-      items: [
-        { id: 'team', label: 'Anggota & Tim', icon: IconTeam },
-        { id: 'activity_logs', label: 'Riwayat Aktivitas', icon: IconHistory },
-        { id: 'license', label: 'Paket & Kuota', icon: IconLicense },
-        ...(isSuperAdmin
-          ? [{ id: 'admin', label: 'Admin', icon: IconShield }]
-          : []),
-      ],
-    },
-  ];
+  const navSections = getVisibleNavSections(isSuperAdmin);
 
   return (
     <aside
@@ -139,7 +88,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     key={item.id}
                     onClick={() => handleSelectTab(item.id)}
-                    title={collapsed ? item.label : undefined}
+                    title={collapsed ? item.label : item.description}
+                    aria-current={isActive ? 'page' : undefined}
                     className={`w-full flex items-center ${
                       collapsed ? 'justify-center px-2' : 'justify-start px-3.5'
                     } py-2.5 rounded-xl text-xs transition-all cursor-pointer ${
@@ -186,28 +136,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="shrink-0 p-3.5 border-t border-white/40">
           <div className="p-3 rounded-2xl bg-white/50 backdrop-blur-md border border-white/80 shadow-2xs space-y-2">
             <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-              <span className="text-[11px] text-slate-500 font-medium">Kredit AI</span>
-              <span className="text-[11px] font-mono text-slate-800">
-                {aiCreditsRemaining} / {aiCreditsTotal}
+              <span className="inline-flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+                <IconSpark className="h-3.5 w-3.5 text-[#2563EB]" strokeWidth={2} />
+                Kredit AI
               </span>
+              {aiCreditsUnlimited ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200/80 bg-emerald-100/80 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
+                  ∞ Unlimited
+                </span>
+              ) : (
+                <span className="text-[11px] font-mono text-slate-800">
+                  {aiCreditsRemaining} / {aiCreditsTotal}
+                </span>
+              )}
             </div>
 
             <div className="w-full h-1.5 bg-slate-200/60 rounded-full overflow-hidden p-0.5">
               <div
-                className="h-full bg-gradient-to-r from-[#2563EB] to-[#4F46E5] rounded-full transition-all duration-300 shadow-xs"
+                className={`h-full rounded-full transition-all duration-300 shadow-xs ${
+                  aiCreditsUnlimited
+                    ? 'bg-gradient-to-r from-emerald-400 to-teal-500'
+                    : 'bg-gradient-to-r from-[#2563EB] to-[#4F46E5]'
+                }`}
                 style={{
-                  width: `${aiCreditsTotal > 0 ? Math.min(100, (aiCreditsRemaining / aiCreditsTotal) * 100) : 0}%`,
+                  width: aiCreditsUnlimited
+                    ? '100%'
+                    : `${aiCreditsTotal > 0 ? Math.min(100, (aiCreditsRemaining / aiCreditsTotal) * 100) : 0}%`,
                 }}
               />
             </div>
+
+            {aiCreditsUnlimited && (
+              <p className="text-[10px] text-emerald-700/80">Akses tanpa batas untuk akun ini.</p>
+            )}
           </div>
         </div>
       ) : (
         <div
           className="shrink-0 p-3 border-t border-white/40 flex justify-center"
-          title={`Kredit AI: ${aiCreditsRemaining}/${aiCreditsTotal}`}
+          title={aiCreditsUnlimited ? 'Kredit AI: Unlimited' : `Kredit AI: ${aiCreditsRemaining}/${aiCreditsTotal}`}
         >
-          <div className="p-2 rounded-xl bg-white/60 text-[#2563EB] shadow-2xs">
+          <div
+            className={`p-2 rounded-xl shadow-2xs ${
+              aiCreditsUnlimited ? 'bg-emerald-50 text-emerald-600' : 'bg-white/60 text-[#2563EB]'
+            }`}
+          >
             <IconSpark className="w-4 h-4" strokeWidth={1.9} />
           </div>
         </div>

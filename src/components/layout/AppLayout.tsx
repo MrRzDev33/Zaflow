@@ -3,6 +3,7 @@ import { IconChat } from '../common/icons/ZaflowIcons.tsx';
 import { Sidebar } from './Sidebar.tsx';
 import { Topbar } from './Topbar.tsx';
 import { ConfigNotice } from '../common/ConfigNotice.tsx';
+import { CommandPalette } from './CommandPalette.tsx';
 import { useMediaQuery } from '../../hooks/useMediaQuery.ts';
 import { Brand, Profile } from '../../types/database.ts';
 
@@ -15,6 +16,7 @@ interface AppLayoutProps {
   isSuperAdmin?: boolean;
   aiCreditsRemaining: number;
   aiCreditsTotal: number;
+  aiCreditsUnlimited: boolean;
   onSelectBrand: (brandId: string) => void;
   onOpenNewBrand: () => void;
   canCreateBrand?: boolean;
@@ -34,6 +36,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   isSuperAdmin = false,
   aiCreditsRemaining,
   aiCreditsTotal,
+  aiCreditsUnlimited,
   onSelectBrand,
   onOpenNewBrand,
   canCreateBrand = true,
@@ -45,9 +48,24 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 }) => {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isCommandOpen, setIsCommandOpen] = useState(false);
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const closeMobileSidebar = useCallback(() => setIsMobileSidebarOpen(false), []);
+  const closeCommandPalette = useCallback(() => setIsCommandOpen(false), []);
+  const openCommandPalette = useCallback(() => setIsCommandOpen(true), []);
+
+  // Pintasan Ctrl/Cmd+K membuka pencarian cepat di seluruh halaman.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        setIsCommandOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Tutup drawer otomatis saat layar melebar ke desktop.
   useEffect(() => {
@@ -93,6 +111,12 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
 
       {/* Full Width Workspace Layout */}
       <div className="w-full h-full flex flex-row overflow-hidden relative z-10">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-[120] focus:rounded-xl focus:bg-white focus:px-4 focus:py-2 focus:text-xs focus:font-semibold focus:text-slate-800 focus:shadow-lg"
+        >
+          Lewati ke konten utama
+        </a>
         {/* Latar gelap saat drawer navigasi terbuka di HP/tablet */}
         {isMobileSidebarOpen && (
           <button
@@ -109,6 +133,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           onSelectTab={handleSelectTab}
           aiCreditsRemaining={aiCreditsRemaining}
           aiCreditsTotal={aiCreditsTotal}
+          aiCreditsUnlimited={aiCreditsUnlimited}
           isCollapsed={isSidebarCollapsed}
           isSuperAdmin={isSuperAdmin}
           whatsappUrl={customerService?.whatsappUrl || null}
@@ -133,6 +158,7 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
             canCreateBrand={canCreateBrand}
             onOpenBrandSettings={onOpenBrandSettings}
             onOpenNewPost={onOpenNewPost}
+            onOpenCommandPalette={openCommandPalette}
             onSignOut={onSignOut}
             isSidebarCollapsed={isSidebarCollapsed}
             onToggleSidebar={handleToggleSidebar}
@@ -149,7 +175,11 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           />
 
           {/* Workspace Canvas Full Width */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 w-full">
+          <main
+            id="main-content"
+            tabIndex={-1}
+            className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 w-full scroll-pt-20"
+          >
             <div className="w-full space-y-5">
               {children}
             </div>
@@ -170,6 +200,17 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
           </main>
         </div>
       </div>
+
+      <CommandPalette
+        open={isCommandOpen}
+        onClose={closeCommandPalette}
+        onSelectTab={handleSelectTab}
+        onOpenNewPost={onOpenNewPost}
+        onOpenNewBrand={onOpenNewBrand}
+        onOpenBrandSettings={onOpenBrandSettings}
+        canCreateBrand={canCreateBrand}
+        isSuperAdmin={isSuperAdmin}
+      />
     </div>
   );
 };

@@ -40,6 +40,7 @@ interface AiMetricsExtractorViewProps {
   brand: Brand | null;
   posts: ContentPost[];
   aiCreditsRemaining: number;
+  aiCreditsUnlimited?: boolean;
   initialPostId?: string | null;
   onRefreshLicense: () => void;
   onSavedMetrics: () => void;
@@ -162,6 +163,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
   brand,
   posts,
   aiCreditsRemaining,
+  aiCreditsUnlimited = false,
   initialPostId = null,
   onRefreshLicense,
   onSavedMetrics,
@@ -354,7 +356,7 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
       return;
     }
 
-    if (aiCreditsRemaining <= 0) {
+    if (!aiCreditsUnlimited && aiCreditsRemaining <= 0) {
       setError('Kuota kredit AI Anda telah habis. Silakan periksa halaman Paket & Kuota.');
       return;
     }
@@ -620,8 +622,11 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            Kredit AI: <span className="font-bold text-purple-600">{aiCreditsRemaining}</span>{' '}
-            tersisa
+            Kredit AI:{' '}
+            <span className="font-bold text-purple-600">
+              {aiCreditsUnlimited ? '∞ Unlimited' : aiCreditsRemaining}
+            </span>
+            {!aiCreditsUnlimited && <span className="font-normal text-slate-500">tersisa</span>}
           </div>
         </div>
       </div>
@@ -773,7 +778,9 @@ export const AiMetricsExtractorView: React.FC<AiMetricsExtractorViewProps> = ({
 
             <button
               onClick={handleRunAiExtraction}
-              disabled={isPreparingFile || isProcessing || !fileBase64 || aiCreditsRemaining <= 0}
+              disabled={
+                isPreparingFile || isProcessing || !fileBase64 || (!aiCreditsUnlimited && aiCreditsRemaining <= 0)
+              }
               className="flex w-full items-center justify-center gap-2 rounded-xl bg-purple-600 px-4 py-2.5 text-xs font-semibold text-white shadow-xs transition hover:bg-purple-700 disabled:opacity-50"
             >
               {isPreparingFile ? (

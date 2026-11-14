@@ -9,6 +9,7 @@ export function useLicense(userId: string | undefined) {
     aiCreditsTotal: 0,
     aiCreditsUsed: 0,
     aiCreditsRemaining: 0,
+    aiCreditsUnlimited: false,
     percentageUsed: 0,
     maxBrands: 1,
     currentBrandCount: 0,

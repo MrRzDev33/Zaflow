@@ -276,19 +276,36 @@ export const LicenseQuotaView: React.FC<LicenseQuotaViewProps> = ({ onRefreshLic
               <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">Kredit AI</span>
               <Zap className="w-5 h-5 text-amber-400 fill-amber-400" />
             </div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-white">{remaining}</span>
-              <span className="text-xs text-slate-400">/ {total} Kredit</span>
-            </div>
+            {status?.aiUnlimited ? (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-emerald-300">∞</span>
+                  <span className="text-xs text-emerald-200/80">Unlimited</span>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-slate-300">
+                  Akun ini memiliki akses kredit AI tanpa batas. Tidak ada pemotongan kuota untuk
+                  setiap penggunaan fitur AI.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-3xl font-extrabold text-white">{remaining}</span>
+                  <span className="text-xs text-slate-400">/ {total} Kredit</span>
+                </div>
+              </>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }} />
+          {!status?.aiUnlimited && (
+            <div className="space-y-1.5">
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-500 rounded-full transition-all duration-300" style={{ width: `${percentage}%` }} />
+              </div>
+              <p className="text-[10px] text-slate-400">
+                Terpakai {used} kredit. Kuota adalah total untuk 6 bulan dan bertambah saat perpanjangan.
+              </p>
             </div>
-            <p className="text-[10px] text-slate-400">
-              Terpakai {used} kredit. Kuota adalah total untuk 6 bulan dan bertambah saat perpanjangan.
-            </p>
-          </div>
+          )}
         </div>
       </div>
 

@@ -3,12 +3,15 @@ import {
   IconChevronDown,
   IconLogout,
   IconMenu,
+  IconPlus,
   IconSettings,
   IconShield,
   IconUser,
 } from '../common/icons/ZaflowIcons.tsx';
+import { Search } from '../common/icons/lucide-compat.tsx';
 import { BrandSwitcher } from './BrandSwitcher.tsx';
 import { Brand, Profile } from '../../types/database.ts';
+import { getNavItem } from '../../config/navigation.tsx';
 
 interface TopbarProps {
   currentTab: string;
@@ -20,6 +23,7 @@ interface TopbarProps {
   canCreateBrand?: boolean;
   onOpenBrandSettings?: () => void;
   onOpenNewPost: () => void;
+  onOpenCommandPalette?: () => void;
   onSignOut: () => void;
   isSidebarCollapsed: boolean;
   onToggleSidebar: () => void;
@@ -29,6 +33,7 @@ interface TopbarProps {
 }
 
 export const Topbar: React.FC<TopbarProps> = ({
+  currentTab,
   brands,
   activeBrand,
   profile,
@@ -36,6 +41,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   onOpenNewBrand,
   canCreateBrand = true,
   onOpenBrandSettings,
+  onOpenNewPost,
+  onOpenCommandPalette,
   onSignOut,
   isSidebarCollapsed,
   onToggleSidebar,
@@ -45,6 +52,15 @@ export const Topbar: React.FC<TopbarProps> = ({
   const userName = profile?.full_name?.trim() || 'Pengguna ZaFlow';
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
+
+  const navItem = getNavItem(currentTab);
+  const pageTitle = navItem?.label || 'ZaFlow';
+  const pageDescription = navItem?.description || 'Ruang kerja konten Anda';
+
+  const shortcutLabel =
+    typeof navigator !== 'undefined' && /Mac|iPhone|iPad/i.test(navigator.platform)
+      ? '⌘K'
+      : 'Ctrl K';
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -58,8 +74,8 @@ export const Topbar: React.FC<TopbarProps> = ({
   }, []);
 
   return (
-    <header className="h-16 px-3 sm:px-6 flex items-center justify-between gap-2 sm:gap-4 shrink-0 border-b border-white/40 bg-white/20 backdrop-blur-md z-20">
-      {/* Left: Mobile Sidebar toggle & Workspace Brand Switcher */}
+    <header className="h-16 px-3 sm:px-5 flex items-center justify-between gap-2 sm:gap-4 shrink-0 border-b border-white/40 bg-white/20 backdrop-blur-md z-20">
+      {/* Left: menu, judul halaman, brand switcher */}
       <div className="flex items-center gap-2 sm:gap-3 min-w-0">
         <button
           onClick={onToggleSidebar}
@@ -69,6 +85,15 @@ export const Topbar: React.FC<TopbarProps> = ({
         >
           <IconMenu className="w-4 h-4" strokeWidth={1.8} />
         </button>
+
+        <div className="hidden lg:block min-w-0 max-w-[220px] xl:max-w-[300px]">
+          <h1 className="truncate text-sm font-bold leading-tight tracking-tight text-slate-800">
+            {pageTitle}
+          </h1>
+          <p className="truncate text-[10px] leading-tight text-slate-400">{pageDescription}</p>
+        </div>
+
+        <div className="hidden lg:block h-6 w-px shrink-0 bg-slate-300/60" aria-hidden="true" />
 
         {/* Brand Switcher */}
         <div className="flex items-center gap-1.5 min-w-0">
@@ -84,7 +109,8 @@ export const Topbar: React.FC<TopbarProps> = ({
             <button
               onClick={onOpenBrandSettings}
               title="Pengaturan Workspace"
-              className="p-2 text-slate-500 hover:text-slate-800 astra-icon-btn rounded-xl cursor-pointer shrink-0"
+              aria-label="Pengaturan Workspace"
+              className="hidden sm:block p-2 text-slate-500 hover:text-slate-800 astra-icon-btn rounded-xl cursor-pointer shrink-0"
             >
               <IconSettings className="w-4 h-4" strokeWidth={1.8} />
             </button>
@@ -92,8 +118,32 @@ export const Topbar: React.FC<TopbarProps> = ({
         </div>
       </div>
 
-      {/* Right: WhatsApp / Customer Service, Notifications, and Unified Profile + Logout */}
-      <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+      {/* Right: pencarian cepat, konten baru, bantuan, profil */}
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        {onOpenCommandPalette && (
+          <button
+            onClick={onOpenCommandPalette}
+            title="Pencarian cepat"
+            aria-label="Buka pencarian cepat"
+            className="flex items-center gap-2 h-8 rounded-xl border border-white/80 bg-white/50 px-2.5 text-slate-500 hover:bg-white/90 hover:text-slate-700 transition cursor-pointer shadow-2xs"
+          >
+            <Search className="w-4 h-4" strokeWidth={1.9} />
+            <span className="hidden md:inline text-[11px] font-medium">Cari halaman...</span>
+            <kbd className="hidden md:inline-block rounded-md border border-slate-200 bg-white/80 px-1.5 py-0.5 text-[10px] font-semibold text-slate-400">
+              {shortcutLabel}
+            </kbd>
+          </button>
+        )}
+
+        <button
+          onClick={onOpenNewPost}
+          title="Buat konten baru"
+          className="flex items-center gap-1.5 h-8 rounded-xl bg-blue-600 px-2.5 sm:px-3 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition cursor-pointer"
+        >
+          <IconPlus className="w-3.5 h-3.5" strokeWidth={2.2} />
+          <span className="hidden sm:inline">Konten Baru</span>
+        </button>
+
         {/* WhatsApp Customer Service Button, hanya tampil jika diaktifkan admin */}
         {customerService?.whatsappUrl && (
           <a
@@ -101,7 +151,7 @@ export const Topbar: React.FC<TopbarProps> = ({
             target="_blank"
             rel="noopener noreferrer"
             title={`${customerService.label || 'Bantuan'} via WhatsApp`}
-            className="h-8 px-2.5 rounded-xl astra-icon-btn flex items-center gap-1.5 text-emerald-700 hover:text-emerald-800 bg-white/60 hover:bg-white/90 cursor-pointer text-xs font-semibold"
+            className="hidden sm:flex h-8 px-2.5 rounded-xl astra-icon-btn items-center gap-1.5 text-emerald-700 hover:text-emerald-800 bg-white/60 hover:bg-white/90 cursor-pointer text-xs font-semibold"
           >
             <svg
               viewBox="0 0 24 24"
@@ -118,6 +168,8 @@ export const Topbar: React.FC<TopbarProps> = ({
         <div className="relative" ref={profileMenuRef}>
           <button
             onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+            aria-haspopup="menu"
+            aria-expanded={isProfileMenuOpen}
             className="flex items-center gap-2.5 p-1 sm:pr-2.5 rounded-2xl bg-white/50 hover:bg-white/80 border border-white/80 shadow-2xs transition-all cursor-pointer select-none astra-icon-btn"
           >
             {/* User Avatar */}
@@ -146,7 +198,10 @@ export const Topbar: React.FC<TopbarProps> = ({
 
           {/* Unified Profile & Logout Dropdown Menu */}
           {isProfileMenuOpen && (
-            <div className="absolute right-0 mt-2 w-56 astra-card p-2 z-50 overflow-hidden shadow-[0_12px_40px_rgba(79,70,229,0.12)] animate-in fade-in-50 zoom-in-95 duration-150">
+            <div
+              role="menu"
+              className="absolute right-0 mt-2 w-56 astra-card p-2 z-50 overflow-hidden shadow-[0_12px_40px_rgba(79,70,229,0.12)] animate-in fade-in-50 zoom-in-95 duration-150"
+            >
               {/* Profile Overview */}
               <div className="px-3 py-2.5 border-b border-slate-100/80">
                 <p className="text-xs font-bold text-slate-800 truncate">{userName}</p>
@@ -170,6 +225,7 @@ export const Topbar: React.FC<TopbarProps> = ({
               {/* Action: Sign Out */}
               <div className="p-1 pt-1.5">
                 <button
+                  role="menuitem"
                   onClick={() => {
                     setIsProfileMenuOpen(false);
                     onSignOut();

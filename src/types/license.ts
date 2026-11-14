@@ -6,6 +6,7 @@ export interface LicenseQuotaInfo {
   aiCreditsTotal: number;
   aiCreditsUsed: number;
   aiCreditsRemaining: number;
+  aiCreditsUnlimited: boolean;
   percentageUsed: number;
   maxBrands: number;
   currentBrandCount: number;
